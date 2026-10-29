@@ -39,6 +39,7 @@ const pruebas = {
     assert.equal(conFecha.startDateLongFormat, `${d}-${m}-${a} ${h}:${min}`);
     assert.equal(conFecha.startDateShortFormat, `${d}-${m}-${a}`);
     const sinFecha = cuerpo.data.find((e) => !e.startDate);
+    assert.ok(sinFecha, 'los datos de prueba deben tener una novedad sin fechas («Noticia de prueba sin fechas»)');
     assert.equal(sinFecha.startDateLongFormat, null);
     assert.equal(sinFecha.endDateShortFormat, null);
   },
