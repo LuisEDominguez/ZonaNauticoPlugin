@@ -14,6 +14,8 @@ Base de la API: `<sitio>/wp-json/zonanautico/v1`
 | `GET /business/{id}` | público | `includesUser` (de momento `user` siempre es `null`) |
 | `GET /event` | público | `page`, `perPage` (máx. 50), `category`, `business`, `orderby` (`id`, `name`, `start_date`, `end_date`), `order`, `includesCategory`, `includesBusiness`, `includesUser` |
 | `GET /event/{id}` | público | mismas inclusiones |
+| `GET /draw` | público | `page`, `perPage` (máx. 50), `controlParticipar=1` (solo abiertos), `orderby` (`id`, `title`, `start_date`, `end_date`), `order`, `includesUser` |
+| `GET /draw/{id}` | público | `includesUser` |
 
 Los negocios se guardan como entradas personalizadas de WordPress (tipo `negocio`, menú «Negocios»
 en wp-admin): nombre = título, descripción = contenido, y el resto como campos personalizados con
@@ -29,5 +31,5 @@ El sitio de Local `zonanautico-local` (http://localhost:10010) enlaza esta carpe
 un enlace de carpeta en `wp-content/plugins/zona-nautico`.
 
 - Datos inventados (solo en WordPress local; cada tipo solo si está vacío): `wp zona-nautico datos-prueba`
-- Comprobar el contrato de la API: `node tests/contrato-negocios.mjs` y `node tests/contrato-eventos.mjs`
+- Comprobar el contrato de la API: `node tests/contrato-negocios.mjs`, `contrato-eventos.mjs` y `contrato-sorteos.mjs`
 - Comprobar la ficha de wp-admin: `wp eval-file tests/admin-fichas.php`

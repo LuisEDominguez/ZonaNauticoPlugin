@@ -1,6 +1,6 @@
 <?php
 // Comprobaciones de la ficha de wp-admin. Uso: wp eval-file tests/admin-negocios.php
-foreach ( array( 'campos', 'negocios', 'eventos' ) as $f ) {
+foreach ( array( 'campos', 'negocios', 'eventos', 'sorteos' ) as $f ) {
 	require_once WP_PLUGIN_DIR . "/zona-nautico/includes/class-zn-admin-$f.php";
 }
 
@@ -83,8 +83,28 @@ $ok( 'novedad: todo vacío → borrar, sin avisos', null === $l['start_date'] &&
 $novedad = get_posts( array( 'post_type' => ZN_Eventos::TIPO, 'numberposts' => 1 ) )[0];
 ob_start();
 ZN_Admin_Eventos::caja_datos( $novedad );
-ZN_Admin_Eventos::caja_videos( $novedad );
+ZN_Admin_Campos::caja_videos( $novedad );
 $html = ob_get_clean();
 $ok( 'novedad: la ficha se pinta con negocios y fechas', false !== strpos( $html, 'Taberna O Peirao' ) && false !== strpos( $html, 'type="datetime-local"' ) );
+
+// --- Sorteos ---
+$e = array();
+$l = ZN_Admin_Sorteos::limpiar( array( 'start_date' => '2026-11-01T00:00', 'end_date' => '2026-11-30T23:59', 'winners' => '3', 'legal_url' => 'zonanautico.com/bases' ), $e );
+$ok( 'sorteo: sin avisos con datos buenos', ! $e );
+$ok( 'sorteo: fechas y ganadores', '2026-11-30 23:59:00' === $l['end_date'] && 3 === $l['winners'] );
+$ok( 'sorteo: bases sin protocolo → https', 'https://zonanautico.com/bases' === $l['legal_url'] );
+
+$e = array();
+$l = ZN_Admin_Sorteos::limpiar( array( 'winners' => '0', 'legal_url' => 'javascript:alert(1)' ), $e );
+$ok( 'sorteo: 0 ganadores no se guarda', ! array_key_exists( 'winners', $l ) );
+$ok( 'sorteo: bases peligrosas no se guardan', ! array_key_exists( 'legal_url', $l ) );
+$ok( 'sorteo: avisa si faltan fechas', (bool) array_filter( $e, static fn( $m ) => false !== strpos( $m, 'Faltan fechas' ) ) );
+
+$sorteo = get_posts( array( 'post_type' => ZN_Sorteos::TIPO, 'numberposts' => 1 ) )[0];
+ob_start();
+ZN_Admin_Sorteos::caja_datos( $sorteo );
+ZN_Admin_Sorteos::caja_estado( $sorteo );
+$html = ob_get_clean();
+$ok( 'sorteo: la ficha se pinta con ganadores y estado', false !== strpos( $html, 'name="zn[winners]"' ) && false !== strpos( $html, 'participar' ) );
 
 echo $fallos ? "\n$fallos fallo(s)\n" : "\nTodo bien\n";

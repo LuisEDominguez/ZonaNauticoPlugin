@@ -94,6 +94,47 @@ class ZN_Admin_Campos {
 		}
 	}
 
+	/** Filas «Empieza» y «Termina» con calendario. Las fechas se guardan como "Y-m-d H:i:s" (hora de Madrid). */
+	public static function filas_fechas( int $id, string $nota ): void {
+		$casilla = static function ( string $fecha ): string {
+			return $fecha ? str_replace( ' ', 'T', substr( $fecha, 0, 16 ) ) : '';
+		};
+		?>
+		<tr>
+			<th><label for="zn-inicio">Empieza</label></th>
+			<td><input type="datetime-local" id="zn-inicio" name="zn[start_date]" value="<?php echo esc_attr( $casilla( self::valor( $id, 'start_date' ) ) ); ?>"></td>
+		</tr>
+		<tr>
+			<th><label for="zn-fin">Termina</label></th>
+			<td>
+				<input type="datetime-local" id="zn-fin" name="zn[end_date]" value="<?php echo esc_attr( $casilla( self::valor( $id, 'end_date' ) ) ); ?>">
+				<p class="description"><?php echo esc_html( $nota ); ?></p>
+			</td>
+		</tr>
+		<?php
+	}
+
+	/** start_date y end_date desde las casillas de calendario ("2026-11-02T10:30"). El fin no puede ir antes del inicio. */
+	public static function limpiar_fechas( array $datos, array &$limpio, array &$errores ): void {
+		foreach ( array( 'start_date' => 'inicio', 'end_date' => 'fin' ) as $campo => $nombre ) {
+			$valor = self::texto( $datos, $campo );
+			if ( '' === $valor ) {
+				$limpio[ $campo ] = null;
+				continue;
+			}
+			$fecha = DateTimeImmutable::createFromFormat( '!Y-m-d\TH:i', $valor );
+			if ( $fecha && $fecha->format( 'Y-m-d\TH:i' ) === $valor ) {
+				$limpio[ $campo ] = $fecha->format( 'Y-m-d H:i:s' );
+			} else {
+				$errores[] = "La fecha de $nombre no es válida; no se ha cambiado.";
+			}
+		}
+		if ( ! empty( $limpio['start_date'] ) && ! empty( $limpio['end_date'] ) && $limpio['end_date'] < $limpio['start_date'] ) {
+			unset( $limpio['end_date'] );
+			$errores[] = 'La fecha de fin es anterior a la de inicio; no se ha cambiado.';
+		}
+	}
+
 	public static function caja_fotos( WP_Post $entrada ): void {
 		for ( $i = 0; $i < 3; $i++ ) {
 			$url = self::valor( $entrada->ID, "photo_{$i}" );
@@ -108,6 +149,18 @@ class ZN_Admin_Campos {
 			</div>
 			<?php
 		}
+	}
+
+	public static function caja_videos( WP_Post $entrada ): void {
+		for ( $i = 0; $i < 3; $i++ ) {
+			printf(
+				'<p><label>Vídeo %1$d <input type="url" class="large-text" name="zn[video_%2$d]" placeholder="https://" value="%3$s"></label></p>',
+				(int) $i + 1,
+				(int) $i,
+				esc_attr( self::valor( $entrada->ID, "video_{$i}" ) )
+			);
+		}
+		echo '<p class="description">Dirección completa de un vídeo (por ejemplo, un .mp4).</p>';
 	}
 
 	/** Fotos y vídeos: solo direcciones http(s); cualquier otra cosa se descarta. */

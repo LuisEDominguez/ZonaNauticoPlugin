@@ -8,7 +8,7 @@ defined( 'ABSPATH' ) || exit;
 class ZN_CLI {
 
 	/**
-	 * Mete negocios y novedades inventados para probar la API. Solo en un WordPress local;
+	 * Mete negocios, novedades y sorteos inventados para probar la API. Solo en un WordPress local;
 	 * cada tipo solo se rellena si todavía no tiene ninguna entrada.
 	 *
 	 * ## EXAMPLES
@@ -26,11 +26,12 @@ class ZN_CLI {
 
 		$taberna = get_posts( array( 'post_type' => ZN_Negocios::TIPO, 'title' => 'Taberna O Peirao (prueba)', 'numberposts' => 1, 'fields' => 'ids' ) );
 		self::rellenar( ZN_Eventos::TIPO, ZN_Eventos::CAMPOS, self::eventos_inventados( $taberna[0] ?? null ), 'novedades' );
+		self::rellenar( ZN_Sorteos::TIPO, ZN_Sorteos::CAMPOS, self::sorteos_inventados(), 'sorteos' );
 	}
 
 	private static function rellenar( string $tipo, array $campos, array $entradas, string $nombre ): void {
 		if ( get_posts( array( 'post_type' => $tipo, 'post_status' => 'any', 'numberposts' => 1, 'fields' => 'ids' ) ) ) {
-			WP_CLI::log( "Ya hay $nombre guardados; no se tocan." );
+			WP_CLI::log( "Ya hay entradas de $nombre; no se tocan." );
 			return;
 		}
 		foreach ( $entradas as $entrada ) {
@@ -53,6 +54,34 @@ class ZN_CLI {
 			}
 		}
 		WP_CLI::success( sprintf( 'Creadas %d entradas de prueba (%s).', count( $entradas ), $nombre ) );
+	}
+
+	/** Sorteos ficticios: uno abierto, uno que aún no ha empezado y uno terminado, con fechas relativas a hoy. */
+	private static function sorteos_inventados(): array {
+		$dia = static fn( string $cuando, string $hora ) => ( new DateTimeImmutable( $cuando, new DateTimeZone( 'Europe/Madrid' ) ) )->format( "Y-m-d $hora:00" );
+
+		return array(
+			array(
+				'name'        => 'Sorteo abierto de prueba',
+				'description' => "Sorteo inventado para probar la API.\n\nCompra en un negocio asociado y sube el ticket.",
+				'start_date'  => $dia( '-5 days', '00:00' ),
+				'end_date'    => $dia( '+20 days', '23:59' ),
+				'winners'     => 5,
+				'legal_url'   => 'https://ejemplo.invalid/bases',
+			),
+			array(
+				'name'       => 'Sorteo de prueba que aún no empieza',
+				'start_date' => $dia( '+10 days', '00:00' ),
+				'end_date'   => $dia( '+30 days', '23:59' ),
+				'winners'    => 1,
+			),
+			array(
+				'name'       => 'Sorteo de prueba terminado',
+				'start_date' => $dia( '-60 days', '00:00' ),
+				'end_date'   => $dia( '-30 days', '23:59' ),
+				'winners'    => 2,
+			),
+		);
 	}
 
 	/** Novedades ficticias: 2 eventos (uno de un negocio), 1 promoción y 1 noticia, con fechas relativas a hoy. */
