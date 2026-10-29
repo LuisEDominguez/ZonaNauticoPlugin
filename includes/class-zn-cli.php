@@ -8,7 +8,7 @@ defined( 'ABSPATH' ) || exit;
 class ZN_CLI {
 
 	/**
-	 * Mete negocios inventados para probar la API. Solo en un WordPress local y con la tabla vacía.
+	 * Mete negocios inventados para probar la API. Solo en un WordPress local y sin negocios.
 	 *
 	 * ## EXAMPLES
 	 *
@@ -17,19 +17,31 @@ class ZN_CLI {
 	 * @subcommand datos-prueba
 	 */
 	public function datos_prueba(): void {
-		global $wpdb;
-
 		if ( 'local' !== wp_get_environment_type() ) {
 			WP_CLI::error( 'Solo se pueden meter datos de prueba en un WordPress local (WP_ENVIRONMENT_TYPE = local).' );
 		}
 
-		$tabla = ZN_Instalador::tabla_negocios();
-		if ( (int) $wpdb->get_var( "SELECT COUNT(*) FROM $tabla" ) > 0 ) {
-			WP_CLI::error( 'La tabla de negocios ya tiene datos; no se toca.' );
+		$existentes = get_posts( array( 'post_type' => ZN_Negocios::TIPO, 'post_status' => 'any', 'numberposts' => 1, 'fields' => 'ids' ) );
+		if ( $existentes ) {
+			WP_CLI::error( 'Ya hay negocios guardados; no se toca nada.' );
 		}
 
 		foreach ( self::negocios_inventados() as $negocio ) {
-			$wpdb->insert( $tabla, $negocio );
+			$id = wp_insert_post(
+				array(
+					'post_type'    => ZN_Negocios::TIPO,
+					'post_status'  => 'publish',
+					'post_title'   => $negocio['name'],
+					'post_content' => $negocio['description'] ?? '',
+				),
+				true
+			);
+			if ( is_wp_error( $id ) ) {
+				WP_CLI::error( $id->get_error_message() );
+			}
+			foreach ( array_intersect_key( $negocio, ZN_Negocios::CAMPOS ) as $campo => $valor ) {
+				update_post_meta( $id, $campo, $valor );
+			}
 		}
 		WP_CLI::success( sprintf( '%d negocios inventados creados.', count( self::negocios_inventados() ) ) );
 	}

@@ -7,6 +7,7 @@
  * - Ficha:   { data: {...} }
  * - `_id` es una cadena; fotos en photo_0..2 y vídeos en video_0..2.
  * Diferencia a propósito: perPage tiene tope de 50 (el Laravel no lo tiene, H32).
+ * Los datos salen de las entradas `negocio` publicadas (ver ZN_Negocios).
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -16,12 +17,8 @@ class ZN_API_Negocios {
 	const POR_PAGINA_DEFECTO = 15;
 	const POR_PAGINA_MAX     = 50;
 
-	// Campos por los que se puede ordenar (?orderby=). Nunca se mete en el SQL nada que no esté aquí.
-	const ORDENABLES = array(
-		'_id'   => 'id',
-		'name'  => 'name',
-		'score' => 'score',
-	);
+	// Campos por los que se puede ordenar (?orderby=); el valor de la API nunca llega a la consulta.
+	const ORDENABLES = array( '_id', 'name', 'score' );
 
 	public static function registrar_rutas(): void {
 		register_rest_route(
@@ -35,7 +32,7 @@ class ZN_API_Negocios {
 					'page'         => array( 'type' => 'integer', 'minimum' => 1, 'default' => 1 ),
 					'perPage'      => array( 'type' => 'integer', 'minimum' => 1, 'default' => self::POR_PAGINA_DEFECTO ),
 					'category'     => array( 'type' => 'integer', 'minimum' => 1 ),
-					'orderby'      => array( 'type' => 'string', 'enum' => array_keys( self::ORDENABLES ), 'default' => '_id' ),
+					'orderby'      => array( 'type' => 'string', 'enum' => self::ORDENABLES, 'default' => '_id' ),
 					'order'        => array( 'type' => 'string', 'enum' => array( 'asc', 'desc' ), 'default' => 'asc' ),
 					'includesUser' => array( 'type' => 'boolean', 'default' => false ),
 				),
@@ -57,37 +54,58 @@ class ZN_API_Negocios {
 	}
 
 	public static function listar( WP_REST_Request $peticion ): WP_REST_Response {
-		global $wpdb;
-		$tabla = ZN_Instalador::tabla_negocios();
-
 		$por_pagina = min( (int) $peticion['perPage'], self::POR_PAGINA_MAX );
 		$pagina     = (int) $peticion['page'];
-		$columna    = self::ORDENABLES[ $peticion['orderby'] ];
 		$sentido    = 'desc' === $peticion['order'] ? 'DESC' : 'ASC';
 
-		$donde   = '1=1';
-		$valores = array();
+		$argumentos = array(
+			'post_type'           => ZN_Negocios::TIPO,
+			'post_status'         => 'publish',
+			'posts_per_page'      => $por_pagina,
+			'paged'               => $pagina,
+			'ignore_sticky_posts' => true,
+			'meta_query'          => array(),
+		);
+
 		if ( ! empty( $peticion['category'] ) ) {
-			$donde     = 'business_category_id = %d';
-			$valores[] = (int) $peticion['category'];
+			$argumentos['meta_query'][] = array(
+				'key'   => 'business_category_id',
+				'value' => (int) $peticion['category'],
+				'type'  => 'NUMERIC',
+			);
 		}
 
-		$sql_total = "SELECT COUNT(*) FROM $tabla WHERE $donde";
-		$total     = (int) $wpdb->get_var( $valores ? $wpdb->prepare( $sql_total, $valores ) : $sql_total );
+		// Desempate por ID para que la paginación sea estable.
+		switch ( $peticion['orderby'] ) {
+			case 'name':
+				$argumentos['orderby'] = array( 'title' => $sentido, 'ID' => 'ASC' );
+				break;
+			case 'score':
+				// EXISTS / NOT EXISTS para no perder los negocios que no tengan el campo guardado.
+				$argumentos['meta_query'][] = array(
+					'relation'   => 'OR',
+					'puntuacion' => array( 'key' => 'score', 'compare' => 'EXISTS', 'type' => 'DECIMAL(3,2)' ),
+					array( 'key' => 'score', 'compare' => 'NOT EXISTS' ),
+				);
+				$argumentos['orderby']      = array( 'puntuacion' => $sentido, 'ID' => 'ASC' );
+				break;
+			default:
+				$argumentos['orderby'] = array( 'ID' => $sentido );
+		}
 
-		// $columna y $sentido salen de listas fijas; el resto va con prepare(). Desempate por id para que la paginación sea estable.
-		$filas = $wpdb->get_results(
-			$wpdb->prepare(
-				"SELECT * FROM $tabla WHERE $donde ORDER BY $columna $sentido, id ASC LIMIT %d OFFSET %d",
-				array_merge( $valores, array( $por_pagina, ( $pagina - 1 ) * $por_pagina ) )
-			),
-			ARRAY_A
-		);
+		$consulta = new WP_Query( $argumentos );
+		$total    = (int) $consulta->found_posts;
+
+		// WordPress no cuenta el total cuando la página pedida queda vacía; Laravel sí lo da.
+		if ( ! $consulta->posts && $pagina > 1 ) {
+			$cuenta = new WP_Query( array_merge( $argumentos, array( 'paged' => 1, 'posts_per_page' => 1, 'fields' => 'ids' ) ) );
+			$total  = (int) $cuenta->found_posts;
+		}
 
 		$incluir_usuario = (bool) $peticion['includesUser'];
 		$datos           = array_map(
-			static fn( $fila ) => self::formatear( $fila, $incluir_usuario ),
-			$filas
+			static fn( WP_Post $entrada ) => self::formatear( $entrada, $incluir_usuario ),
+			$consulta->posts
 		);
 
 		return new WP_REST_Response(
@@ -99,43 +117,36 @@ class ZN_API_Negocios {
 	}
 
 	public static function ficha( WP_REST_Request $peticion ): WP_REST_Response {
-		global $wpdb;
-		$tabla = ZN_Instalador::tabla_negocios();
-
-		$fila = $wpdb->get_row(
-			$wpdb->prepare( "SELECT * FROM $tabla WHERE id = %d", (int) $peticion['id'] ),
-			ARRAY_A
-		);
-		if ( ! $fila ) {
+		$entrada = get_post( (int) $peticion['id'] );
+		if ( ! $entrada || ZN_Negocios::TIPO !== $entrada->post_type || 'publish' !== $entrada->post_status ) {
 			return new WP_REST_Response( array( 'message' => 'Not found.' ), 404 );
 		}
-		return new WP_REST_Response( array( 'data' => self::formatear( $fila, (bool) $peticion['includesUser'] ) ) );
+		return new WP_REST_Response( array( 'data' => self::formatear( $entrada, (bool) $peticion['includesUser'] ) ) );
 	}
 
-	/** Fila de la tabla → objeto con los mismos campos y tipos que el BusinessResource del Laravel. */
-	public static function formatear( array $fila, bool $incluir_usuario = false ): array {
+	/** Entrada `negocio` → objeto con los mismos campos y tipos que el BusinessResource del Laravel. */
+	public static function formatear( WP_Post $entrada, bool $incluir_usuario = false ): array {
+		$campo = static function ( string $clave ) use ( $entrada ) {
+			$valor = get_post_meta( $entrada->ID, $clave, true );
+			return '' === $valor ? null : $valor;
+		};
+
 		$negocio = array(
-			'_id'         => (string) $fila['id'],
-			'name'        => $fila['name'],
-			'description' => $fila['description'],
-			'latitude'    => self::numero( $fila['latitude'] ),
-			'longitude'   => self::numero( $fila['longitude'] ),
-			'address'     => $fila['address'],
-			'postcode'    => $fila['postcode'],
-			'state'       => $fila['state'],
-			'city'        => $fila['city'],
-			'country'     => $fila['country'],
-			'phone'       => $fila['phone'],
-			'email'       => $fila['email'],
-			'web'         => $fila['web'],
-			'schedule'    => $fila['schedule'],
+			'_id'         => (string) $entrada->ID,
+			'name'        => $entrada->post_title,
+			'description' => '' === $entrada->post_content ? null : $entrada->post_content,
+			'latitude'    => self::numero( $campo( 'latitude' ) ),
+			'longitude'   => self::numero( $campo( 'longitude' ) ),
 		);
+		foreach ( array( 'address', 'postcode', 'state', 'city', 'country', 'phone', 'email', 'web', 'schedule' ) as $clave ) {
+			$negocio[ $clave ] = $campo( $clave );
+		}
 		foreach ( array( 'photo', 'video' ) as $tipo ) {
 			for ( $i = 0; $i < 3; $i++ ) {
-				$negocio[ "{$tipo}_{$i}" ] = $fila[ "{$tipo}_{$i}" ];
+				$negocio[ "{$tipo}_{$i}" ] = $campo( "{$tipo}_{$i}" );
 			}
 		}
-		$negocio['score'] = self::numero( $fila['score'] ) ?? 0;
+		$negocio['score'] = self::numero( $campo( 'score' ) ) ?? 0;
 
 		// Los usuarios todavía no están en el plugin: de momento el dueño siempre sale vacío.
 		if ( $incluir_usuario ) {
@@ -144,9 +155,9 @@ class ZN_API_Negocios {
 		return $negocio;
 	}
 
-	/** "42.2388906" → 42.2388906 y "0.00" → 0, como los números de Laravel. */
+	/** "42.2388906" → 42.2388906 y "0" → 0, como los números de Laravel. */
 	private static function numero( $valor ) {
-		if ( null === $valor || '' === $valor ) {
+		if ( null === $valor || '' === $valor || ! is_numeric( $valor ) ) {
 			return null;
 		}
 		$numero = (float) $valor;
