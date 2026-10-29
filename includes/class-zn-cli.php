@@ -8,7 +8,8 @@ defined( 'ABSPATH' ) || exit;
 class ZN_CLI {
 
 	/**
-	 * Mete negocios inventados para probar la API. Solo en un WordPress local y sin negocios.
+	 * Mete negocios y novedades inventados para probar la API. Solo en un WordPress local;
+	 * cada tipo solo se rellena si todavía no tiene ninguna entrada.
 	 *
 	 * ## EXAMPLES
 	 *
@@ -21,29 +22,73 @@ class ZN_CLI {
 			WP_CLI::error( 'Solo se pueden meter datos de prueba en un WordPress local (WP_ENVIRONMENT_TYPE = local).' );
 		}
 
-		$existentes = get_posts( array( 'post_type' => ZN_Negocios::TIPO, 'post_status' => 'any', 'numberposts' => 1, 'fields' => 'ids' ) );
-		if ( $existentes ) {
-			WP_CLI::error( 'Ya hay negocios guardados; no se toca nada.' );
-		}
+		self::rellenar( ZN_Negocios::TIPO, ZN_Negocios::CAMPOS, self::negocios_inventados(), 'negocios' );
 
-		foreach ( self::negocios_inventados() as $negocio ) {
+		$taberna = get_posts( array( 'post_type' => ZN_Negocios::TIPO, 'title' => 'Taberna O Peirao (prueba)', 'numberposts' => 1, 'fields' => 'ids' ) );
+		self::rellenar( ZN_Eventos::TIPO, ZN_Eventos::CAMPOS, self::eventos_inventados( $taberna[0] ?? null ), 'novedades' );
+	}
+
+	private static function rellenar( string $tipo, array $campos, array $entradas, string $nombre ): void {
+		if ( get_posts( array( 'post_type' => $tipo, 'post_status' => 'any', 'numberposts' => 1, 'fields' => 'ids' ) ) ) {
+			WP_CLI::log( "Ya hay $nombre guardados; no se tocan." );
+			return;
+		}
+		foreach ( $entradas as $entrada ) {
 			$id = wp_insert_post(
 				array(
-					'post_type'    => ZN_Negocios::TIPO,
+					'post_type'    => $tipo,
 					'post_status'  => 'publish',
-					'post_title'   => $negocio['name'],
-					'post_content' => $negocio['description'] ?? '',
+					'post_title'   => $entrada['name'],
+					'post_content' => $entrada['description'] ?? '',
 				),
 				true
 			);
 			if ( is_wp_error( $id ) ) {
 				WP_CLI::error( $id->get_error_message() );
 			}
-			foreach ( array_intersect_key( $negocio, ZN_Negocios::CAMPOS ) as $campo => $valor ) {
-				update_post_meta( $id, $campo, $valor );
+			foreach ( array_intersect_key( $entrada, $campos ) as $campo => $valor ) {
+				if ( null !== $valor ) {
+					update_post_meta( $id, $campo, $valor );
+				}
 			}
 		}
-		WP_CLI::success( sprintf( '%d negocios inventados creados.', count( self::negocios_inventados() ) ) );
+		WP_CLI::success( sprintf( 'Creadas %d entradas de prueba (%s).', count( $entradas ), $nombre ) );
+	}
+
+	/** Novedades ficticias: 2 eventos (uno de un negocio), 1 promoción y 1 noticia, con fechas relativas a hoy. */
+	private static function eventos_inventados( ?int $negocio ): array {
+		$dia = static fn( string $cuando, string $hora ) => ( new DateTimeImmutable( $cuando, wp_timezone() ) )->format( "Y-m-d $hora:00" );
+
+		return array(
+			array(
+				'event_category_id' => 1,
+				'name'              => 'Regata de prueba en la ría',
+				'description'       => "Evento inventado para probar la API.\n\nSalida desde el puerto deportivo.",
+				'latitude'          => 42.2412,
+				'longitude'         => -8.7271,
+				'start_date'        => $dia( '+10 days', '11:00' ),
+				'end_date'          => $dia( '+10 days', '14:00' ),
+			),
+			array(
+				'event_category_id' => 1,
+				'business_id'       => $negocio,
+				'name'              => 'Noche de pulpo (prueba)',
+				'description'       => 'Evento inventado de un negocio de prueba.',
+				'start_date'        => $dia( '+3 days', '20:30' ),
+				'end_date'          => null,
+			),
+			array(
+				'event_category_id' => 2,
+				'name'              => 'Promoción 2x1 de prueba',
+				'description'       => 'Promoción inventada.',
+				'start_date'        => $dia( '-5 days', '00:00' ),
+				'end_date'          => $dia( '+20 days', '23:59' ),
+			),
+			array(
+				'event_category_id' => 3,
+				'name'              => 'Noticia de prueba sin fechas',
+			),
+		);
 	}
 
 	/** Datos ficticios: nombres, teléfonos y correos no corresponden a ningún negocio real. */
