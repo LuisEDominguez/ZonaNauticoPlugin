@@ -17,6 +17,10 @@ Los negocios se guardan como entradas personalizadas de WordPress (tipo `negocio
 en wp-admin): nombre = título, descripción = contenido, y el resto como campos personalizados con
 el mismo nombre que las columnas de la tabla `businesses` del Laravel. `_id` es el ID de la entrada.
 
+En la ficha del negocio en wp-admin hay casillas para categoría, dirección, contacto, horario,
+coordenadas y 3 fotos (biblioteca de medios). Los datos se validan al guardar; la puntuación solo se
+muestra, no se edita (la calcularán las reseñas, H14).
+
 ## Desarrollo en local
 
 El sitio de Local `zonanautico-local` (http://localhost:10010) enlaza esta carpeta mediante
@@ -24,3 +28,4 @@ un enlace de carpeta en `wp-content/plugins/zona-nautico`.
 
 - Datos inventados (solo en WordPress local y sin negocios): `wp zona-nautico datos-prueba`
 - Comprobar el contrato de la API: `node tests/contrato-negocios.mjs`
+- Comprobar la ficha de wp-admin: `wp eval-file tests/admin-negocios.php`
