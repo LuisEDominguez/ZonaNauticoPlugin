@@ -1,8 +1,8 @@
 <?php
 /**
  * Cierra las puertas estándar de WordPress que la app no usa y que dejan ver cuentas o probar
- * contraseñas (R2): XML-RPC, las páginas de autor, el mapa del sitio, oEmbed, los feeds y las listas
- * públicas de usuarios y de medios.
+ * contraseñas (R2, R33): XML-RPC, contraseñas de aplicación, las páginas de autor, el mapa del sitio,
+ * oEmbed, los feeds y las listas públicas de usuarios y de medios.
  * Este WordPress es solo para la app: todo lo público va por /zonanautico/v1.
  */
 
@@ -32,6 +32,10 @@ class ZN_Puertas {
 		foreach ( array( 'do_feed', 'do_feed_rdf', 'do_feed_rss', 'do_feed_rss2', 'do_feed_atom', 'do_feed_rss2_comments', 'do_feed_atom_comments' ) as $feed ) {
 			add_action( $feed, array( __CLASS__, 'sin_feeds' ), 0 );
 		}
+
+		// Contraseñas de aplicación fuera: su comprobación responde distinto si la cuenta no existe o si la
+		// contraseña es mala, y delataría qué cuentas hay (R33). La app entrará con su propio token.
+		add_filter( 'wp_is_application_passwords_available', '__return_false' );
 
 		add_filter( 'rest_endpoints', array( __CLASS__, 'quitar_rutas' ) );
 	}

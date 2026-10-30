@@ -24,6 +24,32 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | 1 | 30-10-2026 | `ea9c0bc` (v0.7.0) | `47e5ca8` (v0.8.0) | Bloque 1 (graves y lo urgente de importantes) hecho; el resto, pendiente o a decidir |
 | 2 | 30-10-2026 | `47e5ca8` (v0.8.0) | `5156ce5` (v0.8.1) | Bloque 1-bis: R2 (resto), R20 y limpieza de R13 |
 | 3 | 30-10-2026 | `5156ce5` (v0.8.1) | `361c7a6` (v0.9.0) | OK del revisor al bloque 1-bis. Fase de login, paso 1: R12. Decisión de Luis sobre R7 |
+| 4 | 30-10-2026 | `361c7a6` (v0.9.0) | ver ronda 4 (v0.9.1) | OK del revisor a R12. Arreglos previos a R22: R31, R33 y R34a |
+
+---
+
+## Ronda 4
+
+El revisor dio R12 por arreglado y el OK para R22, con tres arreglos antes. Luis dio el sí a los tres
+(30-10). R22, con los requisitos R30 y R32, se hará en la ronda siguiente y con su propio sí.
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **R31** `rest_forbidden_context` siempre «Unauthenticated.» | hecho | Quitado de `DE_SESION` (`class-zn-errores.php`): con sesión → «This action is unauthorized.», sin sesión → «Unauthenticated.», lo decide `is_user_logged_in()`. Pruebas en `tests/errores.php` (con y sin sesión). |
+| **R33** Contraseñas de aplicación | hecho | `wp_is_application_passwords_available` → false (`class-zn-puertas.php`). Pruebas: `tests/errores.php` (no disponibles, ni para el administrador) y `tests/puertas.mjs` (una cabecera Basic con una cuenta inventada se ignora: 200 como un visitante). |
+| **R34a** `es_nuestra()` distinguía mayúsculas | hecho | Compara en minúsculas, como WordPress casa las rutas. Pruebas en `tests/contrato-errores.mjs` (`/ZonaNautico/V1/business?orderby=foo` → 422 del Laravel) y `tests/errores.php`. |
+| **R32, R30** | pendiente | Requisitos de R22 y del login; se cumplirán desde el principio en esos pasos. |
+| **R34 b-e** | pendiente | Mejoras para cuando toque. |
+
+### Resultado de las pruebas (código de la ronda 4, 30-10)
+
+Todas en verde: `errores.php` 16, `seguridad.php` 62, `comentarios.php` 15, `admin-fichas.php` 38,
+`contrato-errores` 9, `contrato-negocios` 8, `contrato-eventos` 10, `contrato-sorteos` 8,
+`contrato-resenas` 11, `contrato-preguntas` 9, `contrato-muestras` 6 y `puertas.mjs` 9.
+
+Nota: en una primera tanda seguida, el PHP del sitio de Local se reinició a mitad (nginx: «no live
+upstreams», 502) y fallaron por eso las pruebas por HTTP que quedaban; repetidas una a una, todas
+en verde. No es del plugin: pasa con muchas peticiones seguidas en el Local de Windows.
 
 ---
 

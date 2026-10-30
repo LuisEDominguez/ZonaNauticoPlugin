@@ -42,6 +42,11 @@ const pruebas = {
     const r = await pedir(`/wp-json/oembed/1.0/embed?url=${encodeURIComponent(`${SITIO}/?p=1`)}`);
     assert.equal(r.status, 404);
   },
+  'contraseñas de aplicación apagadas: una cuenta inventada no da error de «usuario no existe» (R33)': async () => {
+    const basica = 'Basic ' + Buffer.from('cuenta-que-no-existe:abcd efgh ijkl mnop qrst uvwx').toString('base64');
+    const r = await pedir('/wp-json/zonanautico/v1/business?perPage=1', { headers: { Authorization: basica } });
+    assert.equal(r.status, 200, 'la cabecera se ignora, como la de cualquier visitante');
+  },
   'XML-RPC rechazado (también system.listMethods)': async () => {
     const cuerpo = '<?xml version="1.0"?><methodCall><methodName>system.listMethods</methodName></methodCall>';
     const r = await pedir('/xmlrpc.php', { method: 'POST', body: cuerpo, headers: { 'Content-Type': 'text/xml' } });

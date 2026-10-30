@@ -27,6 +27,8 @@ add_action(
 				),
 			)
 		);
+		// Como un GET con ?context=edit sin permiso: WordPress da rest_forbidden_context, haya sesión o no.
+		register_rest_route( ZN_NAMESPACE, '/prueba-contexto', array( 'methods' => 'GET', 'callback' => '__return_true', 'permission_callback' => static fn() => new WP_Error( 'rest_forbidden_context', 'Sorry, you are not allowed to edit this.', array( 'status' => rest_authorization_required_code() ) ) ) );
 		register_rest_route( ZN_NAMESPACE, '/prueba-rota', array( 'methods' => 'GET', 'callback' => static fn() => new WP_Error( 'algo_interno', 'Detalle interno que no debe salir', array( 'status' => 500 ) ), 'permission_callback' => '__return_true' ) );
 	}
 );
@@ -51,7 +53,22 @@ wp_set_current_user( get_users( array( 'role' => 'administrator', 'number' => 1,
 $r = $pedir( 'POST', '/prueba-privada' );
 $ok( 'sin permiso: 401', 401 === $r->get_status() );
 $ok( 'sin permiso: mensaje distinto de Unauthenticated (la app no cierra la sesión)', array( 'message' => 'This action is unauthorized.' ) === $r->get_data() );
+// R31: rest_forbidden_context con sesión válida no es «Unauthenticated.» (la app cerraría la sesión).
+$r = $pedir( 'GET', '/prueba-contexto' );
+$ok( 'rest_forbidden_context con sesión: «This action is unauthorized.»', 401 === $r->get_status() && array( 'message' => 'This action is unauthorized.' ) === $r->get_data() );
 wp_set_current_user( 0 );
+$r = $pedir( 'GET', '/prueba-contexto' );
+$ok( 'rest_forbidden_context sin sesión: «Unauthenticated.»', 401 === $r->get_status() && array( 'message' => 'Unauthenticated.' ) === $r->get_data() );
+
+// --- R34a: la ruta con otras mayúsculas también es nuestra ---
+$peticion  = new WP_REST_Request( 'GET', '/ZonaNautico/V1/prueba-contexto' );
+$respuesta = apply_filters( 'rest_post_dispatch', rest_ensure_response( rest_get_server()->dispatch( $peticion ) ), rest_get_server(), $peticion );
+$ok( '/ZonaNautico/V1/…: errores con el formato del Laravel', array( 'message' => 'Unauthenticated.' ) === $respuesta->get_data() );
+
+// --- R33: contraseñas de aplicación apagadas ---
+$ok( 'contraseñas de aplicación no disponibles', ! wp_is_application_passwords_available() );
+$admin = get_users( array( 'role' => 'administrator', 'number' => 1 ) )[0];
+$ok( 'ni para el administrador', ! wp_is_application_passwords_available_for_user( $admin ) );
 
 // --- 422 de campos obligatorios ---
 $r = $pedir( 'POST', '/prueba-obligatorio' );

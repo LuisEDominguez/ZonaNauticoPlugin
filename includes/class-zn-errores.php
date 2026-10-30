@@ -16,8 +16,9 @@ class ZN_Errores {
 	const NO_AUTENTICADO = 'Unauthenticated.';
 	const SIN_PERMISO    = 'This action is unauthorized.';
 
-	// Errores de WordPress que significan «no has iniciado sesión o tu sesión no vale».
-	const DE_SESION = array( 'rest_not_logged_in', 'rest_cookie_invalid_nonce', 'rest_forbidden_context' );
+	// Errores de WordPress que significan «no has iniciado sesión o tu sesión no vale». Los demás 401/403
+	// (rest_forbidden, rest_forbidden_context…) dependen de si hay sesión: lo decide is_user_logged_in() (R31).
+	const DE_SESION = array( 'rest_not_logged_in', 'rest_cookie_invalid_nonce' );
 
 	public static function iniciar(): void {
 		add_filter( 'rest_post_dispatch', array( __CLASS__, 'traducir' ), 10, 3 );
@@ -79,7 +80,9 @@ class ZN_Errores {
 		return self::con_cabeceras( new WP_REST_Response( array( 'message' => (string) ( $datos['message'] ?? '' ) ), $estado ), $respuesta );
 	}
 
+	/** WordPress casa las rutas sin distinguir mayúsculas: /ZonaNautico/v1 también es nuestra (R34a). */
 	private static function es_nuestra( string $ruta ): bool {
+		$ruta = strtolower( $ruta );
 		return '/' . ZN_NAMESPACE === $ruta || 0 === strpos( $ruta, '/' . ZN_NAMESPACE . '/' );
 	}
 

@@ -56,6 +56,13 @@ const pruebas = {
     sinFormatoWordPress(cuerpo);
     assert.match(cuerpo.message, /^The DELETE method is not supported for route .*business\/1\. Supported methods: GET, HEAD\.$/);
   },
+  'con la ruta en otras mayúsculas (/ZonaNautico/V1), el mismo formato (R34a)': async () => {
+    const r = await fetch(`${BASE.replace(/zonanautico\/v1$/, 'ZonaNautico/V1')}/business?orderby=foo`);
+    assert.equal(r.status, 422);
+    const cuerpo = await r.json();
+    sinFormatoWordPress(cuerpo);
+    assert.ok(cuerpo.errors.orderby);
+  },
   'las respuestas buenas no cambian': async () => {
     const { estado, cuerpo } = await pedir('/business');
     assert.equal(estado, 200);
