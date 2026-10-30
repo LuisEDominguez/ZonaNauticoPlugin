@@ -116,9 +116,9 @@ class ZN_API_Negocios {
 		}
 		$negocio['score'] = ZN_API::numero( ZN_API::campo( $id, 'score' ) ) ?? 0;
 
-		// Los usuarios todavía no están en el plugin: de momento el dueño siempre sale vacío.
+		// El dueño es el autor de la entrada; solo sus datos públicos (H27). La app lo usa para pedir sus preguntas.
 		if ( $incluir_usuario ) {
-			$negocio['user'] = null;
+			$negocio['user'] = ZN_API::usuario_publico( (int) $entrada->post_author );
 		}
 		return $negocio;
 	}

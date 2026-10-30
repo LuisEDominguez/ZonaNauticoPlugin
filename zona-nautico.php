@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Zona Náutico
  * Description: API de la app Zona Náutico. Imita el contrato de la API Laravel actual ({data, links, meta}) para no rehacer la app.
- * Version:     0.6.0
+ * Version:     0.7.0
  * Author:      Visual Publinet
  * Text Domain: zona-nautico
  * Requires at least: 6.0
@@ -11,23 +11,29 @@
 
 defined( 'ABSPATH' ) || exit;
 
-const ZN_VERSION   = '0.6.0';
+const ZN_VERSION   = '0.7.0';
 const ZN_NAMESPACE = 'zonanautico/v1';
 
 require_once __DIR__ . '/includes/class-zn-api.php';
 require_once __DIR__ . '/includes/class-zn-negocios.php';
 require_once __DIR__ . '/includes/class-zn-eventos.php';
 require_once __DIR__ . '/includes/class-zn-sorteos.php';
+require_once __DIR__ . '/includes/class-zn-comentarios.php';
 require_once __DIR__ . '/includes/class-zn-api-negocios.php';
 require_once __DIR__ . '/includes/class-zn-api-eventos.php';
 require_once __DIR__ . '/includes/class-zn-api-sorteos.php';
+require_once __DIR__ . '/includes/class-zn-api-resenas.php';
+require_once __DIR__ . '/includes/class-zn-api-preguntas.php';
 
 add_action( 'init', array( 'ZN_Negocios', 'registrar' ) );
 add_action( 'init', array( 'ZN_Eventos', 'registrar' ) );
 add_action( 'init', array( 'ZN_Sorteos', 'registrar' ) );
+ZN_Comentarios::iniciar();
 add_action( 'rest_api_init', array( 'ZN_API_Negocios', 'registrar_rutas' ) );
 add_action( 'rest_api_init', array( 'ZN_API_Eventos', 'registrar_rutas' ) );
 add_action( 'rest_api_init', array( 'ZN_API_Sorteos', 'registrar_rutas' ) );
+add_action( 'rest_api_init', array( 'ZN_API_Resenas', 'registrar_rutas' ) );
+add_action( 'rest_api_init', array( 'ZN_API_Preguntas', 'registrar_rutas' ) );
 
 if ( is_admin() ) {
 	require_once __DIR__ . '/includes/class-zn-admin-campos.php';

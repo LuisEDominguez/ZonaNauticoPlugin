@@ -62,13 +62,69 @@ class ZN_API {
 			$total  = (int) $cuenta->found_posts;
 		}
 
-		$datos = array_map( $formatear, $consulta->posts );
+		return self::respuesta_paginada( $peticion, $recurso, array_map( $formatear, $consulta->posts ), $total );
+	}
 
+	/**
+	 * Listado de comentarios (reseñas y preguntas) con la misma paginación. $argumentos van a WP_Comment_Query;
+	 * solo salen los aprobados de entradas publicadas.
+	 */
+	public static function listado_comentarios( WP_REST_Request $peticion, array $argumentos, string $recurso, callable $formatear ): WP_REST_Response {
+		$por_pagina = min( (int) $peticion['perPage'], self::POR_PAGINA_MAX );
+		$argumentos = array_merge( $argumentos, array( 'status' => 'approve', 'post_status' => 'publish' ) );
+
+		$total       = (int) get_comments( array_merge( $argumentos, array( 'count' => true, 'orderby' => 'none' ) ) );
+		$comentarios = get_comments(
+			array_merge(
+				$argumentos,
+				array(
+					'number'        => $por_pagina,
+					'offset'        => ( (int) $peticion['page'] - 1 ) * $por_pagina,
+					'no_found_rows' => true,
+				)
+			)
+		);
+
+		return self::respuesta_paginada( $peticion, $recurso, array_map( $formatear, $comentarios ), $total );
+	}
+
+	/** { data, links, meta } a partir de los elementos ya formateados de la página y el total. */
+	public static function respuesta_paginada( WP_REST_Request $peticion, string $recurso, array $datos, int $total ): WP_REST_Response {
+		$por_pagina = min( (int) $peticion['perPage'], self::POR_PAGINA_MAX );
 		return new WP_REST_Response(
 			array_merge(
 				array( 'data' => $datos ),
-				self::paginacion( rest_url( ZN_NAMESPACE . '/' . $recurso ), $pagina, $por_pagina, $total, count( $datos ) )
+				self::paginacion( rest_url( ZN_NAMESPACE . '/' . $recurso ), (int) $peticion['page'], $por_pagina, $total, count( $datos ) )
 			)
+		);
+	}
+
+	/** Comentario aprobado de un tipo, en una entrada publicada; o null. */
+	public static function comentario( int $id, string $tipo ): ?WP_Comment {
+		$comentario = get_comment( $id );
+		if ( ! $comentario || $tipo !== $comentario->comment_type || '1' !== $comentario->comment_approved ) {
+			return null;
+		}
+		return 'publish' === get_post_status( (int) $comentario->comment_post_ID ) ? $comentario : null;
+	}
+
+	/**
+	 * Usuario como lo da el UserResource del Laravel a quien no ha iniciado sesión (H27): solo _id, name,
+	 * role y avatar. Sin cuenta (datos de prueba) sale con _id null y el nombre guardado.
+	 * Los roles de la app todavía no existen en el plugin: un administrador de WordPress sale como
+	 * `administrator` y el resto como `user`.
+	 */
+	public static function usuario_publico( int $id, string $nombre = '' ): ?array {
+		$usuario = $id ? get_userdata( $id ) : false;
+		if ( ! $usuario && '' === $nombre ) {
+			return null;
+		}
+		return array(
+			'_id'    => $usuario ? (string) $usuario->ID : null,
+			'name'   => $usuario ? $usuario->display_name : $nombre,
+			'role'   => $usuario && user_can( $usuario, 'manage_options' ) ? 'administrator' : 'user',
+			// Sin Gravatar: delataría el correo (su huella) a cualquiera.
+			'avatar' => null,
 		);
 	}
 

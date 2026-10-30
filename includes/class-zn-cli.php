@@ -8,7 +8,7 @@ defined( 'ABSPATH' ) || exit;
 class ZN_CLI {
 
 	/**
-	 * Mete negocios, novedades y sorteos inventados para probar la API. Solo en un WordPress local;
+	 * Mete negocios, novedades, sorteos, reseñas y preguntas inventados para probar la API. Solo en un WordPress local;
 	 * cada tipo solo se rellena si todavía no tiene ninguna entrada.
 	 *
 	 * ## EXAMPLES
@@ -27,6 +27,123 @@ class ZN_CLI {
 		$taberna = get_posts( array( 'post_type' => ZN_Negocios::TIPO, 'title' => 'Taberna O Peirao (prueba)', 'numberposts' => 1, 'fields' => 'ids' ) );
 		self::rellenar( ZN_Eventos::TIPO, ZN_Eventos::CAMPOS, self::eventos_inventados( $taberna[0] ?? null ), 'novedades' );
 		self::rellenar( ZN_Sorteos::TIPO, ZN_Sorteos::CAMPOS, self::sorteos_inventados(), 'sorteos' );
+		self::dueno_de_prueba( $taberna[0] ?? null );
+		self::rellenar_comentarios( ZN_Comentarios::RESENA, self::resenas_inventadas(), 'reseñas' );
+		self::rellenar_comentarios( ZN_Comentarios::PREGUNTA, self::preguntas_inventadas(), 'preguntas' );
+	}
+
+	/**
+	 * Las preguntas son del dueño del negocio (autor de la entrada). Los negocios creados desde WP-CLI
+	 * no tienen autor: a la Taberna se le pone una cuenta inventada sin privilegios.
+	 */
+	private static function dueno_de_prueba( ?int $negocio ): void {
+		if ( ! $negocio || get_post_field( 'post_author', $negocio ) ) {
+			return;
+		}
+		$dueno = get_user_by( 'login', 'comercio-prueba' );
+		$id    = $dueno ? $dueno->ID : wp_insert_user(
+			array(
+				'user_login'   => 'comercio-prueba',
+				'user_email'   => 'comercio-prueba@ejemplo.invalid',
+				'user_pass'    => wp_generate_password( 32 ),
+				'display_name' => 'Comercio Prueba',
+				'role'         => 'subscriber',
+			)
+		);
+		if ( is_wp_error( $id ) ) {
+			WP_CLI::error( $id->get_error_message() );
+		}
+		wp_update_post( array( 'ID' => $negocio, 'post_author' => $id ) );
+		WP_CLI::success( 'La Taberna de prueba ya tiene dueño (cuenta inventada «Comercio Prueba»).' );
+	}
+
+	/** Como rellenar(), con comentarios. Sin cuentas de usuario: solo el nombre de quien escribe. */
+	private static function rellenar_comentarios( string $tipo, array $comentarios, string $nombre ): void {
+		if ( get_comments( array( 'type' => $tipo, 'status' => 'all', 'number' => 1, 'fields' => 'ids' ) ) ) {
+			WP_CLI::log( "Ya hay $nombre; no se tocan." );
+			return;
+		}
+		foreach ( $comentarios as $c ) {
+			$negocio = get_posts( array( 'post_type' => ZN_Negocios::TIPO, 'title' => $c['negocio'], 'numberposts' => 1, 'fields' => 'ids' ) );
+			if ( ! $negocio ) {
+				WP_CLI::error( "No está el negocio «{$c['negocio']}»." );
+			}
+			// wp_insert_comment no avisa por correo a nadie (wp_new_comment sí).
+			$id = wp_insert_comment(
+				array(
+					'comment_post_ID'  => $negocio[0],
+					'comment_type'     => $tipo,
+					'comment_author'   => $c['autor'],
+					'comment_content'  => $c['texto'] ?? '',
+					'comment_approved' => $c['aprobado'] ?? 1,
+					'comment_date'     => $c['fecha'] ?? current_time( 'mysql' ),
+					'comment_meta'     => $c['campos'] ?? array(),
+				)
+			);
+			if ( ! $id ) {
+				WP_CLI::error( "No se pudo crear una de las $nombre." );
+			}
+		}
+		WP_CLI::success( sprintf( 'Creadas %d %s de prueba.', count( $comentarios ), $nombre ) );
+	}
+
+	/** Reseñas ficticias: la Taberna queda con media 4,5 y Náutica Cíes con 3; una sin aprobar no cuenta. */
+	private static function resenas_inventadas(): array {
+		$hace = static fn( string $cuando ) => ( new DateTimeImmutable( $cuando, wp_timezone() ) )->format( 'Y-m-d H:i:s' );
+
+		return array(
+			array(
+				'negocio' => 'Taberna O Peirao (prueba)',
+				'autor'   => 'Marta Prueba',
+				'texto'   => "Reseña inventada.
+El pulpo, de diez.",
+				'fecha'   => $hace( '-20 days 13:40' ),
+				'campos'  => array( 'score' => 5, 'response' => '¡Gracias, Marta! (respuesta inventada)' ),
+			),
+			array(
+				'negocio' => 'Taberna O Peirao (prueba)',
+				'autor'   => 'Xoán Proba',
+				'texto'   => 'Reseña inventada. Buen sitio, algo de espera.',
+				'fecha'   => $hace( '-3 days 21:15' ),
+				'campos'  => array( 'score' => 4 ),
+			),
+			array(
+				'negocio'  => 'Taberna O Peirao (prueba)',
+				'autor'    => 'Pendiente Prueba',
+				'texto'    => 'Reseña inventada sin aprobar: no debe salir en la API.',
+				'aprobado' => 0,
+				'campos'   => array( 'score' => 1 ),
+			),
+			array(
+				'negocio' => 'Náutica Cíes (prueba)',
+				'autor'   => 'Uxía Proba',
+				'fecha'   => $hace( '-10 days 11:00' ),
+				'campos'  => array( 'score' => 3 ),
+			),
+		);
+	}
+
+	/** Preguntas ficticias a la Taberna: dos publicadas (una sin responder) y una sin publicar (no debe salir). */
+	private static function preguntas_inventadas(): array {
+		return array(
+			array(
+				'negocio' => 'Taberna O Peirao (prueba)',
+				'autor'   => 'Marta Prueba',
+				'texto'   => '¿Tenéis opciones sin gluten? (pregunta inventada)',
+				'campos'  => array( 'answer' => 'Sí, empanada y postres sin gluten. (respuesta inventada)' ),
+			),
+			array(
+				'negocio' => 'Taberna O Peirao (prueba)',
+				'autor'   => 'Xoán Proba',
+				'texto'   => '¿Se puede reservar? (pregunta inventada, sin responder)',
+			),
+			array(
+				'negocio'  => 'Taberna O Peirao (prueba)',
+				'autor'    => 'Pendiente Prueba',
+				'texto'    => 'Pregunta inventada sin publicar: no debe salir en la API.',
+				'aprobado' => 0,
+			),
+		);
 	}
 
 	private static function rellenar( string $tipo, array $campos, array $entradas, string $nombre ): void {
