@@ -22,7 +22,7 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) Â· **pendiente** Â
 | Ronda | Fecha | Commit revisado | Respuesta en commit | Resumen |
 |---|---|---|---|---|
 | 1 | 30-10-2026 | `ea9c0bc` (v0.7.0) | `47e5ca8` (v0.8.0) | Bloque 1 (graves y lo urgente de importantes) hecho; el resto, pendiente o a decidir |
-| 2 | 30-10-2026 | `47e5ca8` (v0.8.0) | ver ronda 2 (v0.8.1) | Bloque 1-bis: R2 (resto), R20 y limpieza de R13 |
+| 2 | 30-10-2026 | `47e5ca8` (v0.8.0) | `5156ce5` (v0.8.1) | Bloque 1-bis: R2 (resto), R20 y limpieza de R13 |
 
 ---
 
