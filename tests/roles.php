@@ -1,4 +1,10 @@
 <?php
+// Solo con WP-CLI (wp eval-file): abierto desde la web no hace nada (R55).
+defined( 'WP_CLI' ) || exit;
+// Crea datos temporales: solo en un WordPress local (R61).
+if ( 'local' !== wp_get_environment_type() ) {
+	WP_CLI::error( 'Esta prueba crea datos: solo en un WordPress local (WP_ENVIRONMENT_TYPE = local).' );
+}
 // Roles de la app y permisos (R22, R35, R36, R37). Uso: wp eval-file tests/roles.php
 // Crea cuentas, un negocio, una novedad y comentarios temporales («temporal-roles») y los borra al terminar.
 
@@ -10,10 +16,12 @@ $ok     = function ( $nombre, $condicion ) use ( &$fallos ) {
 	$fallos += $condicion ? 0 : 1;
 };
 
+// Contraseña al azar en cada ejecución (R61), nunca una fija.
+$clave   = wp_generate_password( 24 );
 $creados = array( 'usuarios' => array(), 'entradas' => array(), 'comentarios' => array() );
-$cuenta  = static function ( string $rol_wp, int $padre = 0 ) use ( &$creados ) {
+$cuenta  = static function ( string $rol_wp, int $padre = 0 ) use ( &$creados, $clave ) {
 	$login = str_replace( 'zn_', '', $rol_wp ) . '-' . count( $creados['usuarios'] ) . '-temporal-roles';
-	$id    = wp_insert_user( array( 'user_login' => $login, 'user_email' => "$login@ejemplo.invalid", 'user_pass' => 'Clave-de-prueba-1', 'role' => $rol_wp, 'first_name' => 'Temporal' ) );
+	$id    = wp_insert_user( array( 'user_login' => $login, 'user_email' => "$login@ejemplo.invalid", 'user_pass' => $clave, 'role' => $rol_wp, 'first_name' => 'Temporal' ) );
 	if ( $padre ) {
 		update_user_meta( $id, 'zn_parent_id', $padre );
 	}
@@ -42,17 +50,20 @@ try {
 		$ok( "$rol_wp: ningún permiso de WordPress (ni read)", ! array_filter( $caps, static fn( $c ) => 0 !== strpos( $c, 'zn:' ) ) );
 	}
 
-	// --- R35: poner al día los roles no los borra (el rol por defecto no cambia) ---
+	// --- R35: poner al día los roles no los borra; R60: el rol por defecto nunca es de la app ---
 	$por_defecto = get_option( 'default_role' );
 	update_option( 'default_role', 'zn_usuario' );
+	$ok( 'R60: el rol por defecto no se puede poner a un rol de la app', 'zn_usuario' !== get_option( 'default_role' ) );
+	$ok( 'R60: nadie se registra por wp-login.php (users_can_register = 0)', ! get_option( 'users_can_register' ) );
+	$con_rol = $cuenta( 'zn_usuario' );
 	get_role( 'zn_usuario' )->add_cap( 'zn:sobra' );
 	get_role( 'zn_usuario' )->remove_cap( 'zn:review:read' );
 	delete_option( 'zn_roles_version' );
 	ZN_Roles::actualizar();
-	$ok( 'R35: al poner al día los roles, el rol por defecto sigue siendo zn_usuario', 'zn_usuario' === get_option( 'default_role' ) );
 	$caps = get_role( 'zn_usuario' )->capabilities;
 	$ok( 'R35: quita los permisos que sobran y añade los que faltan', empty( $caps['zn:sobra'] ) && ! empty( $caps['zn:review:read'] ) );
-	update_option( 'default_role', $por_defecto );
+	$ok( 'R35: las cuentas conservan su rol tras poner al día los roles', 'user' === ZN_Roles::rol_app( get_userdata( $con_rol ) ) );
+	$ok( 'R35: el rol por defecto no cambia al poner al día los roles', $por_defecto === get_option( 'default_role' ) );
 
 	// --- La API enseña el rol de la app de cada cuenta ---
 	foreach ( ZN_Roles::ROLES_APP as $rol_wp => $rol_app ) {
@@ -160,7 +171,7 @@ try {
 	$con_wp = $cuenta( 'zn_comercio' );
 	( new WP_User( $con_wp ) )->add_role( 'editor' );
 	$ok( 'R37: un rol de la app junto a uno de WordPress tampoco cuenta', null === ZN_Roles::rol_app( get_userdata( $con_wp ) ) && ! $puede( $con_wp, 'business:save', $negocio ) );
-	$ok( 'R37: pero sigue sin poder entrar por wp-login.php', is_wp_error( wp_authenticate( get_userdata( $con_wp )->user_login, 'Clave-de-prueba-1' ) ) );
+	$ok( 'R37: pero sigue sin poder entrar por wp-login.php', is_wp_error( wp_authenticate( get_userdata( $con_wp )->user_login, $clave ) ) );
 
 	// --- Ni administradores de WordPress ni permisos de wp-admin ---
 	$wp_admin = get_users( array( 'role' => 'administrator', 'number' => 1, 'fields' => 'ids' ) )[0];
@@ -169,7 +180,7 @@ try {
 
 	// --- Sin wp-login.php para las cuentas de la app ---
 	$login     = get_userdata( $comercio )->user_login;
-	$buena     = wp_authenticate( $login, 'Clave-de-prueba-1' );
+	$buena     = wp_authenticate( $login, $clave );
 	$mala      = wp_authenticate( $login, 'mala' );
 	$no_existe = wp_authenticate( 'no-existe-temporal-roles', 'mala' );
 	$ok( 'cuenta de la app con su contraseña buena: wp-login.php la rechaza', is_wp_error( $buena ) );

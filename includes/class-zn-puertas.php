@@ -43,6 +43,17 @@ class ZN_Puertas {
 		// Y el formulario de wp-login.php no dice si una cuenta existe: el mismo aviso para todo.
 		add_filter( 'login_errors', array( __CLASS__, 'aviso_generico' ) );
 
+		// Nadie se registra por wp-login.php (solo por la app), y el rol por defecto nunca es de la app (R60).
+		add_filter( 'pre_option_users_can_register', static fn() => '0' );
+		add_filter( 'option_default_role', static fn( $rol ) => isset( ZN_Roles::ROLES_APP[ $rol ] ) ? 'subscriber' : $rol );
+		add_filter( 'pre_update_option_default_role', static fn( $nuevo, $antes ) => isset( ZN_Roles::ROLES_APP[ $nuevo ] ) ? $antes : $nuevo, 10, 2 );
+
+		// Correos (R57): ni «tu contraseña ha cambiado» ni «tu correo ha cambiado» a las cuentas de la app
+		// (lo avisará la app), y fuera de producción ningún correo sale a una persona real.
+		add_filter( 'send_password_change_email', array( __CLASS__, 'sin_aviso_de_wordpress' ), 10, 2 );
+		add_filter( 'send_email_change_email', array( __CLASS__, 'sin_aviso_de_wordpress' ), 10, 2 );
+		add_filter( 'pre_wp_mail', array( __CLASS__, 'correo_solo_de_prueba' ), 10, 2 );
+
 		add_filter( 'rest_endpoints', array( __CLASS__, 'quitar_rutas' ) );
 	}
 
@@ -59,6 +70,31 @@ class ZN_Puertas {
 	public static function sin_recuperar_en_el_panel( $permitido, $id ) {
 		$usuario = get_userdata( (int) $id );
 		return $usuario && ZN_Roles::tiene_rol_de_la_app( $usuario ) ? false : $permitido;
+	}
+
+	/** @param bool $enviar @param array $usuario Datos de la cuenta antes del cambio. */
+	public static function sin_aviso_de_wordpress( $enviar, $usuario ) {
+		$cuenta = get_userdata( (int) ( $usuario['ID'] ?? 0 ) );
+		return $cuenta && ZN_Roles::tiene_rol_de_la_app( $cuenta ) ? false : $enviar;
+	}
+
+	/**
+	 * Interruptor de correo (R57): fuera de producción solo se envían correos a direcciones inventadas
+	 * (@ejemplo.invalid, que en Local recoge Mailpit). Cualquier otro se descarta sin enviarlo.
+	 *
+	 * @param null|bool $resultado
+	 */
+	public static function correo_solo_de_prueba( $resultado, array $correo ) {
+		if ( null !== $resultado || 'production' === wp_get_environment_type() ) {
+			return $resultado;
+		}
+		$para = array_map( 'strtolower', array_map( 'trim', (array) ( is_array( $correo['to'] ?? null ) ? $correo['to'] : explode( ',', (string) ( $correo['to'] ?? '' ) ) ) ) );
+		foreach ( $para as $direccion ) {
+			if ( ! preg_match( '/@ejemplo\.invalid>?$/', $direccion ) ) {
+				return false;
+			}
+		}
+		return $resultado;
 	}
 
 	public static function aviso_generico( $aviso ) {

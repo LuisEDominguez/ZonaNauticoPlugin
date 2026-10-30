@@ -20,6 +20,8 @@ class ZN_Eventos {
 	);
 
 	const CAMPOS = array(
+		// Dueño: cuenta de la app que la organiza (comercio, asociación, federación o administración). R63.
+		'user_id'           => 'integer',
 		'event_category_id' => 'integer',
 		'business_id'       => 'integer',
 		'latitude'          => 'number',

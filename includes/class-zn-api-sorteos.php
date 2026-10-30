@@ -118,9 +118,9 @@ class ZN_API_Sorteos {
 		$sorteo['controlParticipar']  = $inicio && $fin && $inicio <= $ahora && $ahora <= $fin ? 1 : 0;
 		$sorteo['controlVisibilidad'] = $fin && $ahora <= $fin ? 1 : 0;
 
-		// Los usuarios todavía no están en el plugin.
+		// El organizador, solo con sus datos públicos (H27).
 		if ( $incluir_usuario ) {
-			$sorteo['user'] = null;
+			$sorteo['user'] = ZN_API::usuario_publico( (int) ZN_API::campo( $id, 'user_id' ) );
 		}
 		return $sorteo;
 	}

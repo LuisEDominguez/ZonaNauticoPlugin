@@ -151,7 +151,7 @@ class ZN_API_Eventos {
 		}
 		// Los usuarios todavía no están en el plugin.
 		if ( ! empty( $incluir['user'] ) ) {
-			$evento['user'] = null;
+			$evento['user'] = ZN_API::usuario_publico( (int) ZN_API::campo( $id, 'user_id' ) );
 		}
 		return $evento;
 	}

@@ -1,0 +1,5 @@
+# Lo que NO va en el paquete para subir al servidor (git archive), R55: solo zona-nautico.php, includes y assets.
+tests/ export-ignore
+*.md export-ignore
+.gitignore export-ignore
+.gitattributes export-ignore

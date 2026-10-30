@@ -67,6 +67,41 @@ class ZN_Admin_Campos {
 		return isset( $datos[ $clave ] ) && is_string( $datos[ $clave ] ) ? trim( $datos[ $clave ] ) : '';
 	}
 
+	/** Fila «Dueño» con las cuentas de la app de esos roles (R63). */
+	public static function fila_dueno( int $id, array $roles_wp, string $ayuda ): void {
+		$dueno = (int) self::valor( $id, 'user_id' );
+		?>
+		<tr>
+			<th><label for="zn-dueno">Dueño</label></th>
+			<td>
+				<select id="zn-dueno" name="zn[user_id]">
+					<option value="">— Sin dueño —</option>
+					<?php foreach ( ZN_Roles::cuentas_de( $roles_wp ) as $cuenta ) : ?>
+						<option value="<?php echo esc_attr( $cuenta->ID ); ?>" <?php selected( $dueno, (int) $cuenta->ID ); ?>><?php echo esc_html( "{$cuenta->display_name} ({$cuenta->user_email})" ); ?></option>
+					<?php endforeach; ?>
+				</select>
+				<p class="description"><?php echo esc_html( $ayuda ); ?></p>
+			</td>
+		</tr>
+		<?php
+	}
+
+	/** El dueño solo puede ser una cuenta de la app con uno de esos roles (nunca una de wp-admin). */
+	public static function limpiar_dueno( array $datos, array &$limpio, array &$errores, array $roles_wp ): void {
+		$dueno = self::texto( $datos, 'user_id' );
+		if ( '' === $dueno ) {
+			$limpio['user_id'] = null;
+			return;
+		}
+		$cuenta = ctype_digit( $dueno ) ? get_userdata( (int) $dueno ) : false;
+		$rol    = $cuenta ? ZN_Roles::rol_app( $cuenta ) : null;
+		if ( $rol && in_array( array_search( $rol, ZN_Roles::ROLES_APP, true ), $roles_wp, true ) ) {
+			$limpio['user_id'] = (int) $dueno;
+		} else {
+			$errores[] = 'El dueño elegido no es una cuenta válida de la app; no se ha cambiado.';
+		}
+	}
+
 	public static function fila_coordenadas( int $id ): void {
 		?>
 		<tr>

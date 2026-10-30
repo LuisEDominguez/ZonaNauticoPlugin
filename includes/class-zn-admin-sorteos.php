@@ -28,6 +28,7 @@ class ZN_Admin_Sorteos {
 		?>
 		<p class="description">El título va arriba y las condiciones en el cuadro grande.</p>
 		<table class="form-table" role="presentation">
+			<?php ZN_Admin_Campos::fila_dueno( $id, ZN_Roles::ORGANIZADORES, 'Cuenta de la app que organiza el sorteo. Solo ella y la administración verán y descargarán sus participantes.' ); ?>
 			<?php ZN_Admin_Campos::filas_fechas( $id, 'Obligatorias. Mientras la fecha de hoy esté entre las dos, la app deja participar. Hora de España.' ); ?>
 			<tr>
 				<th><label for="zn-ganadores">Ganadores</label></th>
@@ -71,6 +72,7 @@ class ZN_Admin_Sorteos {
 	public static function limpiar( array $datos, array &$errores ): array {
 		$limpio = array();
 
+		ZN_Admin_Campos::limpiar_dueno( $datos, $limpio, $errores, ZN_Roles::ORGANIZADORES );
 		ZN_Admin_Campos::limpiar_fechas( $datos, $limpio, $errores );
 		if ( ( array_key_exists( 'start_date', $limpio ) && null === $limpio['start_date'] ) || ( array_key_exists( 'end_date', $limpio ) && null === $limpio['end_date'] ) ) {
 			$errores[] = 'Faltan fechas: sin inicio y fin el sorteo no se abrirá en la app.';

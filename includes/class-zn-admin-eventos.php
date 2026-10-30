@@ -36,6 +36,7 @@ class ZN_Admin_Eventos {
 		?>
 		<p class="description">El título va arriba y el texto en el cuadro grande.</p>
 		<table class="form-table" role="presentation">
+			<?php ZN_Admin_Campos::fila_dueno( $id, ZN_Roles::ORGANIZADORES, 'Cuenta de la app que la publica (comercio, asociación, federación o administración). Podrá editarla desde la app.' ); ?>
 			<tr>
 				<th><label for="zn-tipo">Tipo</label></th>
 				<td>
@@ -84,6 +85,8 @@ class ZN_Admin_Eventos {
 	public static function limpiar( array $datos, array &$errores ): array {
 		$limpio = array();
 		$texto  = static fn( $clave ) => ZN_Admin_Campos::texto( $datos, $clave );
+
+		ZN_Admin_Campos::limpiar_dueno( $datos, $limpio, $errores, ZN_Roles::ORGANIZADORES );
 
 		$categoria = $texto( 'event_category_id' );
 		if ( '' === $categoria ) {

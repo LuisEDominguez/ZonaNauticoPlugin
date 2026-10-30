@@ -11,6 +11,7 @@ el sí de Luis.
 
 | Quién | Pruebas |
 |---|---|
+| Todas a la vez (hilo que desarrolla) | `node tests/todas.mjs` |
 | Revisores (solo lectura, todas las que necesiten) | `node tests/contrato-negocios.mjs`, `contrato-eventos.mjs`, `contrato-sorteos.mjs`, `contrato-resenas.mjs`, `contrato-preguntas.mjs`, `contrato-muestras.mjs`, `contrato-errores.mjs`, `wp eval-file tests/admin-fichas.php` y `tests/errores.php` (no guardan nada; `errores.php` registra rutas de prueba solo en memoria), además de peticiones GET y lectura de código |
 | Hilo que desarrolla (pasa el resultado a los revisores) | `wp eval-file tests/seguridad.php`, `tests/comentarios.php`, `tests/roles.php` y `tests/tokens.php` (crean datos o cuentas temporales y los borran) y `node tests/puertas.mjs` (no guarda nada, pero envía una petición a XML-RPC) |
 
@@ -32,6 +33,46 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | 9 | 30-10-2026 | `21cabcc` (v0.10.3) | `2f6f500` (v0.11.0) | Ronda 9 limpia. Luis eligió token opaco: R32 hecho, con `GET /user/{id}` |
 | 10 | 30-10-2026 | `2f6f500` (v0.11.0) | `af480bc` (v0.11.1) | R46 (confirmado y arreglado), R47, R48 y R51 |
 | 11 | 30-10-2026 | `af480bc` (v0.11.1) | `b877325` (v0.11.2) | R54 (camino de la API sin rest_url) |
+| Global | 30-10-2026 | `b877325` (v0.11.2) | ver revisión global (v0.12.0) | Primer bloque: R55, R56, R57, R60, R61, R63, R64 (+R52). Decisiones a-e de Luis |
+
+---
+
+## Revisión global
+
+Revisión del plugin entero pedida por Luis antes del login. Luis dio el sí al primer bloque y aceptó las
+cinco recomendaciones de decisión (30-10). El segundo bloque (R58, R59) y el login, más adelante.
+
+### Decisiones de Luis (30-10)
+
+| | Pregunta | Decisión |
+|---|---|---|
+| a | PATCH (H22): campo vacío | Ausente → no se toca; `null` → se borra; `""` → 422 |
+| b | Nombre del autor de reseñas y preguntas | Solo el nombre de pila (lo que ya enseña la app) |
+| c | Reseñas nuevas | Se publican al momento, como en el Laravel; se pueden ocultar después desde wp-admin |
+| d | Pregunta a un comercio con varios negocios | Sale en todos los negocios de ese comercio (como la app hoy) |
+| e | Borrar una cuenta | Se borran sus reseñas y preguntas y se recalculan las puntuaciones, como el Laravel |
+
+### Primer bloque
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **R55** Ficheros internos desde la web | hecho | Las pruebas `.php` salen sin hacer nada si no las carga WP-CLI (`tests/roles.php` desde la web: 200 y 0 bytes, sin la ruta del PC). `.htaccess` (Apache) bloquea `.md`, `.mjs`… y `tests/.htaccess` todo. Paquete para subir con `git archive` y `.gitattributes export-ignore`: solo `zona-nautico.php`, `includes/`, `assets/` y `.htaccess` (comprobado). En Local (nginx) los `.md` siguen legibles, pero Local no es público. |
+| **R56** Cambiar la contraseña desde la app | hecho | `anular_todos( $cuenta, $menos )`: al cambiar la contraseña (o el correo) se anulan todos los tokens salvo el de la petición en curso si es de esa cuenta (`token_en_uso()`). Sin petición con token (wp-admin, WP-CLI), todos. Pruebas en `tests/tokens.php`. |
+| **R52** Cambiar el correo | hecho | `profile_update` también anula si cambia `user_email` (con la misma excepción). |
+| **R57** Correos | hecho | `send_password_change_email` y `send_email_change_email` → false para cuentas con rol de la app. `pre_wp_mail`: fuera de producción, solo a `@ejemplo.invalid` (Mailpit); cualquier otro destinatario, descartado. Las altas usarán `wp_insert_user` y los comentarios `wp_insert_comment` (no notifican); queda escrito para el registro. Pruebas en `tests/seguridad.php`. |
+| **R60** Registro y rol por defecto | hecho | `users_can_register` siempre 0; `default_role` nunca un rol de la app (no se deja guardar y, si lo fuera, se lee `subscriber`). Con esto, R35 (borrar roles cambiaba el rol por defecto) ya no puede darse; la prueba de R35 pasa a comprobar la sincronización y que las cuentas conservan su rol. |
+| **R61** Pruebas | hecho | Las que crean datos (`seguridad`, `comentarios`, `roles`, `tokens`) solo en `WP_ENVIRONMENT_TYPE = local`; contraseñas al azar (ya no `Clave-de-prueba-1`). Orden única `node tests/todas.mjs`, con pausas y resumen. Las de `/login` se escribirán antes que la ruta. |
+| **R63** Dueño de novedades y sorteos | hecho | `user_id` en `ZN_Eventos::CAMPOS` y `ZN_Sorteos::CAMPOS`; casilla «Dueño» en sus fichas (`ZN_Admin_Campos::fila_dueno` / `limpiar_dueno`) con cuentas de comercio, asociación, federación o administración de la app (`ZN_Roles::ORGANIZADORES`); `includesUser` devuelve el organizador. Pruebas en `tests/seguridad.php`. |
+| **R64** Contraseñas del Laravel | hecho | `Requires at least: 6.8`. Prueba en `tests/tokens.php`: un hash `$2y$10$` escrito tal cual con `$wpdb` vale con `wp_check_password` (buena sí, mala no). El importador deberá copiar el hash sin tocarlo. |
+| **R58, R59** | pendiente | Segundo bloque, antes de la primera escritura. Regla del PATCH: decisión a. |
+| **R62, R65, R66** | pendiente | Con el registro y la migración; decisiones b-e ya tomadas. |
+
+### Resultado de las pruebas (código de la revisión global, 30-10)
+
+`node tests/todas.mjs`: **358 comprobaciones bien en 14 juegos, todo bien** (`admin-fichas` 38,
+`errores` 16, `comentarios` 15, `seguridad` 73, `roles` 90, `tokens` 56, `contrato-negocios` 8,
+`contrato-eventos` 10, `contrato-sorteos` 8, `contrato-resenas` 11, `contrato-preguntas` 9,
+`contrato-muestras` 6, `contrato-errores` 9, `puertas` 9).
 
 ---
 

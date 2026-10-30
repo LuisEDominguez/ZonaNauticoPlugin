@@ -1,4 +1,10 @@
 <?php
+// Solo con WP-CLI (wp eval-file): abierto desde la web no hace nada (R55).
+defined( 'WP_CLI' ) || exit;
+// Crea datos temporales: solo en un WordPress local (R61).
+if ( 'local' !== wp_get_environment_type() ) {
+	WP_CLI::error( 'Esta prueba crea datos: solo en un WordPress local (WP_ENVIRONMENT_TYPE = local).' );
+}
 // Token de la app (R32, R39) y GET /user/{id}. Uso, con el sitio de Local encendido: wp eval-file tests/tokens.php
 // Crea cuentas y tokens temporales («temporal-tokens»), hace peticiones HTTP de verdad al sitio y lo borra todo al terminar.
 
@@ -180,6 +186,38 @@ try {
 		$_GET    = $antes_get;
 		wp_set_current_user( 0 );
 	}
+
+	// --- R56 y R52: al cambiar la contraseña o el correo desde la app, sigue valiendo el token de quien lo cambia ---
+	$quien  = $cuenta( 'zn_usuario' );
+	$en_uso = ZN_Tokens::emitir( $quien );
+	$otro_t = ZN_Tokens::emitir( $quien );
+	$antes_server = $_SERVER;
+	$_SERVER['REQUEST_URI']        = '/wp-json/zonanautico/v1/user/' . $quien;
+	$_SERVER['SCRIPT_NAME']        = '/index.php';
+	$_SERVER['HTTP_AUTHORIZATION'] = "Bearer $en_uso";
+	try {
+		wp_set_password( wp_generate_password( 24 ), $quien );
+		$ok( 'R56: tras cambiar la contraseña, el token de quien la cambia sigue valiendo', $quien === ZN_Tokens::validar( $en_uso ) );
+		$ok( 'R56: y los demás tokens de la cuenta quedan anulados', 0 === ZN_Tokens::validar( $otro_t ) );
+		$otro_t = ZN_Tokens::emitir( $quien );
+		wp_update_user( array( 'ID' => $quien, 'user_email' => "nuevo-$quien-temporal-tokens@ejemplo.invalid" ) );
+		$ok( 'R52: cambiar el correo anula los demás tokens', 0 === ZN_Tokens::validar( $otro_t ) && $quien === ZN_Tokens::validar( $en_uso ) );
+	} finally {
+		$_SERVER = $antes_server;
+	}
+	$ok( 'R56: sin petición con token (wp-admin, WP-CLI), cambiar la contraseña los anula todos', ( static function () use ( $quien, $en_uso ) {
+		wp_set_password( wp_generate_password( 24 ), $quien );
+		return 0 === ZN_Tokens::validar( $en_uso );
+	} )() );
+
+	// --- R64: las contraseñas del Laravel ($2y$, bcrypt) valen tal cual en WordPress ---
+	$migrada = $cuenta( 'zn_usuario' );
+	$wpdb->update( $wpdb->users, array( 'user_pass' => password_hash( 'Inventada-del-Laravel-1', PASSWORD_BCRYPT, array( 'cost' => 10 ) ) ), array( 'ID' => $migrada ) );
+	clean_user_cache( $migrada );
+	$hash = get_userdata( $migrada )->user_pass;
+	$ok( 'R64: el hash se guarda tal cual ($2y$10$…, como el Laravel)', 0 === strpos( $hash, '$2y$10$' ) );
+	$ok( 'R64: wp_check_password acepta la contraseña buena', wp_check_password( 'Inventada-del-Laravel-1', $hash, $migrada ) );
+	$ok( 'R64: y rechaza una mala', ! wp_check_password( 'otra', $hash, $migrada ) );
 
 	// --- R48 y R51 ---
 	$ok( 'R48: la tabla se instala en plugins_loaded (antes de mirar el usuario)', false !== has_action( 'plugins_loaded', array( 'ZN_Tokens', 'instalar' ) ) );

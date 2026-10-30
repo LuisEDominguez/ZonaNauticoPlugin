@@ -1,0 +1,2 @@
+# Las pruebas solo se lanzan con WP-CLI o Node, nunca desde la web (R55).
+Require all denied

@@ -1,4 +1,6 @@
 <?php
+// Solo con WP-CLI (wp eval-file): abierto desde la web no hace nada (R55).
+defined( 'WP_CLI' ) || exit;
 // Errores con el formato del Laravel por dentro (R12): los 401 y los 422 de campos obligatorios, con rutas
 // de prueba que solo existen mientras dura esta comprobación. No escribe nada en la base de datos.
 // Uso: wp eval-file tests/errores.php

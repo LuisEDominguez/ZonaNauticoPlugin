@@ -81,11 +81,32 @@ destinatario se guarda en la propia pregunta (`user_id`), como en el Laravel. La
 del negocio se recalcula sola con la media de sus reseñas aprobadas. Los comentarios nativos de
 WordPress están cerrados (sin formulario, sin `/wp/v2/comments` y fuera de feeds y widgets).
 
+**Correo.** A las cuentas de la app WordPress no les manda «tu contraseña/tu correo ha cambiado» (lo
+hará la app). Fuera de producción (`WP_ENVIRONMENT_TYPE` distinto de `production`), ningún correo sale a
+una dirección real: solo a direcciones `@ejemplo.invalid`, que en Local recoge Mailpit. Nadie se
+registra por `wp-login.php` y el rol por defecto nunca es uno de la app.
+
+**Dueños de novedades y sorteos.** Campo `user_id`, elegido en su ficha («Dueño») entre las cuentas de
+comercio, asociación, federación o administración de la app; sale como `user` con `includesUser`.
+
+## Subir al servidor
+
+Solo `zona-nautico.php`, `includes/`, `assets/` y `.htaccess` (nada de pruebas ni documentación). El
+paquete se hace con git, que ya excluye lo demás (`.gitattributes`):
+
+    git archive --format=zip --prefix=zona-nautico/ -o zona-nautico.zip HEAD
+
+El `.htaccess` (Apache) bloquea además `.md`, `.mjs` y `tests/` por si se copiara la carpeta entera.
+Pendiente de comprobar en el servidor: que llega la cabecera `Authorization`, que `SCRIPT_NAME` es
+`index.php` (R39) y que las respuestas con token no se guardan en caché (R49).
+
 ## Desarrollo en local
 
 El sitio de Local `zonanautico-local` (http://localhost:10010) enlaza esta carpeta mediante
 un enlace de carpeta en `wp-content/plugins/zona-nautico`.
 
+- **Todas las pruebas de una vez:** `node tests/todas.mjs` (con pausas; dice al final cuántas van bien).
+  Las que crean datos solo funcionan en un WordPress local y usan contraseñas al azar.
 - Datos inventados (solo en WordPress local; cada tipo solo si está vacío): `wp zona-nautico datos-prueba`
 - Comprobar el contrato de la API: `node tests/contrato-negocios.mjs`, `contrato-eventos.mjs`, `contrato-sorteos.mjs`, `contrato-resenas.mjs` y `contrato-preguntas.mjs`
 - Comprobar la ficha de wp-admin: `wp eval-file tests/admin-fichas.php`

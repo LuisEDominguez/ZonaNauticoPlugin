@@ -1,4 +1,10 @@
 <?php
+// Solo con WP-CLI (wp eval-file): abierto desde la web no hace nada (R55).
+defined( 'WP_CLI' ) || exit;
+// Crea datos temporales: solo en un WordPress local (R61).
+if ( 'local' !== wp_get_environment_type() ) {
+	WP_CLI::error( 'Esta prueba crea datos: solo en un WordPress local (WP_ENVIRONMENT_TYPE = local).' );
+}
 // Comprobaciones de reseñas y preguntas por dentro. Uso: wp eval-file tests/comentarios.php
 // Crea una reseña temporal en «Náutica Cíes (prueba)» y la borra al terminar.
 

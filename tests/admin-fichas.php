@@ -1,4 +1,6 @@
 <?php
+// Solo con WP-CLI (wp eval-file): abierto desde la web no hace nada (R55).
+defined( 'WP_CLI' ) || exit;
 // Comprobaciones de la ficha de wp-admin. Uso: wp eval-file tests/admin-negocios.php
 foreach ( array( 'campos', 'negocios', 'eventos', 'sorteos' ) as $f ) {
 	require_once WP_PLUGIN_DIR . "/zona-nautico/includes/class-zn-admin-$f.php";

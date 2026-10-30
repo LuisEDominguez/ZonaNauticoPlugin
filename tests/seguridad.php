@@ -1,9 +1,16 @@
 <?php
+// Solo con WP-CLI (wp eval-file): abierto desde la web no hace nada (R55).
+defined( 'WP_CLI' ) || exit;
+// Crea datos temporales: solo en un WordPress local (R61).
+if ( 'local' !== wp_get_environment_type() ) {
+	WP_CLI::error( 'Esta prueba crea datos: solo en un WordPress local (WP_ENVIRONMENT_TYPE = local).' );
+}
 // Lo que la API nunca debe enseñar y los arreglos de la revisión 1 (R1, R2, R3, R5, R6, R8, R10, R11, R15, R19).
 // Uso: wp eval-file tests/seguridad.php
 // Crea sus propios datos (negocios, novedades, comentarios y cuentas con «(temporal)» en el nombre) y los borra al terminar.
 
 require_once ABSPATH . 'wp-admin/includes/user.php';
+require_once WP_PLUGIN_DIR . '/zona-nautico/includes/class-zn-admin-campos.php';
 
 $fallos = 0;
 $ok     = function ( $nombre, $condicion ) use ( &$fallos ) {
@@ -141,6 +148,32 @@ try {
 		}
 		$ok( "$tipo: el administrador sí", user_can( $admin, $cap->edit_posts ) && user_can( $admin, $cap->publish_posts ) && user_can( $admin, $cap->edit_others_posts ) );
 	}
+
+	// --- R57: correos ---
+	$ok( 'R57: fuera de producción no sale un correo a una dirección real', false === apply_filters( 'pre_wp_mail', null, array( 'to' => 'alguien@gmail.com' ) ) );
+	$ok( 'R57: ni si va mezclada con una inventada', false === apply_filters( 'pre_wp_mail', null, array( 'to' => array( 'x@ejemplo.invalid', 'alguien@gmail.com' ) ) ) );
+	$ok( 'R57: a direcciones inventadas (@ejemplo.invalid, Mailpit) sí', null === apply_filters( 'pre_wp_mail', null, array( 'to' => 'Prueba <x@ejemplo.invalid>' ) ) );
+	$datos_comercio = (array) get_userdata( $comercio )->data;
+	$ok( 'R57: sin aviso de WordPress de «contraseña cambiada» a una cuenta de la app', false === apply_filters( 'send_password_change_email', true, $datos_comercio, array() ) );
+	$ok( 'R57: ni de «correo cambiado»', false === apply_filters( 'send_email_change_email', true, $datos_comercio, array() ) );
+	$ok( 'R57: a una cuenta de wp-admin, sí (como siempre)', true === apply_filters( 'send_password_change_email', true, (array) $admin->data, array() ) );
+
+	// --- R63: novedades y sorteos con dueño ---
+	$organizada            = wp_insert_post( array( 'post_type' => ZN_Eventos::TIPO, 'post_status' => 'publish', 'post_title' => 'Novedad organizada (temporal)', 'meta_input' => array( 'user_id' => $comercio ) ) );
+	$sorteo_org            = wp_insert_post( array( 'post_type' => ZN_Sorteos::TIPO, 'post_status' => 'publish', 'post_title' => 'Sorteo organizado (temporal)', 'meta_input' => array( 'user_id' => $comercio ) ) );
+	$creados['entradas'][] = $organizada;
+	$creados['entradas'][] = $sorteo_org;
+	$ok( 'R63: la novedad sale con su organizador (includesUser)', (string) $comercio === ( $api( "/event/$organizada", array( 'includesUser' => 1 ) )->get_data()['data']['user']['_id'] ?? null ) );
+	$ok( 'R63: el sorteo, también', (string) $comercio === ( $api( "/draw/$sorteo_org", array( 'includesUser' => 1 ) )->get_data()['data']['user']['_id'] ?? null ) );
+	$ok( 'R63: el organizador puede ver los participantes de su sorteo', ZN_Roles::puede( 'draw_participation:read', get_post( $sorteo_org ), $comercio ) );
+	$limpio = array();
+	$avisos = array();
+	ZN_Admin_Campos::limpiar_dueno( array( 'user_id' => (string) $admin->ID ), $limpio, $avisos, ZN_Roles::ORGANIZADORES );
+	$ok( 'R63: en wp-admin, una cuenta de wp-admin no puede ser dueña', ! array_key_exists( 'user_id', $limpio ) && $avisos );
+	$limpio = array();
+	$avisos = array();
+	ZN_Admin_Campos::limpiar_dueno( array( 'user_id' => (string) $comercio ), $limpio, $avisos, ZN_Roles::ORGANIZADORES );
+	$ok( 'R63: un comercio sí', $comercio === ( $limpio['user_id'] ?? null ) && ! $avisos );
 
 	// --- R2: listas de usuarios y medios cerradas a quien no ha entrado ---
 	wp_set_current_user( 0 );

@@ -13,6 +13,8 @@ class ZN_Sorteos {
 	const TIPO = 'sorteo';
 
 	const CAMPOS = array(
+		// Dueño: cuenta de la app que lo organiza (comercio, asociación, federación o administración). R63.
+		'user_id'    => 'integer',
 		'start_date' => 'string',
 		'end_date'   => 'string',
 		'winners'    => 'integer',

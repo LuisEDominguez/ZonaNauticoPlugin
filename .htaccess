@@ -1,0 +1,6 @@
+# Servidores Apache: nada de documentación ni pruebas del plugin desde la web (R55).
+# (En Local va con nginx y esto no se aplica; allí no es público.) Al subir, usar el paquete de
+# «git archive» (ver README): ya no lleva ni las pruebas ni los .md.
+<FilesMatch "\.(md|mjs|json|lock|txt|ps1|sh)$">
+	Require all denied
+</FilesMatch>

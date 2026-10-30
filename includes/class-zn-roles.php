@@ -253,6 +253,14 @@ class ZN_Roles {
 
 	/** Cuentas de la app con un rol dado, para elegir dueño en wp-admin. */
 	public static function cuentas( string $rol_wp ): array {
-		return get_users( array( 'role' => $rol_wp, 'orderby' => 'display_name', 'fields' => array( 'ID', 'display_name', 'user_email' ) ) );
+		return self::cuentas_de( array( $rol_wp ) );
 	}
+
+	/** Cuentas de la app con alguno de estos roles. */
+	public static function cuentas_de( array $roles_wp ): array {
+		return get_users( array( 'role__in' => $roles_wp, 'orderby' => 'display_name', 'fields' => array( 'ID', 'display_name', 'user_email' ) ) );
+	}
+
+	// Quién puede organizar novedades y sorteos (tienen event:save_own / draw:save_own o el general). R63.
+	const ORGANIZADORES = array( 'zn_comercio', 'zn_asociacion', 'zn_federacion', 'zn_administrador' );
 }

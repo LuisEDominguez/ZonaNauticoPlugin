@@ -6,7 +6,8 @@
  *   texto y lo manda en `Authorization: Bearer …` (Zona-Nautico/src/api/cliente.ts).
  * - En la base de datos solo se guarda su huella SHA-256 (tabla `{prefijo}zn_tokens`), nunca el token.
  * - Caduca a los 60 minutos, como en la app (src/auth/sesion.ts) y en el Laravel.
- * - Se anula al cerrar sesión, y todos los de una cuenta al cambiar su contraseña, su rol o al borrarla.
+ * - Se anula al cerrar sesión, y todos los de una cuenta al cambiar su rol o al borrarla; al cambiar su
+ *   contraseña o su correo, todos menos el que está haciendo el cambio (R52, R56).
  * - Solo vale en /zonanautico/v1 (R39, R46): se ignora en admin-ajax, wp-cron, XML-RPC, wp-admin, wp-login
  *   y cualquier fichero que no sea index.php aunque la dirección lleve ?rest_route=/zonanautico/v1; y si
  *   la cuenta vino del token y la ruta REST que se despacha no es la nuestra, se quita la sesión.
@@ -33,14 +34,15 @@ class ZN_Tokens {
 		add_filter( 'rest_pre_dispatch', array( __CLASS__, 'solo_en_nuestra_ruta' ), 0, 3 );
 
 		// Anular todos los tokens de una cuenta cuando cambia lo que la protege (R32).
-		add_action( 'after_password_reset', static fn( $usuario ) => self::anular_todos( (int) $usuario->ID ) );
-		add_action( 'wp_set_password', static fn( $clave, $id ) => self::anular_todos( (int) $id ), 10, 2 );
+		// Al cambiar la contraseña se anulan todos menos el de quien la cambia: la app sigue con su token (R56).
+		add_action( 'after_password_reset', static fn( $usuario ) => self::anular_todos( (int) $usuario->ID, self::token_en_uso( (int) $usuario->ID ) ) );
+		add_action( 'wp_set_password', static fn( $clave, $id ) => self::anular_todos( (int) $id, self::token_en_uso( (int) $id ) ), 10, 2 );
 		add_action(
 			'profile_update',
 			static function ( $id, $antes ) {
 				$ahora = get_userdata( $id );
-				if ( $antes instanceof WP_User && $ahora && $ahora->user_pass !== $antes->user_pass ) {
-					self::anular_todos( (int) $id );
+				if ( $antes instanceof WP_User && $ahora && ( $ahora->user_pass !== $antes->user_pass || $ahora->user_email !== $antes->user_email ) ) {
+					self::anular_todos( (int) $id, self::token_en_uso( (int) $id ) );
 				}
 			},
 			10,
@@ -126,9 +128,16 @@ class ZN_Tokens {
 		$wpdb->query( $wpdb->prepare( 'UPDATE ' . self::tabla() . ' SET anulado = %s WHERE hash = %s AND anulado IS NULL', gmdate( 'Y-m-d H:i:s' ), self::huella( $token ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 	}
 
-	public static function anular_todos( int $usuario ): void {
+	/** Anula todos los tokens de la cuenta, salvo (si se da) el token $menos. */
+	public static function anular_todos( int $usuario, ?string $menos = null ): void {
 		global $wpdb;
-		$wpdb->query( $wpdb->prepare( 'UPDATE ' . self::tabla() . ' SET anulado = %s WHERE user_id = %d AND anulado IS NULL', gmdate( 'Y-m-d H:i:s' ), $usuario ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$wpdb->query( $wpdb->prepare( 'UPDATE ' . self::tabla() . ' SET anulado = %s WHERE user_id = %d AND anulado IS NULL AND hash <> %s', gmdate( 'Y-m-d H:i:s' ), $usuario, null === $menos ? '' : self::huella( $menos ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+	}
+
+	/** El token de esta petición si vale y es de esa cuenta (quien está haciendo el cambio); si no, null. */
+	public static function token_en_uso( int $usuario ): ?string {
+		$token = self::es_peticion_nuestra() ? self::token_de_la_peticion() : null;
+		return null !== $token && self::validar( $token ) === $usuario ? $token : null;
 	}
 
 	/**
