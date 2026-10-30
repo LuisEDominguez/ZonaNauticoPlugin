@@ -152,12 +152,23 @@ try {
 
 		// R47: WordPress en una subcarpeta (/sitio): el camino tiene que empezar por la subcarpeta de verdad.
 		$subcarpeta = static fn( $url ) => str_replace( '://localhost:10010/', '://localhost:10010/sitio/', $url );
-		// Solo rest_url: home_url también lo usa por dentro, y filtrar los dos pondría /sitio dos veces.
-		add_filter( 'rest_url', $subcarpeta );
+		add_filter( 'home_url', $subcarpeta );
 		$ok( 'R47: en una subcarpeta vale /sitio/wp-json/zonanautico/v1/…', $con === $probar( '/sitio/wp-json/zonanautico/v1/user/1' ) );
 		$ok( 'R47: y no /xxxxxwp-json/zonanautico/v1 (recorte sin comprobar)', false === $probar( '/xxxxxwp-json/zonanautico/v1/user/1' ) );
 		$ok( 'R47: ni /wp-json/zonanautico/v1 fuera de la subcarpeta', false === $probar( '/wp-json/zonanautico/v1/user/1' ) );
-		remove_filter( 'rest_url', $subcarpeta );
+		$ok( 'R47: con /index.php delante, también (/sitio/index.php/wp-json/…)', $con === $probar( '/sitio/index.php/wp-json/zonanautico/v1/user/1' ) );
+		remove_filter( 'home_url', $subcarpeta );
+
+		// R54: si alguien pregunta por el usuario en plugins_loaded, $wp_rewrite aún no existe: sin error fatal.
+		$reescritura           = $GLOBALS['wp_rewrite'];
+		$GLOBALS['wp_rewrite'] = null;
+		try {
+			$ok( 'R54: sin $wp_rewrite (plugins_loaded), el token vale y no hay error fatal', $con === $probar( '/wp-json/zonanautico/v1/user/1' ) );
+		} catch ( Throwable $e ) {
+			$ok( 'R54: sin $wp_rewrite (plugins_loaded): ' . $e->getMessage(), false );
+		} finally {
+			$GLOBALS['wp_rewrite'] = $reescritura;
+		}
 
 		// R46, segunda barrera: si la cuenta vino del token y se despacha otra ruta, se quita la sesión.
 		$probar( '/wp-json/zonanautico/v1/user/1' );

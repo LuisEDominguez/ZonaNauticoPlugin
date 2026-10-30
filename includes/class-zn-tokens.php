@@ -172,8 +172,8 @@ class ZN_Tokens {
 	 * ¿La petición va a /zonanautico/v1, por la entrada normal de WordPress (index.php)? (R46, R47)
 	 * - Nunca en admin-ajax, wp-cron, XML-RPC, wp-admin ni otro fichero que no sea index.php: todos cargan
 	 *   WordPress y miran el usuario, y aceptarían el token con un ?rest_route= añadido.
-	 * - El camino se compara entero con el de rest_url( ZN_NAMESPACE ) (cubre WordPress en una subcarpeta y
-	 *   /index.php/wp-json/); ?rest_route= solo vale en la portada o en /index.php.
+	 * - El camino se compara entero con <ruta de la portada>/<prefijo de la API>/zonanautico/v1, con o sin
+	 *   /index.php delante (cubre WordPress en una subcarpeta); ?rest_route= solo vale en la portada o en /index.php.
 	 * - Sin distinguir mayúsculas, como WordPress al buscar la ruta.
 	 */
 	public static function es_peticion_nuestra(): bool {
@@ -193,8 +193,16 @@ class ZN_Tokens {
 			return ZN_Errores::es_nuestra( '/' . ltrim( (string) wp_unslash( $_GET['rest_route'] ), '/' ) ); // phpcs:ignore WordPress.Security
 		}
 
-		$nuestra = rtrim( strtolower( (string) wp_parse_url( rest_url( ZN_NAMESPACE ), PHP_URL_PATH ) ), '/' );
-		return '' !== $nuestra && '/' !== $nuestra && ( $camino === $nuestra || 0 === strpos( $camino, $nuestra . '/' ) );
+		// Sin rest_url(): usa $wp_rewrite, que aún no existe si alguien pregunta por el usuario en
+		// plugins_loaded, y daría un error fatal (R54). Se arma con piezas que ya están: la ruta de la portada
+		// y el prefijo de la API, con o sin /index.php delante.
+		$api = '/' . strtolower( trim( rest_get_url_prefix(), '/' ) . '/' . ZN_NAMESPACE );
+		foreach ( array( $base . $api, $base . '/index.php' . $api ) as $nuestra ) {
+			if ( $camino === $nuestra || 0 === strpos( $camino, $nuestra . '/' ) ) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static function huella( string $token ): string {

@@ -31,6 +31,23 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | 8 | 30-10-2026 | `d8a4e07` (v0.10.2) | `21cabcc` (v0.10.3) | R45 (participantes: también quien organiza el sorteo) |
 | 9 | 30-10-2026 | `21cabcc` (v0.10.3) | `2f6f500` (v0.11.0) | Ronda 9 limpia. Luis eligió token opaco: R32 hecho, con `GET /user/{id}` |
 | 10 | 30-10-2026 | `2f6f500` (v0.11.0) | `af480bc` (v0.11.1) | R46 (confirmado y arreglado), R47, R48 y R51 |
+| 11 | 30-10-2026 | `af480bc` (v0.11.1) | ver ronda 11 (v0.11.2) | R54 (camino de la API sin rest_url) |
+
+---
+
+## Ronda 11
+
+El revisor dio por buenos R46, R47, R48 y R51 y pidió R54. Luis dio el sí (30-10).
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **R54** `rest_url()` antes de existir `$wp_rewrite` | hecho | `es_peticion_nuestra()` ya no llama a `rest_url()`: arma el camino con la ruta de `home_url( '/' )` + `rest_get_url_prefix()` + `zonanautico/v1`, y acepta también la variante con `/index.php/` delante. Pruebas: con `$GLOBALS['wp_rewrite'] = null` el token vale y no hay error fatal; la subcarpeta ahora se simula con `home_url` (`/sitio/wp-json/…` y `/sitio/index.php/wp-json/…` sí; `/xxxxxwp-json/…` y `/wp-json/…` fuera de la subcarpeta, no). |
+| **R39** Cabecera `Authorization` y `SCRIPT_NAME` en el servidor real | pendiente (al subir) | No se puede probar en Local. Queda en la lista de «al subir al servidor»: comprobar que llega la cabecera y que `SCRIPT_NAME` es `index.php` con su PHP-CGI/FPM. |
+
+### Resultado de las pruebas (código de la ronda 11, 30-10)
+
+En verde: `tokens.php` 49, `roles.php` 87, `errores.php` 16, `seguridad.php` 62, `contrato-errores` 9,
+`contrato-negocios` 8 y `puertas.mjs` 9. Solo cambia `ZN_Tokens` y su prueba; el resto, como en la ronda 10.
 
 ---
 
