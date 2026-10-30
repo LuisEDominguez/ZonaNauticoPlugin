@@ -34,6 +34,26 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | 10 | 30-10-2026 | `2f6f500` (v0.11.0) | `af480bc` (v0.11.1) | R46 (confirmado y arreglado), R47, R48 y R51 |
 | 11 | 30-10-2026 | `af480bc` (v0.11.1) | `b877325` (v0.11.2) | R54 (camino de la API sin rest_url) |
 | Global | 30-10-2026 | `b877325` (v0.11.2) | `df0b1b5` (v0.12.0) | Primer bloque: R55, R56, R57, R60, R61, R63, R64 (+R52). Decisiones a-e de Luis |
+| Global-bis | 30-10-2026 | `df0b1b5` (v0.12.0) | ver global-bis (v0.12.1) | R57-bis, R70, R71. Decisión R69: A |
+
+---
+
+## Verificación del primer bloque (global-bis)
+
+El revisor dio por buenos R55, R56, R60, R61, R63 y R64; R57 parcial. Luis dio el sí a R57-bis, R70 y
+R71 (con la recomendación: `user` null) y eligió la opción A en R69 (30-10).
+
+| Punto | Estado | Qué se hizo / decisión |
+|---|---|---|
+| **R57-bis** Correo | hecho | Regla invertida: correo real **solo** con `define( 'ZN_CORREO_REAL', true )` y entorno `production`; si no, solo `@ejemplo.invalid`. Se miran `to`, `Cc` y `Bcc` (cabeceras en texto o lista, con «Nombre <…>»): `ZN_Puertas::destinatarios()`. Fuera `wp_send_new_user_notification_to_admin`, `comments_notify` y `moderation_notify`. Pruebas en `tests/seguridad.php`. |
+| **R70** Dueño de una novedad de un negocio | hecho | `ZN_Admin_Eventos::dueno_valido_para_negocio()`: dueño del negocio, su cuenta padre si es asociación o federación, o la administración de la app. Si no, la ficha no guarda el dueño y avisa. Pruebas en `tests/seguridad.php`. Lo usarán también las rutas de escritura. |
+| **R71** `includesUser` y cuentas de administración | hecho | `usuario_publico()` devuelve null para el rol `administrator` de la app. Pruebas en `tests/roles.php` y `tests/seguridad.php`. |
+| **R69** Cambiar contraseña o correo con un token robado | **decidido (Luis): A** | Pedir la contraseña actual para cambiar la contraseña o el correo. Requiere añadir ese campo en la app: **la app no se toca sin la decisión de Luis y Alejandro**, así que queda apuntado para cuando se programe `PATCH /user` y se pueda cambiar la app. Hasta entonces, `PATCH /user` no se publica sin esa comprobación. |
+
+### Resultado de las pruebas (código de global-bis, 30-10)
+
+`node tests/todas.mjs`: **369 comprobaciones bien en 14 juegos, todo bien** (`seguridad` 84, `roles` 90;
+el resto, como en la revisión global).
 
 ---
 

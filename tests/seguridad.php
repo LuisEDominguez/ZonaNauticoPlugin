@@ -11,6 +11,7 @@ if ( 'local' !== wp_get_environment_type() ) {
 
 require_once ABSPATH . 'wp-admin/includes/user.php';
 require_once WP_PLUGIN_DIR . '/zona-nautico/includes/class-zn-admin-campos.php';
+require_once WP_PLUGIN_DIR . '/zona-nautico/includes/class-zn-admin-eventos.php';
 
 $fallos = 0;
 $ok     = function ( $nombre, $condicion ) use ( &$fallos ) {
@@ -158,6 +159,13 @@ try {
 	$ok( 'R57: ni de «correo cambiado»', false === apply_filters( 'send_email_change_email', true, $datos_comercio, array() ) );
 	$ok( 'R57: a una cuenta de wp-admin, sí (como siempre)', true === apply_filters( 'send_password_change_email', true, (array) $admin->data, array() ) );
 
+	$ok( 'R57-bis: mira también las copias (Cc y Bcc)', false === apply_filters( 'pre_wp_mail', null, array( 'to' => 'x@ejemplo.invalid', 'headers' => array( 'Cc: Alguien <alguien@gmail.com>' ) ) ) && false === apply_filters( 'pre_wp_mail', null, array( 'to' => 'x@ejemplo.invalid', 'headers' => "From: a@ejemplo.invalid
+Bcc: oculto@empresa.es" ) ) );
+	$ok( 'R57-bis: con copias inventadas, sí', null === apply_filters( 'pre_wp_mail', null, array( 'to' => 'x@ejemplo.invalid', 'headers' => array( 'Cc: y@ejemplo.invalid', 'Bcc: z@ejemplo.invalid' ) ) ) );
+	$ok( 'R57-bis: sin ZN_CORREO_REAL no hay correo real (aquí no está definida)', ! defined( 'ZN_CORREO_REAL' ) && false === apply_filters( 'pre_wp_mail', null, array( 'to' => 'alguien@gmail.com' ) ) );
+	$ok( 'R57-bis: sin aviso de «nuevo usuario» al administrador', false === apply_filters( 'wp_send_new_user_notification_to_admin', true, $admin ) );
+	$ok( 'R57-bis: sin avisos de comentarios nuevos ni pendientes', '0' === (string) get_option( 'comments_notify' ) && '0' === (string) get_option( 'moderation_notify' ) );
+
 	// --- R63: novedades y sorteos con dueño ---
 	$organizada            = wp_insert_post( array( 'post_type' => ZN_Eventos::TIPO, 'post_status' => 'publish', 'post_title' => 'Novedad organizada (temporal)', 'meta_input' => array( 'user_id' => $comercio ) ) );
 	$sorteo_org            = wp_insert_post( array( 'post_type' => ZN_Sorteos::TIPO, 'post_status' => 'publish', 'post_title' => 'Sorteo organizado (temporal)', 'meta_input' => array( 'user_id' => $comercio ) ) );
@@ -174,6 +182,27 @@ try {
 	$avisos = array();
 	ZN_Admin_Campos::limpiar_dueno( array( 'user_id' => (string) $comercio ), $limpio, $avisos, ZN_Roles::ORGANIZADORES );
 	$ok( 'R63: un comercio sí', $comercio === ( $limpio['user_id'] ?? null ) && ! $avisos );
+
+	// --- R70: dueño de una novedad de un negocio ---
+	$admin_app = $cuenta( 'admin-app-temporal', array( 'role' => 'zn_administrador' ) );
+	$asoc_t    = $cuenta( 'asociacion-temporal', array( 'role' => 'zn_asociacion' ) );
+	$com_hijo  = $cuenta( 'comercio-hijo-temporal' );
+	update_user_meta( $com_hijo, 'zn_parent_id', $asoc_t );
+	$negocio_h = $negocio( array( 'meta_input' => array( 'user_id' => $com_hijo ) ) );
+	$ok( 'R70: el dueño del negocio puede ser dueño de su novedad', ZN_Admin_Eventos::dueno_valido_para_negocio( $com_hijo, $negocio_h ) );
+	$ok( 'R70: su asociación, también', ZN_Admin_Eventos::dueno_valido_para_negocio( $asoc_t, $negocio_h ) );
+	$ok( 'R70: la administración de la app, también', ZN_Admin_Eventos::dueno_valido_para_negocio( $admin_app, $negocio_h ) );
+	$ok( 'R70: otro comercio, no', ! ZN_Admin_Eventos::dueno_valido_para_negocio( $comercio, $negocio_h ) );
+	$limpio = array();
+	$avisos = array();
+	wp_set_current_user( $admin->ID );
+	$limpio = ZN_Admin_Eventos::limpiar( array( 'business_id' => (string) $negocio_h, 'user_id' => (string) $comercio ), $avisos );
+	wp_set_current_user( 0 );
+	$ok( 'R70: en la ficha, una novedad de ese negocio no se guarda con otro comercio de dueño', ! array_key_exists( 'user_id', $limpio ) && $avisos );
+
+	// --- R71: un negocio de la administración de la app no la delata ---
+	$de_admin = $negocio( array( 'meta_input' => array( 'user_id' => $admin_app ) ) );
+	$ok( 'R71: includesUser de un negocio de la administración: user null', null === $api( "/business/$de_admin", array( 'includesUser' => 1 ) )->get_data()['data']['user'] );
 
 	// --- R2: listas de usuarios y medios cerradas a quien no ha entrado ---
 	wp_set_current_user( 0 );

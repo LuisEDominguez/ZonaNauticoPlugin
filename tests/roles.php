@@ -67,7 +67,12 @@ try {
 
 	// --- La API enseña el rol de la app de cada cuenta ---
 	foreach ( ZN_Roles::ROLES_APP as $rol_wp => $rol_app ) {
-		$ok( "usuario público de $rol_wp: role «{$rol_app}»", $rol_app === ZN_API::usuario_publico( $cuenta( $rol_wp ) )['role'] );
+		$publico = ZN_API::usuario_publico( $cuenta( $rol_wp ) );
+		if ( 'administrator' === $rol_app ) {
+			$ok( 'R71: una cuenta de administración de la app no sale en la API (user null)', null === $publico );
+		} else {
+			$ok( "usuario público de $rol_wp: role «{$rol_app}»", $rol_app === ( $publico['role'] ?? null ) );
+		}
 	}
 
 	// --- Cuentas y elementos de prueba ---

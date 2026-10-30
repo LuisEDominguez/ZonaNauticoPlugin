@@ -53,6 +53,11 @@ class ZN_Puertas {
 		add_filter( 'send_password_change_email', array( __CLASS__, 'sin_aviso_de_wordpress' ), 10, 2 );
 		add_filter( 'send_email_change_email', array( __CLASS__, 'sin_aviso_de_wordpress' ), 10, 2 );
 		add_filter( 'pre_wp_mail', array( __CLASS__, 'correo_solo_de_prueba' ), 10, 2 );
+		// Tampoco avisos automáticos de WordPress que la app no usa: «nuevo usuario» al administrador y
+		// comentarios nuevos o pendientes (las reseñas y preguntas son comentarios). R57-bis.
+		add_filter( 'wp_send_new_user_notification_to_admin', '__return_false' );
+		add_filter( 'pre_option_comments_notify', static fn() => '0' );
+		add_filter( 'pre_option_moderation_notify', static fn() => '0' );
 
 		add_filter( 'rest_endpoints', array( __CLASS__, 'quitar_rutas' ) );
 	}
@@ -79,22 +84,50 @@ class ZN_Puertas {
 	}
 
 	/**
-	 * Interruptor de correo (R57): fuera de producción solo se envían correos a direcciones inventadas
-	 * (@ejemplo.invalid, que en Local recoge Mailpit). Cualquier otro se descarta sin enviarlo.
+	 * Interruptor de correo (R57, R57-bis). Por defecto NO sale ningún correo a personas reales: solo a
+	 * direcciones inventadas (@ejemplo.invalid, que en Local recoge Mailpit). Para enviar correos de verdad
+	 * hace falta, en el servidor de producción, `define( 'ZN_CORREO_REAL', true );` en wp-config.php y que el
+	 * entorno sea `production`. Si se olvida, falla en seguro: no sale nada.
+	 * Se miran el destinatario y también las copias (Cc y Bcc de las cabeceras).
 	 *
 	 * @param null|bool $resultado
 	 */
 	public static function correo_solo_de_prueba( $resultado, array $correo ) {
-		if ( null !== $resultado || 'production' === wp_get_environment_type() ) {
+		if ( null !== $resultado ) {
 			return $resultado;
 		}
-		$para = array_map( 'strtolower', array_map( 'trim', (array) ( is_array( $correo['to'] ?? null ) ? $correo['to'] : explode( ',', (string) ( $correo['to'] ?? '' ) ) ) ) );
-		foreach ( $para as $direccion ) {
-			if ( ! preg_match( '/@ejemplo\.invalid>?$/', $direccion ) ) {
+		if ( defined( 'ZN_CORREO_REAL' ) && true === ZN_CORREO_REAL && 'production' === wp_get_environment_type() ) {
+			return $resultado;
+		}
+		foreach ( self::destinatarios( $correo ) as $direccion ) {
+			if ( ! preg_match( '/@ejemplo\.invalid$/', $direccion ) ) {
 				return false;
 			}
 		}
 		return $resultado;
+	}
+
+	/** Todas las direcciones de un correo de wp_mail: to, Cc y Bcc, en minúsculas y sin «Nombre <…>». */
+	public static function destinatarios( array $correo ): array {
+		$lista = (array) ( is_array( $correo['to'] ?? null ) ? $correo['to'] : explode( ',', (string) ( $correo['to'] ?? '' ) ) );
+		$cabeceras = $correo['headers'] ?? array();
+		$cabeceras = is_array( $cabeceras ) ? $cabeceras : explode( "\n", str_replace( "\r\n", "\n", (string) $cabeceras ) );
+		foreach ( $cabeceras as $cabecera ) {
+			if ( preg_match( '/^\s*(cc|bcc)\s*:(.*)$/i', (string) $cabecera, $m ) ) {
+				$lista = array_merge( $lista, explode( ',', $m[2] ) );
+			}
+		}
+		$direcciones = array();
+		foreach ( $lista as $item ) {
+			$item = strtolower( trim( (string) $item ) );
+			if ( preg_match( '/<([^>]+)>/', $item, $m ) ) {
+				$item = trim( $m[1] );
+			}
+			if ( '' !== $item ) {
+				$direcciones[] = $item;
+			}
+		}
+		return $direcciones;
 	}
 
 	public static function aviso_generico( $aviso ) {

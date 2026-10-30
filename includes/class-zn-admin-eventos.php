@@ -108,10 +108,30 @@ class ZN_Admin_Eventos {
 		}
 
 		ZN_Admin_Campos::limpiar_fechas( $datos, $limpio, $errores );
+		// R70: si la novedad cuelga de un negocio, su dueño solo puede ser el del negocio, la asociación o
+		// federación de la que cuelga ese dueño, o la administración de la app.
+		$negocio_elegido = (int) ( $limpio['business_id'] ?? 0 );
+		$dueno_elegido   = (int) ( $limpio['user_id'] ?? 0 );
+		if ( $negocio_elegido && $dueno_elegido && ! self::dueno_valido_para_negocio( $dueno_elegido, $negocio_elegido ) ) {
+			unset( $limpio['user_id'] );
+			$errores[] = 'El dueño de una novedad de un negocio tiene que ser el dueño de ese negocio, su asociación o la administración; no se ha cambiado.';
+		}
+
 		ZN_Admin_Campos::limpiar_coordenadas( $datos, $limpio, $errores );
 		ZN_Admin_Campos::limpiar_urls( $datos, 'photo', $limpio );
 		ZN_Admin_Campos::limpiar_urls( $datos, 'video', $limpio );
 
 		return $limpio;
+	}
+
+	/** R70: dueño del negocio, su cuenta padre (asociación o federación) o la administración de la app. */
+	public static function dueno_valido_para_negocio( int $dueno, int $negocio ): bool {
+		$cuenta = get_userdata( $dueno );
+		$rol    = $cuenta ? ZN_Roles::rol_app( $cuenta ) : null;
+		if ( 'administrator' === $rol ) {
+			return true;
+		}
+		$del_negocio = ZN_Negocios::dueno( $negocio );
+		return $rol && $del_negocio && ( $dueno === $del_negocio || ( in_array( $rol, ZN_Roles::PADRES, true ) && ZN_Roles::padre( $del_negocio ) === $dueno ) );
 	}
 }

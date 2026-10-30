@@ -82,9 +82,12 @@ del negocio se recalcula sola con la media de sus reseñas aprobadas. Los coment
 WordPress están cerrados (sin formulario, sin `/wp/v2/comments` y fuera de feeds y widgets).
 
 **Correo.** A las cuentas de la app WordPress no les manda «tu contraseña/tu correo ha cambiado» (lo
-hará la app). Fuera de producción (`WP_ENVIRONMENT_TYPE` distinto de `production`), ningún correo sale a
-una dirección real: solo a direcciones `@ejemplo.invalid`, que en Local recoge Mailpit. Nadie se
-registra por `wp-login.php` y el rol por defecto nunca es uno de la app.
+hará la app). **Por defecto no sale ningún correo a personas reales**: solo a direcciones
+`@ejemplo.invalid` (también en Cc y Bcc), que en Local recoge Mailpit. Para enviar correos de verdad, en
+el servidor de producción: `define( 'ZN_CORREO_REAL', true );` en `wp-config.php` (y entorno
+`production`). Sin avisos de «nuevo usuario» al administrador ni de comentarios. Nadie se registra por
+`wp-login.php` y el rol por defecto nunca es uno de la app. Las cuentas de administración de la app no
+salen nunca como `user` en la API.
 
 **Dueños de novedades y sorteos.** Campo `user_id`, elegido en su ficha («Dueño») entre las cuentas de
 comercio, asociación, federación o administración de la app; sale como `user` con `includesUser`.

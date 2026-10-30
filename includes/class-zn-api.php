@@ -121,7 +121,8 @@ class ZN_API {
 		}
 		$usuario = get_userdata( $id );
 		$rol     = $usuario ? ZN_Roles::rol_app( $usuario ) : null;
-		if ( ! $rol ) {
+		// Las cuentas de administración de la app tampoco salen: no se da pista de cuáles son (R71).
+		if ( ! $rol || 'administrator' === $rol ) {
 			return null;
 		}
 		return array(
