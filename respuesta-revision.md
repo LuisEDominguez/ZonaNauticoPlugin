@@ -12,7 +12,7 @@ el sí de Luis.
 | Quién | Pruebas |
 |---|---|
 | Revisores (solo lectura, todas las que necesiten) | `node tests/contrato-negocios.mjs`, `contrato-eventos.mjs`, `contrato-sorteos.mjs`, `contrato-resenas.mjs`, `contrato-preguntas.mjs`, `contrato-muestras.mjs`, `contrato-errores.mjs`, `wp eval-file tests/admin-fichas.php` y `tests/errores.php` (no guardan nada; `errores.php` registra rutas de prueba solo en memoria), además de peticiones GET y lectura de código |
-| Hilo que desarrolla (pasa el resultado a los revisores) | `wp eval-file tests/seguridad.php`, `tests/comentarios.php` y `tests/roles.php` (crean datos o cuentas temporales y los borran) y `node tests/puertas.mjs` (no guarda nada, pero envía una petición a XML-RPC) |
+| Hilo que desarrolla (pasa el resultado a los revisores) | `wp eval-file tests/seguridad.php`, `tests/comentarios.php`, `tests/roles.php` y `tests/tokens.php` (crean datos o cuentas temporales y los borran) y `node tests/puertas.mjs` (no guarda nada, pero envía una petición a XML-RPC) |
 
 Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** · **espera decisión** ·
 **se propone descartar**.
@@ -29,6 +29,33 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | 6 | 30-10-2026 | `ce2620a` (v0.10.0) | `3490c65` (v0.10.1) | R35, R36 y R37 (arreglos de roles antes de R32). Token y R40, en espera de Luis |
 | 7 | 30-10-2026 | `3490c65` (v0.10.1) | `d8a4e07` (v0.10.2) | R41 y R42 (crear frente a modificar). Decisiones de Luis: R43 A, R44 A; R40 sin decidir |
 | 8 | 30-10-2026 | `d8a4e07` (v0.10.2) | `21cabcc` (v0.10.3) | R45 (participantes: también quien organiza el sorteo) |
+| 9 | 30-10-2026 | `21cabcc` (v0.10.3) | ver ronda 9 (v0.11.0) | Ronda 9 limpia. Luis eligió token opaco: R32 hecho, con `GET /user/{id}` |
+
+---
+
+## Ronda 9
+
+La ronda 9 salió limpia. Los revisores explicaron a Luis cómo funciona el token y Luis eligió el **token
+opaco** (30-10). Hecho R32, con lo que de R39 toca al token. El login (`POST /login`, registro,
+recuperación: R30, R38 y el resto de R39) **no está empezado**.
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **Token** | hecho | `includes/class-zn-tokens.php`. `random_bytes(32)` en base64url (43 caracteres). Tabla `{prefijo}zn_tokens (id, hash CHAR(64) UNIQUE, user_id con índice, creado, caduca, anulado)` creada con `dbDelta` una vez por versión de la tabla; solo la huella SHA-256. Caduca a los 60 minutos. Solo para cuentas con un único rol zn_* (`emitir()` da null a una de wp-admin; `validar()` da 0 si la cuenta ya no es de la app). Limpieza de los caducados hace más de un día al emitir. |
+| **R32** Validación | hecho | Filtro `determine_current_user` (prioridad 30): solo si la petición va a `/zonanautico/v1` y no hay ya una cuenta por cookie. Token que no vale = sin sesión. Pruebas por **HTTP de verdad** (`tests/tokens.php`): token caducado → `GET /user/{id}` 401 «Unauthenticated.»; token válido de otra cuenta → 401 «This action is unauthorized.»; token caducado o inventado en `GET /business` → 200. |
+| **Anular** | hecho | `anular()` (para `/logout`) y `anular_todos()` al cambiar la contraseña (`wp_set_password`, `after_password_reset`, `profile_update` con hash distinto), al cambiar el rol (`set_user_role`, `add_user_role`, `remove_user_role`) y al borrar la cuenta (`delete_user`). Probado cada caso. |
+| **R39** (parte del token) | hecho | Solo vale en `/zonanautico/v1` (por `/wp-json/…` o `?rest_route=…`, sin distinguir mayúsculas; no en `/wp/v2`, `admin-ajax.php` ni `/zonanautico/v10`); lee `HTTP_AUTHORIZATION` y `REDIRECT_HTTP_AUTHORIZATION`; regla de `.htaccess` documentada en el README. **Falta probarlo en el servidor de verdad.** |
+| **`GET /user/{id}`** | hecho | `includes/class-zn-api-usuarios.php`. La app lo pide al arrancar. `{data: {_id, id (número), name, email, verified, role, parent{_id,id,name,email,role}, avatar, latitude, longitude, phone}}`. Sin sesión → 401 Unauthenticated; sin permiso (`ZN_Roles::puede( 'user:read', $cuenta )`) → 401 unauthorized; cuenta inexistente o de wp-admin → 404. `name` = nombre + apellidos; `verified` saldrá de `zn_verificado` cuando exista la verificación. |
+| **R39** (resto) y **R30, R38** | pendiente | Con el login: respuesta de `/login`, cerrar sesiones de WordPress previas, `wp_check_password`, mismo mensaje y tiempo exista o no la cuenta, 429, etc. |
+| `/refresh` | pendiente | Hoy la app no lo usa (pide entrar de nuevo a la hora). Se hará con el login. |
+| **R40** | espera decisión | Luis lo consultará con Alejandro. |
+
+### Resultado de las pruebas (código de la ronda 9, 30-10)
+
+Todas en verde: `tokens.php` 35, `roles.php` 87, `errores.php` 16, `seguridad.php` 62,
+`comentarios.php` 15, `admin-fichas.php` 38, `contrato-errores` 9, `contrato-negocios` 8,
+`contrato-eventos` 10, `contrato-sorteos` 8, `contrato-resenas` 11, `contrato-preguntas` 9,
+`contrato-muestras` 6 y `puertas.mjs` 9.
 
 ---
 

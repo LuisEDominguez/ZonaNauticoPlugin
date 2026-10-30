@@ -20,6 +20,7 @@ Base de la API: `<sitio>/wp-json/zonanautico/v1`
 | `GET /review/{id}` | público | mismas inclusiones |
 | `GET /faq` | público | `page`, `perPage` (máx. 50), `user` (el comercio), `published`, `order`, `includesUser` (`user` y `publisher`). Las no publicadas no salen nunca (H20) |
 | `GET /faq/{id}` | público | `includesUser` |
+| `GET /user/{id}` | **con token** | La propia cuenta, o la que pueda ver (`user:read`…). Formato del UserResource del Laravel con `id` numérico |
 
 Los negocios se guardan como entradas personalizadas de WordPress (tipo `negocio`, menú «Negocios»
 en wp-admin): nombre = título, descripción = contenido, y el resto como campos personalizados con
@@ -51,6 +52,18 @@ elemento, solo para la administración de la app y las lecturas públicas); para
 cuenta padre (`zn_parent_id`, un nivel) solo hereda si es asociación o federación y solo en negocios,
 novedades y preguntas; en cuentas, «lo suyo» es solo uno mismo y las hijas van con `user:save_commerce`…
 
+**Token de la app (R32).** «Token opaco»: 32 bytes al azar en base64url, que la app manda en
+`Authorization: Bearer …`. En la tabla `{prefijo}zn_tokens` solo se guarda su huella SHA-256. Caduca a
+los 60 minutos y se anula al cerrar sesión o, todos los de la cuenta, al cambiar su contraseña o su rol
+o al borrarla. Solo vale en `/zonanautico/v1` y para cuentas de la app; se valida con
+`determine_current_user`, así que un token que no vale es «sin sesión» (las rutas públicas responden
+normal y las privadas, 401 «Unauthenticated.»). `ZN_Tokens::emitir()`, `validar()`, `anular()` y
+`anular_todos()`.
+
+En un servidor Apache, la cabecera `Authorization` tiene que llegar a PHP. El `.htaccess` estándar de
+WordPress ya lo hace con `RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]`; el plugin lee
+también `REDIRECT_HTTP_AUTHORIZATION`. **Comprobarlo en el servidor de verdad** antes de abrir el login.
+
 **Puertas cerradas.** XML-RPC, páginas de autor (`?author=`) y vista embed, mapa del sitio, oEmbed,
 feeds, `/wp/v2/users`, `/wp/v2/media` y `/wp/v2/comments` (users y media siguen abiertas para quien
 ya puede ver usuarios o subir archivos).
@@ -80,5 +93,6 @@ un enlace de carpeta en `wp-content/plugins/zona-nautico`.
 - Campos iguales a las respuestas reales del Laravel (`Zona-Nautico/api-muestras`): `node tests/contrato-muestras.mjs`
 - Puertas de WordPress cerradas, vistas desde fuera: `node tests/puertas.mjs`
 - Roles y permisos (crea y borra sus propias cuentas): `wp eval-file tests/roles.php`
+- Token y `GET /user/{id}` (crea y borra cuentas y tokens; peticiones HTTP de verdad): `wp eval-file tests/tokens.php`
 - Formato de los errores: `node tests/contrato-errores.mjs` y `wp eval-file tests/errores.php` (los dos solo leen)
 - Recalcular todas las puntuaciones (al final de una migración): `wp zona-nautico recalcular-puntuaciones`
