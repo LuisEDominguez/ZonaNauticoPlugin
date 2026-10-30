@@ -103,6 +103,18 @@ try {
 	$ok( 'R41: lectura pública: cualquiera lee un negocio', $puede( $usuario, 'business:read', $negocio_otro ) );
 	$ok( 'R41/R43: un usuario no lee participaciones con el permiso general', ! $puede( $usuario, 'draw_participation:read', $negocio_otro ) );
 
+	// --- R45: participantes de un sorteo: la administración y quien lo organiza ---
+	$sorteo_com  = $entrada( ZN_Sorteos::TIPO, $comercio );
+	$sorteo_asoc = $entrada( ZN_Sorteos::TIPO, $asociacion );
+	$ok( 'R45: el comercio organizador ve sus participantes', $puede( $comercio, 'draw_participation:read', $sorteo_com ) );
+	$ok( 'R45: el comercio organizador los exporta (export_own)', $puede( $comercio, 'draw_participation:export', $sorteo_com ) );
+	$ok( 'R45: la asociación organizadora los ve y exporta', $puede( $asociacion, 'draw_participation:read', $sorteo_asoc ) && $puede( $asociacion, 'draw_participation:export', $sorteo_asoc ) );
+	$ok( 'R45: un comercio ajeno no los ve ni exporta', ! $puede( $otro, 'draw_participation:read', $sorteo_com ) && ! $puede( $otro, 'draw_participation:export', $sorteo_com ) );
+	$ok( 'R45: un usuario no los ve', ! $puede( $usuario, 'draw_participation:read', $sorteo_com ) );
+	$ok( 'R45: la asociación no ve los del sorteo de su comercio (sin herencia)', ! $puede( $asociacion, 'draw_participation:read', $sorteo_com ) );
+	$ok( 'R45: la federación (export general) no exporta un sorteo ajeno', ! $puede( $federacion, 'draw_participation:export', $sorteo_asoc ) );
+	$ok( 'R45: la administración de la app, todos', $puede( $admin_app, 'draw_participation:read', $sorteo_com ) && $puede( $admin_app, 'draw_participation:export', $sorteo_asoc ) );
+
 	// --- R42: crear a su nombre (o de una hija), nunca a nombre de otro ---
 	$crear = static fn( int $quien, string $permiso, int $dueno ) => ZN_Roles::puede_crear( $permiso, $dueno, $quien );
 	$ok( 'R42: el comercio crea un negocio a su nombre (business:save_own)', $crear( $comercio, 'business:save', $comercio ) );

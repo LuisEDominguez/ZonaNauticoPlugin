@@ -127,6 +127,11 @@ class ZN_Roles {
 			return self::puede_con_cuenta( $cuenta, $partes[2], $elemento );
 		}
 		$dueno = self::dueno_de( $permiso, $elemento );
+		// Los participantes de un sorteo los ve y exporta quien lo organiza (R43, R45): el permiso de leer o
+		// exportar (general o _own) solo vale sobre su propio sorteo, sin herencia por el padre.
+		if ( in_array( $permiso, array( 'draw_participation:read', 'draw_participation:export' ), true ) && $elemento instanceof WP_Post && ZN_Sorteos::TIPO === $elemento->post_type ) {
+			return $dueno === $cuenta->ID && ( self::tiene( $cuenta, $permiso ) || self::tiene( $cuenta, "{$permiso}_own" ) );
+		}
 		return $dueno && self::tiene( $cuenta, "{$permiso}_own" ) && self::es_suyo_o_de_su_hija( $cuenta, $partes[1], $dueno );
 	}
 

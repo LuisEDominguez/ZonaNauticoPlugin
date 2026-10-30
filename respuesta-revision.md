@@ -28,6 +28,24 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | 5 | 30-10-2026 | `df0529c` (v0.9.1) | `ce2620a` (v0.10.0) | OK del revisor a R31, R33 y R34a. R22 (roles), sin el token: la librería espera la opinión del revisor y la decisión de Luis |
 | 6 | 30-10-2026 | `ce2620a` (v0.10.0) | `3490c65` (v0.10.1) | R35, R36 y R37 (arreglos de roles antes de R32). Token y R40, en espera de Luis |
 | 7 | 30-10-2026 | `3490c65` (v0.10.1) | `d8a4e07` (v0.10.2) | R41 y R42 (crear frente a modificar). Decisiones de Luis: R43 A, R44 A; R40 sin decidir |
+| 8 | 30-10-2026 | `d8a4e07` (v0.10.2) | ver ronda 8 (v0.10.3) | R45 (participantes: también quien organiza el sorteo) |
+
+---
+
+## Ronda 8
+
+El revisor dio por buenos R41 y R42 y pidió R45. Luis dio el sí (30-10).
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **R45** El organizador no veía sus participantes | hecho | En `puede()`, sobre un sorteo, `draw_participation:read` y `draw_participation:export` valen para la administración de la app (como siempre) o si la cuenta es la dueña del sorteo (`user_id`) y tiene ese permiso, general o `_own`. Sin herencia por el padre. Pruebas en `tests/roles.php`: comercio organizador lee y exporta (con `export_own`); asociación organizadora lee y exporta; comercio ajeno, usuario, asociación sobre el sorteo de su comercio y federación sobre un sorteo ajeno, no; administración, todos. |
+| Participante ve y borra la suya | pendiente | Con la tabla de participaciones (`dueno_de()` reconocerá esas filas). |
+| **Token (R32)** y **R40** | espera decisión (Luis) | Sin cambios. |
+
+### Resultado de las pruebas (código de la ronda 8, 30-10)
+
+`roles.php` 87, `seguridad.php` 62 y `errores.php` 16, en verde. Solo cambia `ZN_Roles` y sus pruebas; la
+API no cambia, así que no he repetido las pruebas por HTTP (en la ronda 7 estaban todas en verde).
 
 ---
 
