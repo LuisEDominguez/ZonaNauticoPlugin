@@ -91,6 +91,33 @@ try {
 	$ok( 'comercio: gestiona las preguntas que le hacen (faq:save_own por destinatario)', $puede( $comercio, 'faq:delete', $pregunta ) );
 	$ok( 'administración de la app: cualquiera', $puede( $admin_app, 'business:save', $negocio_otro ) );
 
+	// --- R41: sobre un elemento, el permiso general solo vale para la administración (y lecturas públicas) ---
+	$ok( 'R41: un usuario (tiene faq:save) no puede tocar una pregunta ajena', ! $puede( $usuario, 'faq:save', $pregunta ) );
+	$ok( 'R41: la federación (faq:save, sin faq:save_own) tampoco', ! $puede( $federacion, 'faq:save', $pregunta ) );
+	$ok( 'R41: un comercio no toca las preguntas de otro comercio', ! $puede( $otro, 'faq:save', $pregunta ) );
+	$ok( 'R41: la administración de la app sí', $puede( $admin_app, 'faq:save', $pregunta ) );
+	$ok( 'R41: campos: el comercio destinatario cambia pregunta, respuesta y publicación', array( 'question', 'answer', 'published' ) === ZN_Roles::campos_editables_de_pregunta( $pregunta, $comercio ) );
+	$ok( 'R41: campos: su asociación, también', array( 'question', 'answer', 'published' ) === ZN_Roles::campos_editables_de_pregunta( $pregunta, $asociacion ) );
+	$ok( 'R41: campos: quien preguntó, solo el texto de la pregunta', array( 'question' ) === ZN_Roles::campos_editables_de_pregunta( $pregunta, $usuario ) );
+	$ok( 'R41: campos: cualquier otro, ninguno', array() === ZN_Roles::campos_editables_de_pregunta( $pregunta, $hijo ) && array() === ZN_Roles::campos_editables_de_pregunta( $pregunta, $federacion ) );
+	$ok( 'R41: lectura pública: cualquiera lee un negocio', $puede( $usuario, 'business:read', $negocio_otro ) );
+	$ok( 'R41/R43: un usuario no lee participaciones con el permiso general', ! $puede( $usuario, 'draw_participation:read', $negocio_otro ) );
+
+	// --- R42: crear a su nombre (o de una hija), nunca a nombre de otro ---
+	$crear = static fn( int $quien, string $permiso, int $dueno ) => ZN_Roles::puede_crear( $permiso, $dueno, $quien );
+	$ok( 'R42: el comercio crea un negocio a su nombre (business:save_own)', $crear( $comercio, 'business:save', $comercio ) );
+	$ok( 'R42: el comercio no lo crea a nombre de otro', ! $crear( $comercio, 'business:save', $otro ) );
+	$ok( 'R42: la asociación lo crea a nombre de su comercio', $crear( $asociacion, 'business:save', $comercio ) );
+	$ok( 'R42: la asociación no lo crea a nombre de un comercio ajeno', ! $crear( $asociacion, 'business:save', $otro ) );
+	$ok( 'R42: el usuario escribe una reseña a su nombre (review:save_own)', $crear( $usuario, 'review:save', $usuario ) );
+	$ok( 'R42: pero no a nombre de otro', ! $crear( $usuario, 'review:save', $hijo ) );
+	$ok( 'R42: el usuario participa en un sorteo (draw_participation:save_own)', $crear( $usuario, 'draw_participation:save', $usuario ) );
+	$ok( 'R42: el usuario hace una pregunta (faq:save)', $crear( $usuario, 'faq:save', $usuario ) );
+	$ok( 'R42: la asociación no participa en nombre de su usuario hijo (sin herencia)', ! $crear( $asociacion, 'draw_participation:save', $hijo ) );
+	$ok( 'R42: el usuario no crea negocios', ! $crear( $usuario, 'business:save', $usuario ) );
+	$ok( 'R42: la administración de la app crea a nombre de cualquiera', $crear( $admin_app, 'business:save', $otro ) );
+	$ok( 'R42: sin dueño, nadie', ! $crear( $admin_app, 'business:save', 0 ) );
+
 	// --- R36: sin herencia donde el Laravel no la tiene ---
 	$ok( 'R36: una asociación no borra las reseñas de una cuenta suya (review sin herencia)', ! $puede( $asociacion, 'review:delete', $resena_hijo ) );
 	$ok( 'R36: el usuario borra la suya (review:delete_own)', $puede( $usuario, 'review:delete', $resena_propia ) );

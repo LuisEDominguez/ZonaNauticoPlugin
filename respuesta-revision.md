@@ -27,6 +27,35 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | 4 | 30-10-2026 | `361c7a6` (v0.9.0) | `df0529c` (v0.9.1) | OK del revisor a R12. Arreglos previos a R22: R31, R33 y R34a |
 | 5 | 30-10-2026 | `df0529c` (v0.9.1) | `ce2620a` (v0.10.0) | OK del revisor a R31, R33 y R34a. R22 (roles), sin el token: la librería espera la opinión del revisor y la decisión de Luis |
 | 6 | 30-10-2026 | `ce2620a` (v0.10.0) | `3490c65` (v0.10.1) | R35, R36 y R37 (arreglos de roles antes de R32). Token y R40, en espera de Luis |
+| 7 | 30-10-2026 | `3490c65` (v0.10.1) | ver ronda 7 (v0.10.2) | R41 y R42 (crear frente a modificar). Decisiones de Luis: R43 A, R44 A; R40 sin decidir |
+
+---
+
+## Ronda 7
+
+El revisor dio por buenos R35 y R37 (y la herencia de R36) y pidió R41 y R42. Luis dio el sí (30-10) y
+contestó a las decisiones pendientes.
+
+| Punto | Estado | Qué se hizo / decisión |
+|---|---|---|
+| **R41** El permiso general antes que el dueño | hecho | `puede()` con un elemento: el permiso general solo vale para la administración de la app y para las lecturas públicas (`business/event/draw/review/faq:read`); el resto va por `_own` y el dueño guardado. Así un usuario (`faq:save`) ya no toca preguntas ajenas: **no se copia el fallo del Laravel** («Actualizar FAQ»). Nueva `campos_editables_de_pregunta()`: administración, comercio destinatario y su asociación → `question`, `answer`, `published`; quien preguntó → solo `question` (la ruta deberá dejarla sin publicar); el resto, nada. La prueba de herencia en preguntas ya no puede pasar por el permiso general. |
+| **R42** Con `_own` no se podía crear | hecho | Nueva `puede_crear( $permiso, $dueno )`: la administración, a nombre de cualquiera; el resto, a su nombre (con el general o el `_own`) o, con el `_own`, a nombre de una hija (solo asociación y federación, solo negocios, novedades y preguntas). En reseñas, preguntas y participaciones la ruta forzará el dueño a la cuenta de la sesión (H21); queda escrito en la función. |
+| `dueno_de()` con tablas propias | pendiente | Al crear participaciones y favoritos. |
+| **R43** Quién ve y exporta participantes | **decidido (Luis): A** | Solo la administración de la app y quien organiza ese sorteo. `draw_participation:read` no es lectura pública en `puede()`. |
+| **R44** Quién borra su propia cuenta | **decidido (Luis): A** | Como el Laravel: solo el rol `user` desde la app; comercio, asociación y federación lo piden y lo hace la administración. Falta saber el correo para esas peticiones (pregunta abierta a Luis). |
+| **R40** Panel para los encargados | espera decisión | Luis no lo sabe; lo consultará con Alejandro. |
+| `zn_parent_id` de las asociaciones al migrar | pendiente | Para R23 (migración). |
+| **Token (R32)** | espera decisión (Luis) | Sin cambios. |
+
+Pruebas: `tests/roles.php` pasa a 79 comprobaciones (R41: preguntas ajenas, federación, campos
+editables, lecturas; R42: crear a su nombre, de una hija, de otro, reseñas, participaciones, preguntas).
+
+### Resultado de las pruebas (código de la ronda 7, 30-10)
+
+Todas en verde: `roles.php` 79, `errores.php` 16, `seguridad.php` 62, `comentarios.php` 15,
+`admin-fichas.php` 38, `contrato-errores` 9, `contrato-negocios` 8, `contrato-eventos` 10,
+`contrato-sorteos` 8, `contrato-resenas` 11, `contrato-preguntas` 9, `contrato-muestras` 6 y
+`puertas.mjs` 9.
 
 ---
 

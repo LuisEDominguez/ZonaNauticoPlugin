@@ -45,7 +45,9 @@ el administrador.
 `zn_usuario`), con los permisos del Laravel tal cual como capacidades `zn:<permiso>` y ninguno de
 WordPress: no entran a wp-admin ni por `wp-login.php`. Cada cuenta de la app tiene un solo rol; si tiene
 más, no cuenta como cuenta de la app. Para las rutas de la app: `ZN_Roles::puede( 'business:save', $elemento )`
-saca el dueño del propio elemento guardado y vale con el permiso general o con el `_own` si es suyo. La
+saca el dueño del propio elemento guardado y vale con el `_own` si es suyo (el permiso general, sobre un
+elemento, solo para la administración de la app y las lecturas públicas); para crear,
+`ZN_Roles::puede_crear( 'business:save', $dueno )`; y en preguntas, `campos_editables_de_pregunta()`. La
 cuenta padre (`zn_parent_id`, un nivel) solo hereda si es asociación o federación y solo en negocios,
 novedades y preguntas; en cuentas, «lo suyo» es solo uno mismo y las hijas van con `user:save_commerce`…
 

@@ -93,14 +93,22 @@ class ZN_Roles {
 	// Roles que pueden heredar por el padre.
 	const PADRES = array( 'association', 'federation' );
 
+	// Lecturas que el permiso general deja hacer a cualquiera sobre cualquier elemento (lo público de la app).
+	// draw_participation:read no está: las participaciones solo las ve la administración y quien organiza (R43).
+	const LECTURAS_PUBLICAS = array( 'business:read', 'event:read', 'draw:read', 'review:read', 'faq:read' );
+
 	/**
 	 * ¿Puede la cuenta $usuario (por defecto, la actual) hacer $permiso (p. ej. 'business:save', sin `_own`)
-	 * con este elemento? El dueño se saca del propio elemento:
+	 * con este elemento YA EXISTENTE? El dueño se saca del propio elemento:
 	 * - WP_Post (negocio, novedad, sorteo): su campo `user_id`;
 	 * - WP_Comment: reseña → quien la escribió (o, para `review:reply`, el dueño del negocio);
 	 *   pregunta → el comercio destinatario (`user_id` del comentario);
 	 * - WP_User: la propia cuenta (reglas de cuentas, ver puede_con_cuenta());
-	 * - null: solo vale el permiso general (crear algo sin dueño todavía).
+	 * - null: solo el permiso general (p. ej. leer listados). Para crear, puede_crear().
+	 *
+	 * Sobre un elemento, el permiso general solo vale para la administración de la app y para las lecturas
+	 * públicas (R41): fuera de la administración, `faq:save` significa «hacer una pregunta», no «tocar
+	 * cualquier pregunta» (el Laravel sí lo permite; aquí no se copia).
 	 *
 	 * @param WP_Post|WP_Comment|WP_User|null $elemento
 	 */
@@ -109,20 +117,64 @@ class ZN_Roles {
 		if ( ! $cuenta || ! self::rol_app( $cuenta ) || ! preg_match( '/^([a-z_]+):([a-z_-]+)$/', $permiso, $partes ) ) {
 			return false;
 		}
-		if ( self::tiene( $cuenta, $permiso ) ) {
+		if ( null === $elemento ) {
+			return self::tiene( $cuenta, $permiso );
+		}
+		if ( self::tiene( $cuenta, $permiso ) && ( 'administrator' === self::rol_app( $cuenta ) || in_array( $permiso, self::LECTURAS_PUBLICAS, true ) ) ) {
 			return true;
 		}
 		if ( $elemento instanceof WP_User ) {
 			return self::puede_con_cuenta( $cuenta, $partes[2], $elemento );
 		}
 		$dueno = self::dueno_de( $permiso, $elemento );
-		if ( ! $dueno || ! self::tiene( $cuenta, "{$permiso}_own" ) ) {
+		return $dueno && self::tiene( $cuenta, "{$permiso}_own" ) && self::es_suyo_o_de_su_hija( $cuenta, $partes[1], $dueno );
+	}
+
+	/**
+	 * ¿Puede crear algo de este recurso a nombre de $dueno (R42)? Como el POST del Laravel: con el permiso
+	 * general o con el `_own`, si el dueño es él (o una hija suya, en negocios, novedades y preguntas, solo
+	 * asociación y federación). A nombre de otro, solo la administración de la app.
+	 * En reseñas, preguntas y participaciones la ruta debe forzar $dueno = la cuenta de la sesión, ignore lo
+	 * que mande la app (H21).
+	 */
+	public static function puede_crear( string $permiso, int $dueno, ?int $usuario = null ): bool {
+		$cuenta = get_userdata( $usuario ?? get_current_user_id() );
+		if ( ! $cuenta || ! self::rol_app( $cuenta ) || ! preg_match( '/^([a-z_]+):([a-z_-]+)$/', $permiso, $partes ) || $dueno <= 0 ) {
 			return false;
 		}
+		if ( 'administrator' === self::rol_app( $cuenta ) ) {
+			return self::tiene( $cuenta, $permiso );
+		}
+		if ( $dueno === $cuenta->ID ) {
+			return self::tiene( $cuenta, $permiso ) || self::tiene( $cuenta, "{$permiso}_own" );
+		}
+		return self::tiene( $cuenta, "{$permiso}_own" ) && self::es_suyo_o_de_su_hija( $cuenta, $partes[1], $dueno );
+	}
+
+	/**
+	 * Qué campos de una pregunta puede cambiar esta cuenta (R41):
+	 * - administración de la app, comercio destinatario y su asociación: question, answer y published;
+	 * - quien la hizo: solo question (y la ruta debe dejarla otra vez sin publicar);
+	 * - nadie más: ninguno.
+	 */
+	public static function campos_editables_de_pregunta( WP_Comment $pregunta, ?int $usuario = null ): array {
+		$usuario = $usuario ?? get_current_user_id();
+		if ( self::puede( 'faq:save', $pregunta, $usuario ) ) {
+			return array( 'question', 'answer', 'published' );
+		}
+		$cuenta = get_userdata( $usuario );
+		if ( $cuenta && self::rol_app( $cuenta ) && (int) $pregunta->user_id === $cuenta->ID ) {
+			return array( 'question' );
+		}
+		return array();
+	}
+
+	/** El dueño es él, o una hija suya si el recurso hereda y él es asociación o federación (un nivel). */
+	private static function es_suyo_o_de_su_hija( WP_User $cuenta, string $recurso, int $dueno ): bool {
 		if ( $dueno === $cuenta->ID ) {
 			return true;
 		}
-		return in_array( $partes[1], self::HEREDAN, true )
+		return in_array( $recurso, self::HEREDAN, true )
 			&& in_array( self::rol_app( $cuenta ), self::PADRES, true )
 			&& self::padre( $dueno ) === $cuenta->ID;
 	}
