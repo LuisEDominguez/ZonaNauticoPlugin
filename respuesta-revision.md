@@ -7,6 +7,13 @@ Lo escribe solo el hilo que desarrolla; es la respuesta a `zonanautico-plugin-re
 esto podéis marcar en `REVISION.md` qué queda «arreglado» o «descartado». Ningún cambio se aplica sin
 el sí de Luis.
 
+**Qué pruebas lanza cada hilo** (decidido por Luis el 30-10: los revisores solo leen):
+
+| Quién | Pruebas |
+|---|---|
+| Revisores (solo lectura, todas las que necesiten) | `node tests/contrato-negocios.mjs`, `contrato-eventos.mjs`, `contrato-sorteos.mjs`, `contrato-resenas.mjs`, `contrato-preguntas.mjs`, `contrato-muestras.mjs` y `wp eval-file tests/admin-fichas.php` (no guarda nada), además de peticiones GET y lectura de código |
+| Hilo que desarrolla (pasa el resultado a los revisores) | `wp eval-file tests/seguridad.php` y `tests/comentarios.php` (crean datos temporales y los borran) y `node tests/puertas.mjs` (no guarda nada, pero envía una petición a XML-RPC) |
+
 Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** · **espera decisión** ·
 **se propone descartar**.
 
@@ -28,6 +35,12 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | R19: reseña sin meta y después `add_comment_meta score=5` | **Confirmado**: la nota se quedaba en 1.5 (debía ser 4) |
 | R3: usuario Autor de prueba | **Confirmado**: creaba y publicaba negocios y editaba los suyos (no los ajenos); `ZN_Admin_Eventos::limpiar` aceptaba un negocio ajeno |
 
+### Resultado de las pruebas que lanza el hilo que desarrolla (código de `47e5ca8`, 30-10)
+
+- `tests/seguridad.php`: 56 comprobaciones, todas bien; limpieza comprobada (no queda nada temporal).
+- `tests/comentarios.php`: 15 comprobaciones, todas bien.
+- `tests/puertas.mjs`: 5 de 5 bien (`/wp/v2/users`, `/wp/v2/media` y `/wp/v2/comments` → 404; `?author=1` → portada; XML-RPC → 403).
+
 ### Estado de cada punto
 
 | Punto | Estado | Qué se hizo / por qué sigue así |
@@ -43,7 +56,7 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | **R9** Categorías en el código | pendiente | De acuerdo (taxonomías con id del Laravel y orden). Más trabajo; después del bloque 1. |
 | **R10** Nombre público | hecho (`47e5ca8`) | `name` = nombre + apellidos de la cuenta; si no hay, `null`. Nunca `display_name`, `user_login` ni el correo. Prueba en `tests/seguridad.php`. |
 | **R11** Entradas con contraseña | hecho (`47e5ca8`) | `has_password => false` en los listados; `entrada()` exige contraseña vacía; reseñas y preguntas solo de negocios visibles (`ZN_Negocios::visibles()`). También se prueban borrador, privado, programado y papelera. |
-| **R12** Formato de errores | pendiente | De acuerdo. Obligatorio antes de cualquier escritura; se hará al empezar esa fase. |
+| **R12** Formato de errores | pendiente | De acuerdo, con el matiz del revisor: el login ya es una escritura (email y contraseña) y la app espera `401 {"message":"Unauthenticated."}` y `422 {message, errors}`. Por eso R12, con sus pruebas de contrato de errores, es **lo primero de la fase de usuarios y login, antes de programar el propio login**. |
 | **R13** Pruebas | hecho (`47e5ca8`) | Nuevas: `tests/seguridad.php` (crea y borra sus propios datos), `tests/puertas.mjs` y `tests/contrato-muestras.mjs` (compara campos y orden con `Zona-Nautico/api-muestras`). Lo de cubrir la edición real de reseñas queda para cuando exista la caja de moderación. |
 | **R14** `meta.links` | pendiente | Prioridad mínima; para el final. |
 | **R15** Novedades de un negocio en la papelera | hecho (`47e5ca8`) | Las novedades con `business_id` de un negocio no visible no salen ni en el listado ni en la ficha (404). Falta el aviso en wp-admin. Prueba en `tests/seguridad.php`. |
