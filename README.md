@@ -40,6 +40,13 @@ nunca sale en la API, y el nombre público es nombre + apellidos (nunca el nombr
 Negocios, novedades y sorteos tienen permisos propios (`edit_zn_negocios`…) que de momento solo tiene
 el administrador.
 
+**Roles de la app (R22).** Un rol de WordPress por cada rol del Laravel: «Administración (app)»,
+«Federación (app)», «Asociación (app)», «Comercio (app)» y «Usuario (app)» (`zn_administrador`…
+`zn_usuario`), con los permisos del Laravel tal cual como capacidades `zn:<permiso>` y ninguno de
+WordPress: no entran a wp-admin ni por `wp-login.php`. Para las rutas de la app:
+`current_user_can( 'zn_puede', 'business:save', $dueno )` vale con el permiso general o con el `_own` si
+el elemento es suyo (dueño = él, o el dueño cuelga de él por `parent_id`, un nivel, como el Laravel).
+
 **Puertas cerradas.** XML-RPC, páginas de autor (`?author=`) y vista embed, mapa del sitio, oEmbed,
 feeds, `/wp/v2/users`, `/wp/v2/media` y `/wp/v2/comments` (users y media siguen abiertas para quien
 ya puede ver usuarios o subir archivos).
@@ -68,5 +75,6 @@ un enlace de carpeta en `wp-content/plugins/zona-nautico`.
 - Lo que nunca debe salir y los arreglos de la revisión 1 (crea y borra sus propios datos): `wp eval-file tests/seguridad.php`
 - Campos iguales a las respuestas reales del Laravel (`Zona-Nautico/api-muestras`): `node tests/contrato-muestras.mjs`
 - Puertas de WordPress cerradas, vistas desde fuera: `node tests/puertas.mjs`
+- Roles y permisos (crea y borra sus propias cuentas): `wp eval-file tests/roles.php`
 - Formato de los errores: `node tests/contrato-errores.mjs` y `wp eval-file tests/errores.php` (los dos solo leen)
 - Recalcular todas las puntuaciones (al final de una migración): `wp zona-nautico recalcular-puntuaciones`

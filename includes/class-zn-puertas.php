@@ -37,7 +37,32 @@ class ZN_Puertas {
 		// contraseña es mala, y delataría qué cuentas hay (R33). La app entrará con su propio token.
 		add_filter( 'wp_is_application_passwords_available', '__return_false' );
 
+		// Las cuentas de la app solo entran por la app: ni wp-login.php ni su «¿Has olvidado tu contraseña?» (R22).
+		add_filter( 'wp_authenticate_user', array( __CLASS__, 'sin_panel_para_la_app' ) );
+		add_filter( 'allow_password_reset', array( __CLASS__, 'sin_recuperar_en_el_panel' ), 10, 2 );
+		// Y el formulario de wp-login.php no dice si una cuenta existe: el mismo aviso para todo.
+		add_filter( 'login_errors', array( __CLASS__, 'aviso_generico' ) );
+
 		add_filter( 'rest_endpoints', array( __CLASS__, 'quitar_rutas' ) );
+	}
+
+	const AVISO_ACCESO = '<strong>Error:</strong> los datos de acceso no son correctos.';
+
+	/** @param WP_User|WP_Error $usuario */
+	public static function sin_panel_para_la_app( $usuario ) {
+		if ( $usuario instanceof WP_User && ZN_Roles::rol_app( $usuario ) ) {
+			return new WP_Error( 'zn_solo_app', self::AVISO_ACCESO );
+		}
+		return $usuario;
+	}
+
+	public static function sin_recuperar_en_el_panel( $permitido, $id ) {
+		$usuario = get_userdata( (int) $id );
+		return $usuario && ZN_Roles::rol_app( $usuario ) ? false : $permitido;
+	}
+
+	public static function aviso_generico( $aviso ) {
+		return '' === trim( (string) $aviso ) ? $aviso : self::AVISO_ACCESO;
 	}
 
 	public static function sin_feeds(): void {
