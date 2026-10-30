@@ -30,8 +30,9 @@ coordenadas y 3 fotos (biblioteca de medios). Los datos se validan al guardar; l
 muestra, no se edita (la calcularán las reseñas, H14).
 
 Solo salen negocios, novedades y sorteos publicados y sin contraseña; las novedades de un negocio que
-no se ve, tampoco. Las descripciones y textos salen como texto plano (sin etiquetas ni entidades del
-editor visual) y las fechas de las reseñas en hora de Madrid.
+no se ve, tampoco. Las descripciones del editor salen como texto plano (sin etiquetas ni entidades del
+editor visual); lo que escriben las personas en reseñas y preguntas sale tal cual (solo con las
+entidades decodificadas) y las fechas de las reseñas en hora de Madrid.
 
 **Dueños y cuentas de la app.** El dueño de un negocio se elige en su ficha («Dueño») entre las
 cuentas con rol «Comercio (app)», que no tienen ningún permiso en wp-admin. Una cuenta de wp-admin
@@ -39,8 +40,9 @@ nunca sale en la API, y el nombre público es nombre + apellidos (nunca el nombr
 Negocios, novedades y sorteos tienen permisos propios (`edit_zn_negocios`…) que de momento solo tiene
 el administrador.
 
-**Puertas cerradas.** XML-RPC, páginas de autor (`?author=`), `/wp/v2/users`, `/wp/v2/media` y
-`/wp/v2/comments` (las dos primeras siguen abiertas para quien ya puede ver usuarios o subir archivos).
+**Puertas cerradas.** XML-RPC, páginas de autor (`?author=`) y vista embed, mapa del sitio, oEmbed,
+feeds, `/wp/v2/users`, `/wp/v2/media` y `/wp/v2/comments` (users y media siguen abiertas para quien
+ya puede ver usuarios o subir archivos).
 
 Las reseñas y las preguntas son comentarios de WordPress sobre el negocio (tipos `zn_resena` y
 `zn_pregunta`). Solo salen las aprobadas; en las preguntas, «aprobada» es `published` y el comercio

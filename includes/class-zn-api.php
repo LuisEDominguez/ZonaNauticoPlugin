@@ -153,6 +153,15 @@ class ZN_API {
 		return '' === $texto ? null : $texto;
 	}
 
+	/**
+	 * Texto que escribe una persona (reseñas y preguntas): sale tal cual, solo con las entidades
+	 * decodificadas. Nada de quitar etiquetas: «me encantó <3» o «<12 años» se cortarían (R20).
+	 */
+	public static function texto_escrito( ?string $texto ): ?string {
+		$texto = trim( html_entity_decode( (string) $texto, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+		return '' === $texto ? null : $texto;
+	}
+
 	/** Fecha guardada en UTC → "Y-m-d H:i:s" en hora de Madrid, como el Laravel (R5). */
 	public static function hora_madrid( string $utc ): ?string {
 		if ( '' === $utc || 0 === strpos( $utc, '0000-00-00' ) ) {

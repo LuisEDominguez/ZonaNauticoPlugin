@@ -114,6 +114,16 @@ try {
 	$ok( 'un <script> (de un administrador) desaparece con su contenido', "Hola\nAdiós" === ZN_API::texto_plano( "Hola<script>alert(1)</script>\n<em>Adiós</em>" ) );
 	$ok( 'texto vacío del editor → null', null === ZN_API::texto_plano( '<p>&nbsp;</p>' ) );
 
+	// --- R20: lo que escribe una persona en reseñas y preguntas sale entero ---
+	$corazon = $comentario( $visible, ZN_Comentarios::RESENA, array( 'comment_content' => 'me encantó <3 volveré', 'comment_meta' => array( 'score' => 5, 'response' => 'Gracias &amp; hasta pronto <3' ) ) );
+	$edades  = $comentario( $visible, ZN_Comentarios::PREGUNTA, array( 'comment_content' => '¿Precio para menores <12 y mayores >65?', 'comment_meta' => array( 'user_id' => $comercio, 'answer' => 'menores <12 gratis y >65 a mitad' ) ) );
+	$r       = $api( "/review/$corazon" )->get_data()['data'];
+	$p       = $api( "/faq/$edades" )->get_data()['data'];
+	$ok( 'reseña con «<3»: no se corta', 'me encantó <3 volveré' === $r['description'] );
+	$ok( 'respuesta de la reseña: entidades decodificadas y sin cortar', 'Gracias & hasta pronto <3' === $r['response'] );
+	$ok( 'pregunta con «<12» y «>65»: no se corta', '¿Precio para menores <12 y mayores >65?' === $p['question'] );
+	$ok( 'respuesta con «<12» y «>65»: no se corta', 'menores <12 gratis y >65 a mitad' === $p['answer'] );
+
 	// --- R19: la puntuación se recalcula aunque llegue después de crear la reseña ---
 	$solo    = $negocio( array() );
 	$tardia  = $comentario( $solo, ZN_Comentarios::RESENA );
@@ -138,6 +148,8 @@ try {
 	$ok( '/wp/v2/users cerrada', ! array_key_exists( '/wp/v2/users', $rutas ) );
 	$ok( '/wp/v2/media cerrada', ! array_key_exists( '/wp/v2/media', $rutas ) );
 	$ok( 'XML-RPC apagado', ! apply_filters( 'xmlrpc_enabled', true ) && array() === apply_filters( 'xmlrpc_methods', array( 'x' => 'y' ) ) );
+	$ok( 'mapa del sitio apagado', ! wp_sitemaps_get_server()->sitemaps_enabled() );
+	$ok( 'ruta oEmbed cerrada', ! array_key_exists( '/oembed/1.0/embed', $rutas ) );
 } finally {
 	foreach ( $creados['comentarios'] as $id ) {
 		wp_delete_comment( $id, true );
@@ -149,6 +161,14 @@ try {
 		wp_delete_user( $id );
 	}
 }
-$ok( 'limpieza: no queda nada temporal', ! get_posts( array( 'post_type' => 'any', 'post_status' => 'any', 's' => 'temporal', 'fields' => 'ids' ) ) && ! get_user_by( 'login', 'acceso-secreto-temporal' ) );
+
+// Limpieza, elemento a elemento: los tipos de la app no son públicos y no salen en búsquedas genéricas (R13).
+clean_comment_cache( $creados['comentarios'] );
+$quedan = array_merge(
+	array_filter( $creados['entradas'], static fn( $id ) => null !== get_post( $id ) ),
+	array_filter( $creados['comentarios'], static fn( $id ) => null !== get_comment( $id ) ),
+	array_filter( $creados['usuarios'], static fn( $id ) => false !== get_userdata( $id ) )
+);
+$ok( sprintf( 'limpieza: borrados %d entradas, %d comentarios y %d cuentas temporales', count( $creados['entradas'] ), count( $creados['comentarios'] ), count( $creados['usuarios'] ) ), ! $quedan && count( $creados['usuarios'] ) >= 2 );
 
 echo $fallos ? "\n$fallos fallo(s)\n" : "\nTodo bien\n";

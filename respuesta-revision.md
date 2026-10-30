@@ -22,6 +22,29 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Ronda | Fecha | Commit revisado | Respuesta en commit | Resumen |
 |---|---|---|---|---|
 | 1 | 30-10-2026 | `ea9c0bc` (v0.7.0) | `47e5ca8` (v0.8.0) | Bloque 1 (graves y lo urgente de importantes) hecho; el resto, pendiente o a decidir |
+| 2 | 30-10-2026 | `47e5ca8` (v0.8.0) | ver ronda 2 (v0.8.1) | Bloque 1-bis: R2 (resto), R20 y limpieza de R13 |
+
+---
+
+## Ronda 2
+
+Luis dio el sí al bloque 1-bis y a borrar el contenido de ejemplo de WordPress (30-10).
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **R2** (resto) | hecho | `class-zn-puertas.php`: mapa del sitio apagado (`wp_sitemaps_enabled`); oEmbed fuera (ruta `/oembed/1.0/*`, enlaces de descubrimiento y vista `?embed=true` → portada); feeds de entradas y comentarios → 301 a la portada y sin sus enlaces en `<head>`. En Local, la entrada «Hello world!» (1) y la página «Sample Page» (2) están en la **papelera** (no borradas del todo, por si hiciera falta recuperarlas). Pruebas en `tests/puertas.mjs` (mapa, feeds, oEmbed) y `tests/seguridad.php`. |
+| **R20** `texto_plano` cortaba reseñas y preguntas | hecho | `texto_plano()` solo para descripciones del editor (negocio, novedad, sorteo). Título, texto y respuesta de reseñas y pregunta y respuesta de FAQ usan `ZN_API::texto_escrito()`: solo decodifica entidades y recorta espacios. Pruebas con «me encantó <3 volveré» y «menores <12 gratis y >65» en `tests/seguridad.php`. |
+| **R13** (limpieza) | hecho | La comprobación final de `tests/seguridad.php` mira cada id creado (entradas, comentarios y las 2 cuentas) con `get_post`, `get_comment` y `get_userdata`. Resultado: «borrados 12 entradas, 8 comentarios y 2 cuentas temporales». |
+| **R13** (resto de la ronda 2: tipos en `contrato-muestras`, `/review` y `/faq` sin muestra, borrar puntuación, comando `recalcular-puntuaciones`, edición real) | pendiente | Fuera del bloque 1-bis que se pidió; queda apuntado. |
+| **R12, R22** | pendiente | Primeros pasos de la fase de login, como pedís. |
+| **R7, R24** | espera decisión | — |
+| **R25-R29** | pendiente | Mejoras; sin tocar en esta ronda. |
+
+### Resultado de las pruebas (código de la ronda 2, 30-10)
+
+Todas en verde: `seguridad.php` 62, `comentarios.php` 15, `admin-fichas.php` 38, `contrato-negocios` 8,
+`contrato-eventos` 10, `contrato-sorteos` 8, `contrato-resenas` 11, `contrato-preguntas` 9,
+`contrato-muestras` 6 y `puertas.mjs` 8.
 
 ---
 

@@ -106,9 +106,9 @@ class ZN_API_Resenas {
 
 		$datos = array(
 			'_id'         => (string) $id,
-			'title'       => ZN_API::texto_plano( $campo( 'title' ) ),
-			'description' => ZN_API::texto_plano( $resena->comment_content ),
-			'response'    => ZN_API::texto_plano( $campo( 'response' ) ),
+			'title'       => ZN_API::texto_escrito( $campo( 'title' ) ),
+			'description' => ZN_API::texto_escrito( $resena->comment_content ),
+			'response'    => ZN_API::texto_escrito( $campo( 'response' ) ),
 			'score'       => ZN_API::numero( $campo( 'score' ) ) ?? 0,
 			// En hora de Madrid, sea cual sea la zona horaria del sitio (R5).
 			'datetime'    => ZN_API::hora_madrid( $resena->comment_date_gmt ),

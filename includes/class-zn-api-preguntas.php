@@ -91,8 +91,8 @@ class ZN_API_Preguntas {
 
 		$datos = array(
 			'_id'       => (string) $id,
-			'question'  => ZN_API::texto_plano( $pregunta->comment_content ),
-			'answer'    => ZN_API::texto_plano( (string) get_comment_meta( $id, 'answer', true ) ),
+			'question'  => ZN_API::texto_escrito( $pregunta->comment_content ),
+			'answer'    => ZN_API::texto_escrito( (string) get_comment_meta( $id, 'answer', true ) ),
 			'published' => '1' === $pregunta->comment_approved ? 1 : 0,
 		);
 		if ( $incluir_usuario ) {
