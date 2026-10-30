@@ -65,12 +65,13 @@ class ZN_CLI {
 				'user_login' => 'comercio-prueba',
 				'user_email' => 'comercio-prueba@ejemplo.invalid',
 				'user_pass'  => wp_generate_password( 32 ),
+				'role'       => 'zn_comercio',
 			)
 		);
 		if ( is_wp_error( $id ) ) {
 			WP_CLI::error( $id->get_error_message() );
 		}
-		// Rol y nombre público (el que enseña la API; nunca el nombre de acceso).
+		// Un solo rol (set_role vía wp_update_user, nunca add_role: R37) y nombre público (nunca el nombre de acceso).
 		wp_update_user( array( 'ID' => $id, 'role' => 'zn_comercio', 'first_name' => 'Comercio', 'last_name' => 'Prueba', 'display_name' => 'Comercio Prueba' ) );
 
 		if ( ! ZN_Negocios::dueno( $negocio ) ) {

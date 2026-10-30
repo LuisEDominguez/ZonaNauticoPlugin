@@ -43,9 +43,11 @@ el administrador.
 **Roles de la app (R22).** Un rol de WordPress por cada rol del Laravel: «Administración (app)»,
 «Federación (app)», «Asociación (app)», «Comercio (app)» y «Usuario (app)» (`zn_administrador`…
 `zn_usuario`), con los permisos del Laravel tal cual como capacidades `zn:<permiso>` y ninguno de
-WordPress: no entran a wp-admin ni por `wp-login.php`. Para las rutas de la app:
-`current_user_can( 'zn_puede', 'business:save', $dueno )` vale con el permiso general o con el `_own` si
-el elemento es suyo (dueño = él, o el dueño cuelga de él por `parent_id`, un nivel, como el Laravel).
+WordPress: no entran a wp-admin ni por `wp-login.php`. Cada cuenta de la app tiene un solo rol; si tiene
+más, no cuenta como cuenta de la app. Para las rutas de la app: `ZN_Roles::puede( 'business:save', $elemento )`
+saca el dueño del propio elemento guardado y vale con el permiso general o con el `_own` si es suyo. La
+cuenta padre (`zn_parent_id`, un nivel) solo hereda si es asociación o federación y solo en negocios,
+novedades y preguntas; en cuentas, «lo suyo» es solo uno mismo y las hijas van con `user:save_commerce`…
 
 **Puertas cerradas.** XML-RPC, páginas de autor (`?author=`) y vista embed, mapa del sitio, oEmbed,
 feeds, `/wp/v2/users`, `/wp/v2/media` y `/wp/v2/comments` (users y media siguen abiertas para quien

@@ -50,7 +50,7 @@ class ZN_Puertas {
 
 	/** @param WP_User|WP_Error $usuario */
 	public static function sin_panel_para_la_app( $usuario ) {
-		if ( $usuario instanceof WP_User && ZN_Roles::rol_app( $usuario ) ) {
+		if ( $usuario instanceof WP_User && ZN_Roles::tiene_rol_de_la_app( $usuario ) ) {
 			return new WP_Error( 'zn_solo_app', self::AVISO_ACCESO );
 		}
 		return $usuario;
@@ -58,7 +58,7 @@ class ZN_Puertas {
 
 	public static function sin_recuperar_en_el_panel( $permitido, $id ) {
 		$usuario = get_userdata( (int) $id );
-		return $usuario && ZN_Roles::rol_app( $usuario ) ? false : $permitido;
+		return $usuario && ZN_Roles::tiene_rol_de_la_app( $usuario ) ? false : $permitido;
 	}
 
 	public static function aviso_generico( $aviso ) {

@@ -26,6 +26,32 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | 3 | 30-10-2026 | `5156ce5` (v0.8.1) | `361c7a6` (v0.9.0) | OK del revisor al bloque 1-bis. Fase de login, paso 1: R12. Decisión de Luis sobre R7 |
 | 4 | 30-10-2026 | `361c7a6` (v0.9.0) | `df0529c` (v0.9.1) | OK del revisor a R12. Arreglos previos a R22: R31, R33 y R34a |
 | 5 | 30-10-2026 | `df0529c` (v0.9.1) | `ce2620a` (v0.10.0) | OK del revisor a R31, R33 y R34a. R22 (roles), sin el token: la librería espera la opinión del revisor y la decisión de Luis |
+| 6 | 30-10-2026 | `ce2620a` (v0.10.0) | ver ronda 6 (v0.10.1) | R35, R36 y R37 (arreglos de roles antes de R32). Token y R40, en espera de Luis |
+
+---
+
+## Ronda 6
+
+El revisor vio R22 bien para lo que existe hoy y pidió R35-R37 antes de R32. Luis dio el sí (30-10).
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **R35** Rehacer roles cambiaba el rol por defecto | hecho | `ZN_Roles::actualizar()` ya no borra roles: quita los permisos que sobran y añade los que faltan. Las cuentas se crean con el rol explícito (también `comercio-prueba` en los datos de prueba). Prueba: con `default_role = zn_usuario`, poner al día los roles no lo cambia. |
+| **R36** «Cuelga de él» para cualquier `_own` | hecho | `ZN_Roles::puede( $permiso, WP_Post\|WP_Comment\|WP_User\|null, ?$usuario )` saca el dueño del elemento guardado (negocio/novedad/sorteo → `user_id`; reseña → quien la escribió, o el dueño del negocio para `review:reply`; pregunta → su comercio destinatario). Herencia por el padre solo si quien pregunta es asociación o federación y solo en `business`, `event` y `faq`. En cuentas: uno mismo con `user:save_own` / `user:delete_self`; otra cuenta solo con `user:<acción>_<rol de la cuenta destino>` y si cuelga de él (**más estricto que el Laravel**, que también deja tocar cuentas de ese rol sin padre). El padre se guarda en `zn_parent_id`. Se quitó la meta-capacidad `zn_puede`. |
+| **R37** Cuentas con varios roles | hecho | `rol_app()` solo da rol si la cuenta tiene exactamente uno y es de la app; los permisos salen de ese rol (no de `allcaps`). Con dos roles de la app, o uno de la app y otro de WordPress: sin rol de la app, sin permisos `zn:` y sin salir en la API; y aun así sin entrar por `wp-login.php` (`tiene_rol_de_la_app()`). |
+| **Token (R32)** | espera decisión (Luis) | Vuestra recomendación (token opaco con tabla propia) frente a `firebase/php-jwt`: Luis lo está pensando. R32 no está empezado. |
+| **R40** Panel para los encargados | espera decisión (Luis y Alejandro) | Luis lo consultará; queda apuntado. |
+| **R38, R39** | pendiente | Requisitos del login; se aplicarán al programarlo. |
+
+Pruebas: `tests/roles.php` ampliado a 57 comprobaciones (R35, herencia por recurso y por rol, reseñas,
+respuestas, preguntas, cuentas hijas, varios roles, limpieza elemento a elemento).
+
+### Resultado de las pruebas (código de la ronda 6, 30-10)
+
+Todas en verde: `roles.php` 57, `errores.php` 16, `seguridad.php` 62, `comentarios.php` 15,
+`admin-fichas.php` 38, `contrato-errores` 9, `contrato-negocios` 8, `contrato-eventos` 10,
+`contrato-sorteos` 8, `contrato-resenas` 11, `contrato-preguntas` 9, `contrato-muestras` 6 y
+`puertas.mjs` 9.
 
 ---
 
