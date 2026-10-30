@@ -53,6 +53,9 @@ class ZN_Eventos {
 				'menu_icon'     => 'dashicons-megaphone',
 				'menu_position' => 26,
 				'supports'      => array( 'title', 'editor' ),
+				// Permisos propios (no los de las entradas normales): solo quien tenga edit_zn_eventos y compañía (R3).
+				'capability_type' => array( 'zn_evento', 'zn_eventos' ),
+				'map_meta_cap'    => true,
 			)
 		);
 
@@ -64,7 +67,7 @@ class ZN_Eventos {
 					'type'          => $tipo,
 					'single'        => true,
 					'show_in_rest'  => false,
-					'auth_callback' => static fn() => current_user_can( 'edit_posts' ),
+					'auth_callback' => static fn( $permitido, $clave, $id ) => current_user_can( 'edit_post', (int) $id ),
 				)
 			);
 		}

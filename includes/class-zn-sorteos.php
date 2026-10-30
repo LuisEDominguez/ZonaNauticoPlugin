@@ -44,6 +44,9 @@ class ZN_Sorteos {
 				'menu_icon'     => 'dashicons-tickets-alt',
 				'menu_position' => 27,
 				'supports'      => array( 'title', 'editor' ),
+				// Permisos propios (no los de las entradas normales): solo quien tenga edit_zn_sorteos y compañía (R3).
+				'capability_type' => array( 'zn_sorteo', 'zn_sorteos' ),
+				'map_meta_cap'    => true,
 			)
 		);
 
@@ -55,7 +58,7 @@ class ZN_Sorteos {
 					'type'          => $tipo,
 					'single'        => true,
 					'show_in_rest'  => false,
-					'auth_callback' => static fn() => current_user_can( 'edit_posts' ),
+					'auth_callback' => static fn( $permitido, $clave, $id ) => current_user_can( 'edit_post', (int) $id ),
 				)
 			);
 		}

@@ -8,6 +8,24 @@ defined( 'ABSPATH' ) || exit;
 class ZN_CLI {
 
 	/**
+	 * Recalcula la puntuación de todos los negocios con la media de sus reseñas aprobadas.
+	 * Para el final de una migración, o si alguna vez una puntuación no cuadra.
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     wp zona-nautico recalcular-puntuaciones
+	 *
+	 * @subcommand recalcular-puntuaciones
+	 */
+	public function recalcular_puntuaciones(): void {
+		$negocios = get_posts( array( 'post_type' => ZN_Negocios::TIPO, 'post_status' => 'any', 'posts_per_page' => -1, 'fields' => 'ids' ) );
+		foreach ( $negocios as $negocio ) {
+			ZN_Comentarios::recalcular_puntuacion( $negocio );
+		}
+		WP_CLI::success( sprintf( 'Puntuación recalculada en %d negocios.', count( $negocios ) ) );
+	}
+
+	/**
 	 * Mete negocios, novedades, sorteos, reseñas y preguntas inventados para probar la API. Solo en un WordPress local;
 	 * cada tipo solo se rellena si todavía no tiene ninguna entrada.
 	 *
@@ -33,28 +51,37 @@ class ZN_CLI {
 	}
 
 	/**
-	 * Las preguntas son del dueño del negocio (autor de la entrada). Los negocios creados desde WP-CLI
-	 * no tienen autor: a la Taberna se le pone una cuenta inventada sin privilegios.
+	 * A la Taberna se le pone de dueño una cuenta inventada con rol «Comercio (app)», sin permisos de
+	 * wp-admin, y sus preguntas van dirigidas a ese comercio. Sirve también para bases de datos de prueba
+	 * creadas con versiones anteriores (cuenta como suscriptor, preguntas sin destinatario).
 	 */
 	private static function dueno_de_prueba( ?int $negocio ): void {
-		if ( ! $negocio || get_post_field( 'post_author', $negocio ) ) {
+		if ( ! $negocio ) {
 			return;
 		}
 		$dueno = get_user_by( 'login', 'comercio-prueba' );
 		$id    = $dueno ? $dueno->ID : wp_insert_user(
 			array(
-				'user_login'   => 'comercio-prueba',
-				'user_email'   => 'comercio-prueba@ejemplo.invalid',
-				'user_pass'    => wp_generate_password( 32 ),
-				'display_name' => 'Comercio Prueba',
-				'role'         => 'subscriber',
+				'user_login' => 'comercio-prueba',
+				'user_email' => 'comercio-prueba@ejemplo.invalid',
+				'user_pass'  => wp_generate_password( 32 ),
 			)
 		);
 		if ( is_wp_error( $id ) ) {
 			WP_CLI::error( $id->get_error_message() );
 		}
-		wp_update_post( array( 'ID' => $negocio, 'post_author' => $id ) );
-		WP_CLI::success( 'La Taberna de prueba ya tiene dueño (cuenta inventada «Comercio Prueba»).' );
+		// Rol y nombre público (el que enseña la API; nunca el nombre de acceso).
+		wp_update_user( array( 'ID' => $id, 'role' => 'zn_comercio', 'first_name' => 'Comercio', 'last_name' => 'Prueba', 'display_name' => 'Comercio Prueba' ) );
+
+		if ( ! ZN_Negocios::dueno( $negocio ) ) {
+			update_post_meta( $negocio, 'user_id', $id );
+		}
+		foreach ( get_comments( array( 'post_id' => $negocio, 'type' => ZN_Comentarios::PREGUNTA, 'status' => 'all', 'fields' => 'ids' ) ) as $pregunta ) {
+			if ( ! get_comment_meta( $pregunta, 'user_id', true ) ) {
+				update_comment_meta( $pregunta, 'user_id', ZN_Negocios::dueno( $negocio ) );
+			}
+		}
+		WP_CLI::log( 'La Taberna de prueba tiene de dueño la cuenta inventada «Comercio Prueba».' );
 	}
 
 	/** Como rellenar(), con comentarios. Sin cuentas de usuario: solo el nombre de quien escribe. */
@@ -76,8 +103,11 @@ class ZN_CLI {
 					'comment_author'   => $c['autor'],
 					'comment_content'  => $c['texto'] ?? '',
 					'comment_approved' => $c['aprobado'] ?? 1,
+					// Las fechas inventadas están en hora de Madrid; se guardan también en UTC, que es la que usa la API.
 					'comment_date'     => $c['fecha'] ?? current_time( 'mysql' ),
-					'comment_meta'     => $c['campos'] ?? array(),
+					'comment_date_gmt' => isset( $c['fecha'] ) ? self::madrid_a_utc( $c['fecha'] ) : current_time( 'mysql', true ),
+					// Las preguntas van al dueño del negocio en ese momento (R8).
+					'comment_meta'     => ( $c['campos'] ?? array() ) + ( ZN_Comentarios::PREGUNTA === $tipo ? array( 'user_id' => ZN_Negocios::dueno( $negocio[0] ) ) : array() ),
 				)
 			);
 			if ( ! $id ) {
@@ -89,7 +119,7 @@ class ZN_CLI {
 
 	/** Reseñas ficticias: la Taberna queda con media 4,5 y Náutica Cíes con 3; una sin aprobar no cuenta. */
 	private static function resenas_inventadas(): array {
-		$hace = static fn( string $cuando ) => ( new DateTimeImmutable( $cuando, wp_timezone() ) )->format( 'Y-m-d H:i:s' );
+		$hace = static fn( string $cuando ) => ( new DateTimeImmutable( $cuando, new DateTimeZone( 'Europe/Madrid' ) ) )->format( 'Y-m-d H:i:s' );
 
 		return array(
 			array(
@@ -284,5 +314,11 @@ El pulpo, de diez.",
 				'score'                => 0,
 			),
 		);
+	}
+
+	private static function madrid_a_utc( string $fecha ): string {
+		return ( new DateTimeImmutable( $fecha, new DateTimeZone( 'Europe/Madrid' ) ) )
+			->setTimezone( new DateTimeZone( 'UTC' ) )
+			->format( 'Y-m-d H:i:s' );
 	}
 }

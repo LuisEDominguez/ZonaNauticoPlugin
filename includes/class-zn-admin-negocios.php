@@ -45,6 +45,7 @@ class ZN_Admin_Negocios {
 		ZN_Admin_Campos::sello();
 		$id        = $entrada->ID;
 		$categoria = (int) ZN_Admin_Campos::valor( $id, 'business_category_id' );
+		$dueno     = ZN_Negocios::dueno( $id );
 		?>
 		<p class="description">El nombre va en el título y la descripción en el cuadro grande de arriba.</p>
 		<table class="form-table" role="presentation">
@@ -57,6 +58,18 @@ class ZN_Admin_Negocios {
 							<option value="<?php echo esc_attr( $valor ); ?>" <?php selected( $categoria, $valor ); ?>><?php echo esc_html( $nombre ); ?></option>
 						<?php endforeach; ?>
 					</select>
+				</td>
+			</tr>
+			<tr>
+				<th><label for="zn-dueno">Dueño</label></th>
+				<td>
+					<select id="zn-dueno" name="zn[user_id]">
+						<option value="">— Sin dueño —</option>
+						<?php foreach ( ZN_Roles::cuentas( 'zn_comercio' ) as $cuenta ) : ?>
+							<option value="<?php echo esc_attr( $cuenta->ID ); ?>" <?php selected( $dueno, (int) $cuenta->ID ); ?>><?php echo esc_html( "{$cuenta->display_name} ({$cuenta->user_email})" ); ?></option>
+						<?php endforeach; ?>
+					</select>
+					<p class="description">Solo cuentas con el rol «Comercio (app)». Las preguntas de la app van a este comercio.</p>
 				</td>
 			</tr>
 			<?php foreach ( self::TEXTOS as $campo => $etiqueta ) : ?>
@@ -124,6 +137,16 @@ class ZN_Admin_Negocios {
 			$limpio['business_category_id'] = (int) $categoria;
 		}
 
+		// El dueño solo puede ser una cuenta Comercio de la app, nunca una de wp-admin (R1).
+		$dueno = $texto( 'user_id' );
+		if ( '' === $dueno ) {
+			$limpio['user_id'] = null;
+		} elseif ( self::es_comercio( (int) $dueno ) ) {
+			$limpio['user_id'] = (int) $dueno;
+		} else {
+			$errores[] = 'El dueño elegido no es una cuenta de comercio; no se ha cambiado.';
+		}
+
 		$email = $texto( 'email' );
 		if ( '' === $email ) {
 			$limpio['email'] = null;
@@ -154,5 +177,10 @@ class ZN_Admin_Negocios {
 		ZN_Admin_Campos::limpiar_urls( $datos, 'photo', $limpio );
 
 		return $limpio;
+	}
+
+	private static function es_comercio( int $id ): bool {
+		$usuario = $id ? get_userdata( $id ) : false;
+		return $usuario && 'commerce' === ZN_Roles::rol_app( $usuario );
 	}
 }

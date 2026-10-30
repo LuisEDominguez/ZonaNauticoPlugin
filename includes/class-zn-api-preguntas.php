@@ -4,9 +4,9 @@
  *
  * Responde igual que el FaqResource del Laravel: _id, question, answer y published, más user (el
  * comercio al que se pregunta) y publisher (quien pregunta) con ?includesUser=1.
- * Filtro user: las preguntas de los negocios de ese usuario (en Laravel las FAQ son del comercio,
- * no del negocio). A diferencia del Laravel (H20), las no publicadas no salen nunca, se pida o no
- * ?published=1.
+ * Filtro user: las preguntas dirigidas a ese comercio. Como en el Laravel, la pregunta guarda su
+ * comercio destinatario (campo `user_id`), no depende del dueño actual del negocio (R8).
+ * A diferencia del Laravel (H20), las no publicadas no salen nunca, se pida o no ?published=1.
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -63,7 +63,9 @@ class ZN_API_Preguntas {
 			'order'     => 'desc' === $peticion['order'] ? 'DESC' : 'ASC',
 		);
 		if ( ! empty( $peticion['user'] ) ) {
-			$argumentos['post_author'] = (int) $peticion['user'];
+			$argumentos['meta_query'] = array(
+				array( 'key' => 'user_id', 'value' => (int) $peticion['user'], 'type' => 'NUMERIC' ),
+			);
 		}
 
 		$incluir_usuario = (bool) $peticion['includesUser'];
@@ -85,16 +87,16 @@ class ZN_API_Preguntas {
 
 	/** Comentario `zn_pregunta` → objeto con los mismos campos que el FaqResource del Laravel. */
 	public static function formatear( WP_Comment $pregunta, bool $incluir_usuario = false ): array {
-		$respuesta = get_comment_meta( (int) $pregunta->comment_ID, 'answer', true );
+		$id = (int) $pregunta->comment_ID;
 
 		$datos = array(
-			'_id'       => (string) $pregunta->comment_ID,
-			'question'  => '' === $pregunta->comment_content ? null : $pregunta->comment_content,
-			'answer'    => '' === $respuesta ? null : (string) $respuesta,
+			'_id'       => (string) $id,
+			'question'  => ZN_API::texto_plano( $pregunta->comment_content ),
+			'answer'    => ZN_API::texto_plano( (string) get_comment_meta( $id, 'answer', true ) ),
 			'published' => '1' === $pregunta->comment_approved ? 1 : 0,
 		);
 		if ( $incluir_usuario ) {
-			$datos['user']      = ZN_API::usuario_publico( (int) get_post_field( 'post_author', (int) $pregunta->comment_post_ID ) );
+			$datos['user']      = ZN_API::usuario_publico( (int) get_comment_meta( $id, 'user_id', true ) );
 			$datos['publisher'] = ZN_API::usuario_publico( (int) $pregunta->user_id, $pregunta->comment_author );
 		}
 		return $datos;

@@ -33,7 +33,30 @@ class ZN_Negocios {
 		'video_1'              => 'string',
 		'video_2'              => 'string',
 		'score'                => 'number',
+		// Dueño: cuenta de la app con rol Comercio (no el autor de la entrada, R1).
+		'user_id'              => 'integer',
 	);
+
+	/** IDs de los negocios que la API enseña: publicados y sin contraseña. */
+	public static function visibles(): array {
+		$ids = get_posts(
+			array(
+				'post_type'        => self::TIPO,
+				'post_status'      => 'publish',
+				'has_password'     => false,
+				'posts_per_page'   => -1,
+				'fields'           => 'ids',
+				'no_found_rows'    => true,
+				'suppress_filters' => true,
+			)
+		);
+		return array_map( 'intval', $ids );
+	}
+
+	/** Cuenta de la app dueña del negocio, o 0. */
+	public static function dueno( int $negocio ): int {
+		return (int) get_post_meta( $negocio, 'user_id', true );
+	}
 
 	public static function registrar(): void {
 		register_post_type(
@@ -52,6 +75,9 @@ class ZN_Negocios {
 				'menu_icon'     => 'dashicons-store',
 				'menu_position' => 25,
 				'supports'      => array( 'title', 'editor' ),
+				// Permisos propios (no los de las entradas normales): solo quien tenga edit_zn_negocios y compañía (R3).
+				'capability_type' => array( 'zn_negocio', 'zn_negocios' ),
+				'map_meta_cap'    => true,
 			)
 		);
 
@@ -63,7 +89,7 @@ class ZN_Negocios {
 					'type'          => $tipo,
 					'single'        => true,
 					'show_in_rest'  => false,
-					'auth_callback' => static fn() => current_user_can( 'edit_posts' ),
+					'auth_callback' => static fn( $permitido, $clave, $id ) => current_user_can( 'edit_post', (int) $id ),
 				)
 			);
 		}

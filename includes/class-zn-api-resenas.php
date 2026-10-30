@@ -3,9 +3,9 @@
  * GET /review y GET /review/{id} (públicos, solo lectura).
  *
  * Responde igual que el ReviewResource del Laravel: _id, title, description, response, score y
- * datetime ("Y-m-d H:i:s"), más user (?includesUser=1, solo los 4 campos públicos, H27) y
+ * datetime ("Y-m-d H:i:s", hora de Madrid), más user (?includesUser=1, solo los 4 campos públicos, H27) y
  * business (?includesBusiness=1). Filtros business y user. Solo salen las reseñas aprobadas
- * de negocios publicados (ver ZN_Comentarios).
+ * de negocios visibles (ver ZN_Comentarios).
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -106,11 +106,12 @@ class ZN_API_Resenas {
 
 		$datos = array(
 			'_id'         => (string) $id,
-			'title'       => $campo( 'title' ),
-			'description' => '' === $resena->comment_content ? null : $resena->comment_content,
-			'response'    => $campo( 'response' ),
+			'title'       => ZN_API::texto_plano( $campo( 'title' ) ),
+			'description' => ZN_API::texto_plano( $resena->comment_content ),
+			'response'    => ZN_API::texto_plano( $campo( 'response' ) ),
 			'score'       => ZN_API::numero( $campo( 'score' ) ) ?? 0,
-			'datetime'    => $resena->comment_date,
+			// En hora de Madrid, sea cual sea la zona horaria del sitio (R5).
+			'datetime'    => ZN_API::hora_madrid( $resena->comment_date_gmt ),
 		);
 		if ( $incluir_usuario ) {
 			$datos['user'] = ZN_API::usuario_publico( (int) $resena->user_id, $resena->comment_author );

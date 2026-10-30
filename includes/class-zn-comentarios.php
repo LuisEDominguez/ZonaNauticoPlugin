@@ -3,8 +3,8 @@
  * Reseñas y preguntas guardadas como comentarios de WordPress sobre la entrada `negocio`:
  * - reseña (tipo `zn_resena`): texto → contenido; score, title y response → campos del comentario;
  *   datetime → fecha del comentario. Solo cuentan las aprobadas.
- * - pregunta (tipo `zn_pregunta`): pregunta → contenido; answer → campo del comentario;
- *   published = aprobada. El comercio destinatario (`user` en Laravel) es el autor del negocio.
+ * - pregunta (tipo `zn_pregunta`): pregunta → contenido; answer y user_id (el comercio destinatario,
+ *   como en el Laravel) → campos del comentario; published = aprobada.
  * Quien escribe es el usuario del comentario (o, en datos de prueba, solo su nombre).
  *
  * Los comentarios nativos de WordPress quedan cerrados: la app solo entra por /zonanautico/v1.
@@ -30,6 +30,19 @@ class ZN_Comentarios {
 		add_action( 'wp_insert_comment', array( __CLASS__, 'al_cambiar_resena' ), 10, 2 );
 		add_action( 'edit_comment', array( __CLASS__, 'al_cambiar_resena' ) );
 		add_action( 'deleted_comment', array( __CLASS__, 'al_cambiar_resena' ), 10, 2 );
+		// También si la puntuación se añade o cambia después de crear la reseña (p. ej. al migrar, R19).
+		foreach ( array( 'added_comment_meta', 'updated_comment_meta', 'deleted_comment_meta' ) as $gancho ) {
+			add_action(
+				$gancho,
+				static function ( $meta, $id, $clave ) {
+					if ( 'score' === $clave ) {
+						self::al_cambiar_resena( $id );
+					}
+				},
+				10,
+				3
+			);
+		}
 		add_action(
 			'transition_comment_status',
 			static fn( $nuevo, $antes, $comentario ) => self::al_cambiar_resena( (int) $comentario->comment_ID, $comentario ),

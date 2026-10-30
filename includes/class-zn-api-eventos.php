@@ -67,6 +67,13 @@ class ZN_API_Eventos {
 			}
 		}
 
+		// Las novedades de un negocio que no se ve (papelera, borrador, contraseña…) tampoco salen (R15).
+		$argumentos['meta_query'][] = array(
+			'relation' => 'OR',
+			array( 'key' => 'business_id', 'compare' => 'NOT EXISTS' ),
+			array( 'key' => 'business_id', 'value' => ZN_Negocios::visibles() ?: array( 0 ), 'compare' => 'IN', 'type' => 'NUMERIC' ),
+		);
+
 		// Desempate por ID para que la paginación sea estable.
 		switch ( $peticion['orderby'] ) {
 			case 'name':
@@ -90,9 +97,15 @@ class ZN_API_Eventos {
 		);
 	}
 
+	/** Sin negocio, o con un negocio que la API enseña. */
+	private static function negocio_visible( int $evento ): bool {
+		$negocio = (int) ZN_API::campo( $evento, 'business_id' );
+		return ! $negocio || ZN_API::entrada( $negocio, ZN_Negocios::TIPO );
+	}
+
 	public static function ficha( WP_REST_Request $peticion ): WP_REST_Response {
 		$entrada = ZN_API::entrada( (int) $peticion['id'], ZN_Eventos::TIPO );
-		if ( ! $entrada ) {
+		if ( ! $entrada || ! self::negocio_visible( $entrada->ID ) ) {
 			return ZN_API::no_encontrado();
 		}
 		return new WP_REST_Response( array( 'data' => self::formatear( $entrada, self::inclusiones( $peticion ) ) ) );
@@ -113,7 +126,7 @@ class ZN_API_Eventos {
 		$evento = array(
 			'_id'         => (string) $id,
 			'name'        => $entrada->post_title,
-			'description' => '' === $entrada->post_content ? null : $entrada->post_content,
+			'description' => ZN_API::texto_plano( $entrada->post_content ),
 			'latitude'    => ZN_API::numero( ZN_API::campo( $id, 'latitude' ) ),
 			'longitude'   => ZN_API::numero( ZN_API::campo( $id, 'longitude' ) ),
 		);

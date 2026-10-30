@@ -50,6 +50,8 @@ $html = ob_get_clean();
 $ok( 'la ficha se pinta con sus datos', false !== strpos( $html, 'name="zn[address]"' ) && false !== strpos( $html, 'Elegir foto 3' ) );
 
 // --- Novedades ---
+// Colgar una novedad de un negocio exige poder editar ese negocio (R3): se prueba como administrador.
+wp_set_current_user( get_users( array( 'role' => 'administrator', 'number' => 1, 'fields' => 'ids' ) )[0] );
 $taberna = get_posts( array( 'post_type' => ZN_Negocios::TIPO, 'numberposts' => 1, 'fields' => 'ids' ) )[0];
 $e = array();
 $l = ZN_Admin_Eventos::limpiar(
@@ -65,6 +67,10 @@ $ok( 'novedad: negocio existente', $taberna === $l['business_id'] );
 $ok( 'novedad: fechas al formato del Laravel', '2026-11-02 10:30:00' === $l['start_date'] && '2026-11-02 12:00:00' === $l['end_date'] );
 $ok( 'novedad: vídeo https sí, javascript: no', 'https://x.es/v.mp4' === $l['video_0'] && null === $l['video_1'] );
 $ok( 'novedad: foto', 'https://x.es/f.jpg' === $l['photo_0'] );
+wp_set_current_user( 0 );
+$sin_permiso = array();
+$ok( 'novedad: sin permiso sobre el negocio no se cuelga de él', ! array_key_exists( 'business_id', ZN_Admin_Eventos::limpiar( array( 'business_id' => (string) $taberna ), $sin_permiso ) ) && $sin_permiso );
+wp_set_current_user( get_users( array( 'role' => 'administrator', 'number' => 1, 'fields' => 'ids' ) )[0] );
 
 $e = array();
 $l = ZN_Admin_Eventos::limpiar( array( 'event_category_id' => '9', 'business_id' => '999999', 'start_date' => '2026-13-40T99:00' ), $e );

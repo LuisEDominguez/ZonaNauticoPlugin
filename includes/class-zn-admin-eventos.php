@@ -95,10 +95,13 @@ class ZN_Admin_Eventos {
 		$negocio = $texto( 'business_id' );
 		if ( '' === $negocio ) {
 			$limpio['business_id'] = null;
-		} elseif ( ZN_API::entrada( (int) $negocio, ZN_Negocios::TIPO ) ) {
-			$limpio['business_id'] = (int) $negocio;
-		} else {
+		} elseif ( ! ZN_API::entrada( (int) $negocio, ZN_Negocios::TIPO ) ) {
 			$errores[] = 'El negocio elegido no existe o no está publicado; no se ha cambiado.';
+		} elseif ( ! current_user_can( 'edit_post', (int) $negocio ) ) {
+			// Solo se puede colgar una novedad de un negocio que uno mismo puede editar (R3).
+			$errores[] = 'No puedes colgar novedades de ese negocio; no se ha cambiado.';
+		} else {
+			$limpio['business_id'] = (int) $negocio;
 		}
 
 		ZN_Admin_Campos::limpiar_fechas( $datos, $limpio, $errores );

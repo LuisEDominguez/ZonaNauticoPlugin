@@ -47,6 +47,8 @@ class ZN_API {
 			$argumentos,
 			array(
 				'post_status'         => 'publish',
+				// Las protegidas con contraseña tampoco salen (R11).
+				'has_password'        => false,
 				'posts_per_page'      => $por_pagina,
 				'paged'               => $pagina,
 				'ignore_sticky_posts' => true,
@@ -67,11 +69,11 @@ class ZN_API {
 
 	/**
 	 * Listado de comentarios (reseñas y preguntas) con la misma paginación. $argumentos van a WP_Comment_Query;
-	 * solo salen los aprobados de entradas publicadas.
+	 * solo salen los aprobados de negocios visibles (publicados y sin contraseña).
 	 */
 	public static function listado_comentarios( WP_REST_Request $peticion, array $argumentos, string $recurso, callable $formatear ): WP_REST_Response {
 		$por_pagina = min( (int) $peticion['perPage'], self::POR_PAGINA_MAX );
-		$argumentos = array_merge( $argumentos, array( 'status' => 'approve', 'post_status' => 'publish' ) );
+		$argumentos = array_merge( $argumentos, array( 'status' => 'approve', 'post__in' => ZN_Negocios::visibles() ?: array( 0 ) ) );
 
 		$total       = (int) get_comments( array_merge( $argumentos, array( 'count' => true, 'orderby' => 'none' ) ) );
 		$comentarios = get_comments(
@@ -99,39 +101,72 @@ class ZN_API {
 		);
 	}
 
-	/** Comentario aprobado de un tipo, en una entrada publicada; o null. */
+	/** Comentario aprobado de un tipo, en un negocio visible; o null. */
 	public static function comentario( int $id, string $tipo ): ?WP_Comment {
 		$comentario = get_comment( $id );
 		if ( ! $comentario || $tipo !== $comentario->comment_type || '1' !== $comentario->comment_approved ) {
 			return null;
 		}
-		return 'publish' === get_post_status( (int) $comentario->comment_post_ID ) ? $comentario : null;
+		return self::entrada( (int) $comentario->comment_post_ID, ZN_Negocios::TIPO ) ? $comentario : null;
 	}
 
 	/**
 	 * Usuario como lo da el UserResource del Laravel a quien no ha iniciado sesión (H27): solo _id, name,
-	 * role y avatar. Sin cuenta (datos de prueba) sale con _id null y el nombre guardado.
-	 * Los roles de la app todavía no existen en el plugin: un administrador de WordPress sale como
-	 * `administrator` y el resto como `user`.
+	 * role y avatar. Solo cuentas de la app (ver ZN_Roles): una cuenta de wp-admin nunca sale (R1).
+	 * Sin cuenta (datos de prueba, $id = 0) sale con _id null y el nombre guardado en el comentario.
 	 */
 	public static function usuario_publico( int $id, string $nombre = '' ): ?array {
-		$usuario = $id ? get_userdata( $id ) : false;
-		if ( ! $usuario && '' === $nombre ) {
+		if ( ! $id ) {
+			return '' === $nombre ? null : array( '_id' => null, 'name' => $nombre, 'role' => 'user', 'avatar' => null );
+		}
+		$usuario = get_userdata( $id );
+		$rol     = $usuario ? ZN_Roles::rol_app( $usuario ) : null;
+		if ( ! $rol ) {
 			return null;
 		}
 		return array(
-			'_id'    => $usuario ? (string) $usuario->ID : null,
-			'name'   => $usuario ? $usuario->display_name : $nombre,
-			'role'   => $usuario && user_can( $usuario, 'manage_options' ) ? 'administrator' : 'user',
+			'_id'    => (string) $usuario->ID,
+			'name'   => self::nombre_publico( $usuario ),
+			'role'   => $rol,
 			// Sin Gravatar: delataría el correo (su huella) a cualquiera.
 			'avatar' => null,
 		);
 	}
 
-	/** Entrada publicada de un tipo, o null. */
+	/** Nombre y apellidos de la cuenta; nunca el nombre de acceso ni el correo (R10). */
+	public static function nombre_publico( WP_User $usuario ): ?string {
+		$nombre = trim( $usuario->first_name . ' ' . $usuario->last_name );
+		return '' === $nombre ? null : $nombre;
+	}
+
+	/** Texto sin etiquetas ni entidades del editor visual, conservando los saltos de línea (R6). Vacío → null. */
+	public static function texto_plano( ?string $html ): ?string {
+		if ( null === $html ) {
+			return null;
+		}
+		// Un <br> o fin de párrafo seguido de salto de línea es un solo salto.
+		$texto = preg_replace( '#(<br\s*/?>|</(p|div|li|h[1-6])>)[ \t]*\r?\n?#i', "\n", $html );
+		$texto = html_entity_decode( wp_strip_all_tags( $texto ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+		$texto = str_replace( array( "\u{00A0}", "\r\n" ), array( ' ', "\n" ), $texto );
+		$texto = preg_replace( array( "/[ \t]+\n/", "/\n{3,}/" ), array( "\n", "\n\n" ), $texto );
+		$texto = trim( $texto );
+		return '' === $texto ? null : $texto;
+	}
+
+	/** Fecha guardada en UTC → "Y-m-d H:i:s" en hora de Madrid, como el Laravel (R5). */
+	public static function hora_madrid( string $utc ): ?string {
+		if ( '' === $utc || 0 === strpos( $utc, '0000-00-00' ) ) {
+			return null;
+		}
+		return ( new DateTimeImmutable( $utc, new DateTimeZone( 'UTC' ) ) )
+			->setTimezone( new DateTimeZone( 'Europe/Madrid' ) )
+			->format( 'Y-m-d H:i:s' );
+	}
+
+	/** Entrada publicada y sin contraseña (R11) de un tipo, o null. */
 	public static function entrada( int $id, string $tipo ): ?WP_Post {
 		$entrada = get_post( $id );
-		return $entrada && $tipo === $entrada->post_type && 'publish' === $entrada->post_status ? $entrada : null;
+		return $entrada && $tipo === $entrada->post_type && 'publish' === $entrada->post_status && '' === $entrada->post_password ? $entrada : null;
 	}
 
 	public static function no_encontrado(): WP_REST_Response {

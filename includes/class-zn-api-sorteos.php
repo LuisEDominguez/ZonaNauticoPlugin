@@ -104,7 +104,7 @@ class ZN_API_Sorteos {
 		$sorteo = array(
 			'_id'         => (string) $id,
 			'title'       => $entrada->post_title,
-			'description' => '' === $entrada->post_content ? null : $entrada->post_content,
+			'description' => ZN_API::texto_plano( $entrada->post_content ),
 			'startDate'   => $inicio,
 			'endDate'     => $fin,
 			'winners'     => (int) ZN_API::campo( $id, 'winners' ),

@@ -102,7 +102,7 @@ class ZN_API_Negocios {
 		$negocio = array(
 			'_id'         => (string) $id,
 			'name'        => $entrada->post_title,
-			'description' => '' === $entrada->post_content ? null : $entrada->post_content,
+			'description' => ZN_API::texto_plano( $entrada->post_content ),
 			'latitude'    => ZN_API::numero( ZN_API::campo( $id, 'latitude' ) ),
 			'longitude'   => ZN_API::numero( ZN_API::campo( $id, 'longitude' ) ),
 		);
@@ -116,9 +116,9 @@ class ZN_API_Negocios {
 		}
 		$negocio['score'] = ZN_API::numero( ZN_API::campo( $id, 'score' ) ) ?? 0;
 
-		// El dueño es el autor de la entrada; solo sus datos públicos (H27). La app lo usa para pedir sus preguntas.
+		// El dueño (cuenta Comercio elegida en la ficha), solo con sus datos públicos (H27). La app lo usa para pedir sus preguntas.
 		if ( $incluir_usuario ) {
-			$negocio['user'] = ZN_API::usuario_publico( (int) $entrada->post_author );
+			$negocio['user'] = ZN_API::usuario_publico( ZN_Negocios::dueno( $id ) );
 		}
 		return $negocio;
 	}
