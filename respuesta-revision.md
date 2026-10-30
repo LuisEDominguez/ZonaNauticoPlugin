@@ -33,7 +33,7 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | 9 | 30-10-2026 | `21cabcc` (v0.10.3) | `2f6f500` (v0.11.0) | Ronda 9 limpia. Luis eligió token opaco: R32 hecho, con `GET /user/{id}` |
 | 10 | 30-10-2026 | `2f6f500` (v0.11.0) | `af480bc` (v0.11.1) | R46 (confirmado y arreglado), R47, R48 y R51 |
 | 11 | 30-10-2026 | `af480bc` (v0.11.1) | `b877325` (v0.11.2) | R54 (camino de la API sin rest_url) |
-| Global | 30-10-2026 | `b877325` (v0.11.2) | ver revisión global (v0.12.0) | Primer bloque: R55, R56, R57, R60, R61, R63, R64 (+R52). Decisiones a-e de Luis |
+| Global | 30-10-2026 | `b877325` (v0.11.2) | `df0b1b5` (v0.12.0) | Primer bloque: R55, R56, R57, R60, R61, R63, R64 (+R52). Decisiones a-e de Luis |
 
 ---
 
