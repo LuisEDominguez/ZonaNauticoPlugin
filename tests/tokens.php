@@ -22,8 +22,20 @@ $cuenta  = static function ( string $rol_wp, int $padre = 0 ) use ( &$cuentas ) 
 	$cuentas[] = $id;
 	return $id;
 };
-$pedir = static function ( string $ruta, ?string $token = null ) use ( $base ) {
-	$respuesta = wp_remote_get( $base . $ruta, array( 'timeout' => 60, 'headers' => $token ? array( 'Authorization' => "Bearer $token" ) : array() ) );
+// El Local de Windows reinicia su PHP tras muchas peticiones seguidas (502 unos segundos): se espera y se repite.
+$http = static function ( string $metodo, string $url, array $opciones ) {
+	for ( $intento = 0; $intento < 3; $intento++ ) {
+		usleep( 300000 );
+		$respuesta = wp_remote_request( $url, $opciones + array( 'method' => $metodo, 'timeout' => 60 ) );
+		if ( ! is_wp_error( $respuesta ) && 502 !== wp_remote_retrieve_response_code( $respuesta ) ) {
+			return $respuesta;
+		}
+		sleep( 15 );
+	}
+	return $respuesta;
+};
+$pedir = static function ( string $ruta, ?string $token = null ) use ( $base, $http ) {
+	$respuesta = $http( 'GET', $base . $ruta, array( 'headers' => $token ? array( 'Authorization' => "Bearer $token" ) : array() ) );
 	if ( is_wp_error( $respuesta ) ) {
 		return array( 0, null );
 	}
@@ -102,27 +114,67 @@ try {
 	( new WP_User( $hija ) )->add_role( 'editor' );
 	$ok( 'una cuenta con dos roles no tiene sesión aunque tenga token', 0 === ZN_Tokens::validar( $token ) );
 
-	// --- R39: el token solo vale en /zonanautico/v1 ---
+	// --- R39, R46, R47: el token solo vale en /zonanautico/v1, por index.php ---
 	$con   = $cuenta( 'zn_usuario' );
 	$token = ZN_Tokens::emitir( $con );
-	$antes = $_SERVER;
-	$probar = static function ( string $uri, array $get = array(), string $cabecera = 'HTTP_AUTHORIZATION' ) use ( $token ) {
-		$_SERVER['REQUEST_URI'] = $uri;
-		unset( $_SERVER['HTTP_AUTHORIZATION'], $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] );
-		$_SERVER[ $cabecera ] = "Bearer $token";
-		$_GET                 = $get;
-		return ZN_Tokens::usuario_del_token( false );
+
+	// R46 por HTTP de verdad: admin-ajax con ?rest_route=/zonanautico/v1/ y el token no debe dar sesión.
+	$latido = static function ( string $url ) use ( $token, $http ) {
+		$r = $http( 'POST', $url, array( 'headers' => array( 'Authorization' => "Bearer $token" ), 'body' => array( 'action' => 'heartbeat', '_nonce' => 'x' ) ) );
+		return json_decode( wp_remote_retrieve_body( $r ), true );
 	};
-	$ok( 'R39: vale en /wp-json/zonanautico/v1/…', $con === $probar( '/wp-json/zonanautico/v1/user/1' ) );
-	$ok( 'R39: vale con ?rest_route=/zonanautico/v1/…', $con === $probar( '/', array( 'rest_route' => '/zonanautico/v1/user/1' ) ) );
-	$ok( 'R39: vale con otras mayúsculas (/ZonaNautico/V1)', $con === $probar( '/wp-json/ZonaNautico/V1/user/1' ) );
-	$ok( 'R39: lee REDIRECT_HTTP_AUTHORIZATION (Apache)', $con === $probar( '/wp-json/zonanautico/v1/user/1', array(), 'REDIRECT_HTTP_AUTHORIZATION' ) );
-	$ok( 'R39: no vale en /wp/v2', false === $probar( '/wp-json/wp/v2/types' ) );
-	$ok( 'R39: no vale en admin-ajax.php', false === $probar( '/wp-admin/admin-ajax.php' ) );
-	$ok( 'R39: no vale en ?rest_route=/wp/v2', false === $probar( '/', array( 'rest_route' => '/wp/v2/types' ) ) );
-	$ok( 'R39: no vale en una ruta que solo empieza igual (/zonanautico/v10)', false === $probar( '/wp-json/zonanautico/v10/x' ) );
-	$_SERVER = $antes;
-	$_GET    = array();
+	$con_truco = $latido( admin_url( 'admin-ajax.php?rest_route=/zonanautico/v1/' ) );
+	$ok( 'R46: admin-ajax.php?rest_route=/zonanautico/v1/ con token: sin sesión (wp-auth-check false)', is_array( $con_truco ) && false === ( $con_truco['wp-auth-check'] ?? null ) && ! isset( $con_truco['rest_nonce'] ) );
+	$ok( 'R46: y sin el truco, igual', false === ( $latido( admin_url( 'admin-ajax.php' ) )['wp-auth-check'] ?? null ) );
+
+	$antes_server = $_SERVER;
+	$antes_get    = $_GET;
+	try {
+		$probar = static function ( string $uri, array $get = array(), string $cabecera = 'HTTP_AUTHORIZATION', string $fichero = '/index.php' ) use ( $token ) {
+			$_SERVER['REQUEST_URI'] = $uri;
+			$_SERVER['SCRIPT_NAME'] = $fichero;
+			unset( $_SERVER['HTTP_AUTHORIZATION'], $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] );
+			$_SERVER[ $cabecera ] = "Bearer $token";
+			$_GET                 = $get;
+			return ZN_Tokens::usuario_del_token( false );
+		};
+		$ok( 'R39: vale en /wp-json/zonanautico/v1/…', $con === $probar( '/wp-json/zonanautico/v1/user/1' ) );
+		$ok( 'R39: vale con /?rest_route=/zonanautico/v1/…', $con === $probar( '/', array( 'rest_route' => '/zonanautico/v1/user/1' ) ) );
+		$ok( 'R39: vale con /index.php?rest_route=/zonanautico/v1/…', $con === $probar( '/index.php', array( 'rest_route' => '/zonanautico/v1/user/1' ) ) );
+		$ok( 'R39: vale con otras mayúsculas (/ZonaNautico/V1)', $con === $probar( '/wp-json/ZonaNautico/V1/user/1' ) );
+		$ok( 'R39: lee REDIRECT_HTTP_AUTHORIZATION (Apache)', $con === $probar( '/wp-json/zonanautico/v1/user/1', array(), 'REDIRECT_HTTP_AUTHORIZATION' ) );
+		$ok( 'R39: no vale en /wp/v2', false === $probar( '/wp-json/wp/v2/types' ) );
+		$ok( 'R39: no vale en ?rest_route=/wp/v2', false === $probar( '/', array( 'rest_route' => '/wp/v2/types' ) ) );
+		$ok( 'R39: no vale en una ruta que solo empieza igual (/zonanautico/v10)', false === $probar( '/wp-json/zonanautico/v10/x' ) );
+		$ok( 'R46: no vale si el fichero no es index.php (admin-ajax con rest_route)', false === $probar( '/wp-admin/admin-ajax.php', array( 'rest_route' => '/zonanautico/v1/' ), 'HTTP_AUTHORIZATION', '/wp-admin/admin-ajax.php' ) );
+		$ok( 'R46: ni wp-login.php ni wp-cron.php con rest_route', false === $probar( '/wp-login.php', array( 'rest_route' => '/zonanautico/v1/' ), 'HTTP_AUTHORIZATION', '/wp-login.php' ) && false === $probar( '/wp-cron.php', array( 'rest_route' => '/zonanautico/v1/' ), 'HTTP_AUTHORIZATION', '/wp-cron.php' ) );
+		$ok( 'R46: ?rest_route solo en la portada o /index.php (no en /otra-pagina/)', false === $probar( '/otra-pagina/', array( 'rest_route' => '/zonanautico/v1/' ) ) );
+
+		// R47: WordPress en una subcarpeta (/sitio): el camino tiene que empezar por la subcarpeta de verdad.
+		$subcarpeta = static fn( $url ) => str_replace( '://localhost:10010/', '://localhost:10010/sitio/', $url );
+		// Solo rest_url: home_url también lo usa por dentro, y filtrar los dos pondría /sitio dos veces.
+		add_filter( 'rest_url', $subcarpeta );
+		$ok( 'R47: en una subcarpeta vale /sitio/wp-json/zonanautico/v1/…', $con === $probar( '/sitio/wp-json/zonanautico/v1/user/1' ) );
+		$ok( 'R47: y no /xxxxxwp-json/zonanautico/v1 (recorte sin comprobar)', false === $probar( '/xxxxxwp-json/zonanautico/v1/user/1' ) );
+		$ok( 'R47: ni /wp-json/zonanautico/v1 fuera de la subcarpeta', false === $probar( '/wp-json/zonanautico/v1/user/1' ) );
+		remove_filter( 'rest_url', $subcarpeta );
+
+		// R46, segunda barrera: si la cuenta vino del token y se despacha otra ruta, se quita la sesión.
+		$probar( '/wp-json/zonanautico/v1/user/1' );
+		wp_set_current_user( $con );
+		ZN_Tokens::solo_en_nuestra_ruta( null, rest_get_server(), new WP_REST_Request( 'GET', '/wp/v2/types' ) );
+		$ok( 'R46: segunda barrera: con otra ruta REST, se quita la sesión del token', 0 === get_current_user_id() );
+	} finally {
+		$_SERVER = $antes_server;
+		$_GET    = $antes_get;
+		wp_set_current_user( 0 );
+	}
+
+	// --- R48 y R51 ---
+	$ok( 'R48: la tabla se instala en plugins_loaded (antes de mirar el usuario)', false !== has_action( 'plugins_loaded', array( 'ZN_Tokens', 'instalar' ) ) );
+	$ok( 'R48: índice en caduca', (bool) $wpdb->get_row( "SHOW INDEX FROM " . ZN_Tokens::tabla() . " WHERE Key_name = 'caduca'" ) );
+	$ruta = rest_get_server()->get_routes( ZN_NAMESPACE )[ '/' . ZN_NAMESPACE . '/user/(?P<id>\\d+)' ][0] ?? array();
+	$ok( 'R51: GET /user/{id} comprueba la sesión en la entrada', array( 'ZN_API', 'con_sesion_de_la_app' ) === ( $ruta['permission_callback'] ?? null ) );
 } finally {
 	foreach ( $cuentas as $id ) {
 		if ( get_userdata( $id ) ) {

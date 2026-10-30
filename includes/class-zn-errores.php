@@ -81,7 +81,7 @@ class ZN_Errores {
 	}
 
 	/** WordPress casa las rutas sin distinguir mayúsculas: /ZonaNautico/v1 también es nuestra (R34a). */
-	private static function es_nuestra( string $ruta ): bool {
+	public static function es_nuestra( string $ruta ): bool {
 		$ruta = strtolower( $ruta );
 		return '/' . ZN_NAMESPACE === $ruta || 0 === strpos( $ruta, '/' . ZN_NAMESPACE . '/' );
 	}

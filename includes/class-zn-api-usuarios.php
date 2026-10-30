@@ -23,7 +23,8 @@ class ZN_API_Usuarios {
 			array(
 				'methods'             => WP_REST_Server::READABLE,
 				'callback'            => array( __CLASS__, 'ficha' ),
-				'permission_callback' => '__return_true',
+				// En la entrada, no solo dentro (R51): sin sesión de una cuenta de la app no se ejecuta nada.
+				'permission_callback' => array( 'ZN_API', 'con_sesion_de_la_app' ),
 			)
 		);
 	}

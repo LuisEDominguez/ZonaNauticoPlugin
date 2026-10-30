@@ -178,6 +178,14 @@ class ZN_API {
 		return $entrada && $tipo === $entrada->post_type && 'publish' === $entrada->post_status && '' === $entrada->post_password ? $entrada : null;
 	}
 
+	/**
+	 * permission_callback de las rutas privadas: hay sesión y es de una cuenta de la app. Sin sesión WordPress
+	 * responde 401 y ZN_Errores lo deja en «Unauthenticated.»; con otra cuenta, «This action is unauthorized.».
+	 */
+	public static function con_sesion_de_la_app(): bool {
+		return is_user_logged_in() && null !== ZN_Roles::rol_app( wp_get_current_user() );
+	}
+
 	public static function no_encontrado(): WP_REST_Response {
 		return new WP_REST_Response( array( 'message' => 'Not found.' ), 404 );
 	}

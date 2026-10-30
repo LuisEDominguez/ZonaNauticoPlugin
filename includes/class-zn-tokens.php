@@ -7,7 +7,9 @@
  * - En la base de datos solo se guarda su huella SHA-256 (tabla `{prefijo}zn_tokens`), nunca el token.
  * - Caduca a los 60 minutos, como en la app (src/auth/sesion.ts) y en el Laravel.
  * - Se anula al cerrar sesión, y todos los de una cuenta al cambiar su contraseña, su rol o al borrarla.
- * - Solo vale en /zonanautico/v1 (R39): en el resto de WordPress (admin-ajax, /wp/v2…) se ignora.
+ * - Solo vale en /zonanautico/v1 (R39, R46): se ignora en admin-ajax, wp-cron, XML-RPC, wp-admin, wp-login
+ *   y cualquier fichero que no sea index.php aunque la dirección lleve ?rest_route=/zonanautico/v1; y si
+ *   la cuenta vino del token y la ruta REST que se despacha no es la nuestra, se quita la sesión.
  * - Se valida con `determine_current_user` (no en cada ruta): un token que no vale es «sin sesión», así que
  *   en las rutas públicas la respuesta es la normal (200) y en las privadas, 401 «Unauthenticated.».
  * - Solo para cuentas de la app (un único rol zn_*).
@@ -18,11 +20,17 @@ defined( 'ABSPATH' ) || exit;
 class ZN_Tokens {
 
 	const DURACION = HOUR_IN_SECONDS;
-	const VERSION_TABLA = '1';
+	const VERSION_TABLA = '2';
+
+	/** ¿La cuenta de esta petición salió de un token? (para la segunda barrera de R46). */
+	private static bool $desde_token = false;
 
 	public static function iniciar(): void {
-		add_action( 'init', array( __CLASS__, 'instalar' ), 20 );
+		// La tabla tiene que existir antes de que WordPress mire quién es el usuario (WP::init va antes que el
+		// gancho init, R48): al activar el plugin y, por si se actualiza sin reactivar, en plugins_loaded.
+		add_action( 'plugins_loaded', array( __CLASS__, 'instalar' ) );
 		add_filter( 'determine_current_user', array( __CLASS__, 'usuario_del_token' ), 30 );
+		add_filter( 'rest_pre_dispatch', array( __CLASS__, 'solo_en_nuestra_ruta' ), 0, 3 );
 
 		// Anular todos los tokens de una cuenta cuando cambia lo que la protege (R32).
 		add_action( 'after_password_reset', static fn( $usuario ) => self::anular_todos( (int) $usuario->ID ) );
@@ -66,7 +74,8 @@ class ZN_Tokens {
 				anulado datetime DEFAULT NULL,
 				PRIMARY KEY  (id),
 				UNIQUE KEY hash (hash),
-				KEY user_id (user_id)
+				KEY user_id (user_id),
+				KEY caduca (caduca)
 			) {$wpdb->get_charset_collate()};"
 		);
 		update_option( 'zn_tokens_tabla', self::VERSION_TABLA );
@@ -134,7 +143,23 @@ class ZN_Tokens {
 		}
 		$token = self::token_de_la_peticion();
 		$id    = null === $token ? 0 : self::validar( $token );
-		return $id ?: $usuario;
+		if ( $id ) {
+			self::$desde_token = true;
+			return $id;
+		}
+		return $usuario;
+	}
+
+	/**
+	 * Segunda barrera (R46): si la cuenta vino del token y lo que se despacha no es /zonanautico/v1 (p. ej. un
+	 * ?rest_route distinto del que se comprobó), se quita la sesión antes de ejecutar nada.
+	 */
+	public static function solo_en_nuestra_ruta( $resultado, $servidor, $peticion ) {
+		if ( self::$desde_token && ! ZN_Errores::es_nuestra( $peticion->get_route() ) ) {
+			wp_set_current_user( 0 );
+			self::$desde_token = false;
+		}
+		return $resultado;
 	}
 
 	/** Token de la cabecera Authorization (también donde la deja Apache tras una reescritura, R39). */
@@ -143,17 +168,33 @@ class ZN_Tokens {
 		return preg_match( '/^Bearer\s+(\S+)$/i', trim( (string) $cabecera ), $m ) ? $m[1] : null;
 	}
 
-	/** ¿La petición va a /zonanautico/v1? (por /wp-json/… o por ?rest_route=…, sin distinguir mayúsculas). */
-	private static function es_peticion_nuestra(): bool {
-		$ruta = isset( $_GET['rest_route'] ) ? (string) wp_unslash( $_GET['rest_route'] ) : (string) wp_parse_url( (string) ( $_SERVER['REQUEST_URI'] ?? '' ), PHP_URL_PATH ); // phpcs:ignore WordPress.Security
-		$ruta = strtolower( rawurldecode( $ruta ) );
-		if ( isset( $_GET['rest_route'] ) ) {
-			return 0 === strpos( ltrim( $ruta, '/' ), ZN_NAMESPACE . '/' ) || ltrim( $ruta, '/' ) === ZN_NAMESPACE;
+	/**
+	 * ¿La petición va a /zonanautico/v1, por la entrada normal de WordPress (index.php)? (R46, R47)
+	 * - Nunca en admin-ajax, wp-cron, XML-RPC, wp-admin ni otro fichero que no sea index.php: todos cargan
+	 *   WordPress y miran el usuario, y aceptarían el token con un ?rest_route= añadido.
+	 * - El camino se compara entero con el de rest_url( ZN_NAMESPACE ) (cubre WordPress en una subcarpeta y
+	 *   /index.php/wp-json/); ?rest_route= solo vale en la portada o en /index.php.
+	 * - Sin distinguir mayúsculas, como WordPress al buscar la ruta.
+	 */
+	public static function es_peticion_nuestra(): bool {
+		if ( is_admin() || wp_doing_ajax() || wp_doing_cron() || ( defined( 'XMLRPC_REQUEST' ) && XMLRPC_REQUEST ) ) {
+			return false;
 		}
-		$prefijo = strtolower( '/' . rest_get_url_prefix() . '/' . ZN_NAMESPACE );
-		$base    = strtolower( (string) wp_parse_url( home_url( '/' ), PHP_URL_PATH ) );
-		$ruta    = '/' . ltrim( substr( $ruta, strlen( rtrim( $base, '/' ) ) ), '/' );
-		return $ruta === $prefijo || 0 === strpos( $ruta, $prefijo . '/' );
+		if ( 'index.php' !== basename( (string) ( $_SERVER['SCRIPT_NAME'] ?? '' ) ) ) { // phpcs:ignore WordPress.Security.ValidatedSanitizedInput
+			return false;
+		}
+		$camino = strtolower( rawurldecode( (string) wp_parse_url( (string) ( $_SERVER['REQUEST_URI'] ?? '' ), PHP_URL_PATH ) ) ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput
+		$base   = rtrim( strtolower( (string) wp_parse_url( home_url( '/' ), PHP_URL_PATH ) ), '/' );
+
+		if ( isset( $_GET['rest_route'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+			if ( ! in_array( rtrim( $camino, '/' ), array( $base, $base . '/index.php' ), true ) ) {
+				return false;
+			}
+			return ZN_Errores::es_nuestra( '/' . ltrim( (string) wp_unslash( $_GET['rest_route'] ), '/' ) ); // phpcs:ignore WordPress.Security
+		}
+
+		$nuestra = rtrim( strtolower( (string) wp_parse_url( rest_url( ZN_NAMESPACE ), PHP_URL_PATH ) ), '/' );
+		return '' !== $nuestra && '/' !== $nuestra && ( $camino === $nuestra || 0 === strpos( $camino, $nuestra . '/' ) );
 	}
 
 	private static function huella( string $token ): string {

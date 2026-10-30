@@ -30,6 +30,39 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | 7 | 30-10-2026 | `3490c65` (v0.10.1) | `d8a4e07` (v0.10.2) | R41 y R42 (crear frente a modificar). Decisiones de Luis: R43 A, R44 A; R40 sin decidir |
 | 8 | 30-10-2026 | `d8a4e07` (v0.10.2) | `21cabcc` (v0.10.3) | R45 (participantes: también quien organiza el sorteo) |
 | 9 | 30-10-2026 | `21cabcc` (v0.10.3) | `2f6f500` (v0.11.0) | Ronda 9 limpia. Luis eligió token opaco: R32 hecho, con `GET /user/{id}` |
+| 10 | 30-10-2026 | `2f6f500` (v0.11.0) | ver ronda 10 (v0.11.1) | R46 (confirmado y arreglado), R47, R48 y R51 |
+
+---
+
+## Ronda 10
+
+El revisor encontró R46 (el token valía fuera de la API con `?rest_route=`) y pidió R46, R47, R48 y R51
+antes del login. Luis dio el sí (30-10), también a reproducir R46.
+
+**Reproducción de R46 (en Local, cuenta y token temporales ya borrados):** `POST /wp-admin/admin-ajax.php?rest_route=/zonanautico/v1/`
+con `action=heartbeat` y el token respondió `{"rest_nonce":…,"heartbeat_nonce":…,"nonces_expired":true}`:
+**la cuenta de la app quedaba conectada en admin-ajax. Confirmado.** Sin `rest_route`, `{"wp-auth-check":false}`.
+Tras el arreglo, con `rest_route` también `{"wp-auth-check":false}`.
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **R46** Token fuera de la API | hecho | `es_peticion_nuestra()` sale si `is_admin()`, `wp_doing_ajax()`, `wp_doing_cron()` o `XMLRPC_REQUEST`, y exige `basename( SCRIPT_NAME ) === 'index.php'`; `?rest_route=` solo vale en la portada o en `/index.php`. Segunda barrera: `rest_pre_dispatch` (prioridad 0) quita la sesión si la cuenta vino del token y la ruta despachada no es `/zonanautico/v1`. Pruebas: el heartbeat por HTTP de verdad con y sin truco; admin-ajax, wp-login y wp-cron con `rest_route`; `rest_route` en otra página; la segunda barrera. |
+| **R47** Subcarpeta | hecho | El camino se compara entero con el de `rest_url( ZN_NAMESPACE )` (cubre subcarpeta y `/index.php/wp-json/`), sin recortes. Pruebas con `rest_url` en `/sitio`: vale `/sitio/wp-json/zonanautico/v1/…`; no `/xxxxxwp-json/zonanautico/v1/…` ni `/wp-json/zonanautico/v1/…`. |
+| **R48** Tabla antes de mirar el usuario | hecho | `register_activation_hook` y comprobación de versión en `plugins_loaded` (antes de `WP::init`). Tabla versión 2 con `KEY caduca`. |
+| **R51** `permission_callback` de `GET /user/{id}` | hecho | `ZN_API::con_sesion_de_la_app()` en la entrada (sesión y cuenta de la app); se mantiene la comprobación de dentro. Para todas las rutas privadas que vengan. |
+| R49, R50, R52, R53, RGPD ubicación, pruebas extra | pendiente | Apuntados para producción y el login. Ya hecho de las pruebas extra: restaurar `$_SERVER` y `$_GET` en un `finally` y la subcarpeta. |
+
+**Nota sobre las pruebas:** en la primera tanda el PHP de Local se reinició a mitad (502 «no live
+upstreams», como en la ronda 4) y fallaron las peticiones HTTP que quedaban. Las mismas, una a una con
+curl, daban bien. `tests/tokens.php` ahora espera 0,3 s entre peticiones y, ante un 502, espera 15 s y
+repite (hasta 3 veces).
+
+### Resultado de las pruebas (código de la ronda 10, 30-10)
+
+Todas en verde: `tokens.php` 47, `roles.php` 87, `errores.php` 16, `seguridad.php` 62,
+`comentarios.php` 15, `admin-fichas.php` 38, `contrato-errores` 9, `contrato-negocios` 8,
+`contrato-eventos` 10, `contrato-sorteos` 8, `contrato-resenas` 11, `contrato-preguntas` 9,
+`contrato-muestras` 6 y `puertas.mjs` 9.
 
 ---
 

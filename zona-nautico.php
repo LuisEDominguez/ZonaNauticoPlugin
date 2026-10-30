@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Zona Náutico
  * Description: API de la app Zona Náutico. Imita el contrato de la API Laravel actual ({data, links, meta}) para no rehacer la app.
- * Version:     0.11.0
+ * Version:     0.11.1
  * Author:      Visual Publinet
  * Text Domain: zona-nautico
  * Requires at least: 6.0
@@ -11,7 +11,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-const ZN_VERSION   = '0.11.0';
+const ZN_VERSION   = '0.11.1';
 const ZN_NAMESPACE = 'zonanautico/v1';
 
 require_once __DIR__ . '/includes/class-zn-api.php';
@@ -44,6 +44,9 @@ add_action( 'rest_api_init', array( 'ZN_API_Sorteos', 'registrar_rutas' ) );
 add_action( 'rest_api_init', array( 'ZN_API_Resenas', 'registrar_rutas' ) );
 add_action( 'rest_api_init', array( 'ZN_API_Preguntas', 'registrar_rutas' ) );
 add_action( 'rest_api_init', array( 'ZN_API_Usuarios', 'registrar_rutas' ) );
+
+// La tabla de tokens se crea al activar el plugin (y se comprueba en cada carga por si se actualiza sin reactivar).
+register_activation_hook( __FILE__, array( 'ZN_Tokens', 'instalar' ) );
 
 if ( is_admin() ) {
 	require_once __DIR__ . '/includes/class-zn-admin-campos.php';

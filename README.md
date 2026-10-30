@@ -55,7 +55,8 @@ novedades y preguntas; en cuentas, «lo suyo» es solo uno mismo y las hijas van
 **Token de la app (R32).** «Token opaco»: 32 bytes al azar en base64url, que la app manda en
 `Authorization: Bearer …`. En la tabla `{prefijo}zn_tokens` solo se guarda su huella SHA-256. Caduca a
 los 60 minutos y se anula al cerrar sesión o, todos los de la cuenta, al cambiar su contraseña o su rol
-o al borrarla. Solo vale en `/zonanautico/v1` y para cuentas de la app; se valida con
+o al borrarla. Solo vale en `/zonanautico/v1` por `index.php` (nunca en admin-ajax, wp-cron, XML-RPC,
+wp-admin ni wp-login, aunque la dirección lleve `?rest_route=`) y para cuentas de la app; se valida con
 `determine_current_user`, así que un token que no vale es «sin sesión» (las rutas públicas responden
 normal y las privadas, 401 «Unauthenticated.»). `ZN_Tokens::emitir()`, `validar()`, `anular()` y
 `anular_todos()`.
