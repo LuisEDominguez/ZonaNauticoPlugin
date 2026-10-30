@@ -54,7 +54,7 @@ const pruebas = {
     const { cuerpo } = await pedir('/draw?orderby=start_date&order=desc&perPage=50');
     const fechas = cuerpo.data.map((s) => s.startDate).filter(Boolean);
     assert.deepEqual(fechas, [...fechas].sort().reverse());
-    assert.equal((await pedir('/draw?orderby=id;drop')).estado, 400);
+    assert.equal((await pedir('/draw?orderby=id;drop')).estado, 422);
   },
   'paginación y tope de 50': async () => {
     const { cuerpo } = await pedir('/draw?perPage=1&page=2');
@@ -72,8 +72,8 @@ const pruebas = {
     const { cuerpo: eventos } = await pedir('/event');
     assert.equal((await pedir(`/draw/${eventos.data[0]._id}`)).estado, 404);
   },
-  'solo lectura: no acepta POST': async () => {
-    assert.equal((await pedir('/draw', 'POST')).estado, 404);
+  'solo lectura: POST da 405, como el Laravel': async () => {
+    assert.equal((await pedir('/draw', 'POST')).estado, 405);
   },
 };
 

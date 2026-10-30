@@ -54,7 +54,7 @@ const pruebas = {
     const { cuerpo } = await pedir('/business?orderby=score&order=desc&perPage=50');
     const puntos = cuerpo.data.map((n) => n.score);
     assert.deepEqual(puntos, [...puntos].sort((a, b) => b - a));
-    assert.equal((await pedir('/business?orderby=id;drop')).estado, 400);
+    assert.equal((await pedir('/business?orderby=id;drop')).estado, 422);
   },
   'ficha: { data } y 404 si no existe': async () => {
     const { cuerpo: lista } = await pedir('/business');
@@ -65,8 +65,8 @@ const pruebas = {
     assert.ok('user' in cuerpo.data);
     assert.equal((await pedir('/business/999999')).estado, 404);
   },
-  'solo lectura: no acepta POST': async () => {
-    assert.equal((await pedir('/business', 'POST')).estado, 404);
+  'solo lectura: POST da 405, como el Laravel': async () => {
+    assert.equal((await pedir('/business', 'POST')).estado, 405);
   },
 };
 

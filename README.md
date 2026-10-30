@@ -44,6 +44,12 @@ el administrador.
 feeds, `/wp/v2/users`, `/wp/v2/media` y `/wp/v2/comments` (users y media siguen abiertas para quien
 ya puede ver usuarios o subir archivos).
 
+**Errores con el formato del Laravel** (los que entiende la app): `422 {message, errors: {campo: [...]}}`
+para datos no válidos, `401 {"message":"Unauthenticated."}` sin sesión, `401 {"message":"This action is
+unauthorized."}` sin permiso, `404`/`405` y `500` solo con `{message}`. Los errores de WordPress
+(`{code, message, data}`) se traducen al salir (`includes/class-zn-errores.php`); las rutas nuevas usan
+`ZN_Errores::no_valido()`, `no_autenticado()` y `sin_permiso()`.
+
 Las reseñas y las preguntas son comentarios de WordPress sobre el negocio (tipos `zn_resena` y
 `zn_pregunta`). Solo salen las aprobadas; en las preguntas, «aprobada» es `published` y el comercio
 destinatario se guarda en la propia pregunta (`user_id`), como en el Laravel. La puntuación
@@ -62,4 +68,5 @@ un enlace de carpeta en `wp-content/plugins/zona-nautico`.
 - Lo que nunca debe salir y los arreglos de la revisión 1 (crea y borra sus propios datos): `wp eval-file tests/seguridad.php`
 - Campos iguales a las respuestas reales del Laravel (`Zona-Nautico/api-muestras`): `node tests/contrato-muestras.mjs`
 - Puertas de WordPress cerradas, vistas desde fuera: `node tests/puertas.mjs`
+- Formato de los errores: `node tests/contrato-errores.mjs` y `wp eval-file tests/errores.php` (los dos solo leen)
 - Recalcular todas las puntuaciones (al final de una migración): `wp zona-nautico recalcular-puntuaciones`

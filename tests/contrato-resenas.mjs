@@ -60,8 +60,8 @@ const pruebas = {
     for (const r of cuerpo.data) assert.equal(typeof r.business.name, 'string');
   },
   'orden y filtros raros se rechazan': async () => {
-    assert.equal((await pedir('/review?orderby=score')).estado, 400);
-    assert.equal((await pedir('/review?business=abc')).estado, 400);
+    assert.equal((await pedir('/review?orderby=score')).estado, 422);
+    assert.equal((await pedir('/review?business=abc')).estado, 422);
     assert.equal((await pedir('/review?user=99999')).cuerpo.data.length, 0);
   },
   'paginación y tope de 50': async () => {
@@ -84,8 +84,8 @@ const pruebas = {
     const { cuerpo: preguntas } = await pedir('/faq');
     assert.equal((await pedir(`/review/${preguntas.data[0]._id}`)).estado, 404);
   },
-  'solo lectura: no acepta POST': async () => {
-    assert.equal((await pedir('/review', 'POST')).estado, 404);
+  'solo lectura: POST da 405, como el Laravel': async () => {
+    assert.equal((await pedir('/review', 'POST')).estado, 405);
   },
   'la ruta de comentarios de WordPress está cerrada': async () => {
     const r = await fetch(`${BASE.replace(/zonanautico\/v1$/, '')}wp/v2/comments`);

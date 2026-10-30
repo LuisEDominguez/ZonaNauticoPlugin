@@ -64,7 +64,7 @@ const pruebas = {
   },
   'un usuario sin negocios no tiene preguntas': async () => {
     assert.equal((await pedir('/faq?user=99999')).cuerpo.data.length, 0);
-    assert.equal((await pedir('/faq?user=abc')).estado, 400);
+    assert.equal((await pedir('/faq?user=abc')).estado, 422);
   },
   'paginación y tope de 50': async () => {
     const { cuerpo } = await pedir('/faq?perPage=1&page=2');
@@ -83,8 +83,8 @@ const pruebas = {
     assert.equal((await pedir(`/faq/${resenas.data[0]._id}`)).estado, 404);
     // La ficha de una no publicada se comprueba en tests/comentarios.php (aquí no sabemos su id).
   },
-  'solo lectura: no acepta POST': async () => {
-    assert.equal((await pedir('/faq', 'POST')).estado, 404);
+  'solo lectura: POST da 405, como el Laravel': async () => {
+    assert.equal((await pedir('/faq', 'POST')).estado, 405);
   },
 };
 

@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Zona Náutico
  * Description: API de la app Zona Náutico. Imita el contrato de la API Laravel actual ({data, links, meta}) para no rehacer la app.
- * Version:     0.8.1
+ * Version:     0.9.0
  * Author:      Visual Publinet
  * Text Domain: zona-nautico
  * Requires at least: 6.0
@@ -11,10 +11,11 @@
 
 defined( 'ABSPATH' ) || exit;
 
-const ZN_VERSION   = '0.8.1';
+const ZN_VERSION   = '0.9.0';
 const ZN_NAMESPACE = 'zonanautico/v1';
 
 require_once __DIR__ . '/includes/class-zn-api.php';
+require_once __DIR__ . '/includes/class-zn-errores.php';
 require_once __DIR__ . '/includes/class-zn-puertas.php';
 require_once __DIR__ . '/includes/class-zn-roles.php';
 require_once __DIR__ . '/includes/class-zn-negocios.php';
@@ -32,6 +33,7 @@ add_action( 'init', array( 'ZN_Eventos', 'registrar' ) );
 add_action( 'init', array( 'ZN_Sorteos', 'registrar' ) );
 ZN_Comentarios::iniciar();
 ZN_Puertas::iniciar();
+ZN_Errores::iniciar();
 ZN_Roles::iniciar();
 add_action( 'rest_api_init', array( 'ZN_API_Negocios', 'registrar_rutas' ) );
 add_action( 'rest_api_init', array( 'ZN_API_Eventos', 'registrar_rutas' ) );
