@@ -13,7 +13,7 @@ el sí de Luis.
 |---|---|
 | Todas a la vez (hilo que desarrolla) | `node tests/todas.mjs` |
 | Revisores (solo lectura, todas las que necesiten) | `node tests/contrato-negocios.mjs`, `contrato-eventos.mjs`, `contrato-sorteos.mjs`, `contrato-resenas.mjs`, `contrato-preguntas.mjs`, `contrato-muestras.mjs`, `contrato-errores.mjs`, `wp eval-file tests/admin-fichas.php`, `tests/esquema.php` y `tests/errores.php` (no guardan nada; `errores.php` registra rutas de prueba solo en memoria), además de peticiones GET y lectura de código |
-| Hilo que desarrolla (pasa el resultado a los revisores) | `wp eval-file tests/seguridad.php`, `tests/comentarios.php`, `tests/roles.php`, `tests/tokens.php`, `tests/limite.php`, `tests/escrituras.php`, `tests/login.php`, `tests/registro.php`, `tests/opiniones.php`, `tests/privacidad.php` y `tests/panel.php` (crean datos, cuentas o filas temporales y los borran) y `node tests/puertas.mjs` (no guarda nada, pero envía una petición a XML-RPC) |
+| Hilo que desarrolla (pasa el resultado a los revisores) | `wp eval-file tests/seguridad.php`, `tests/comentarios.php`, `tests/roles.php`, `tests/tokens.php`, `tests/limite.php`, `tests/escrituras.php`, `tests/login.php`, `tests/registro.php`, `tests/mis-datos.php`, `tests/opiniones.php`, `tests/privacidad.php` y `tests/panel.php` (crean datos, cuentas o filas temporales y los borran) y `node tests/puertas.mjs` (no guarda nada, pero envía una petición a XML-RPC) |
 
 Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** · **espera decisión** ·
 **se propone descartar**.
@@ -53,8 +53,26 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Panel R40, parte 2a-bis | 02-11-2026 | `9eb02bc` (v0.19.0) | `fe75dbb` (v0.19.1) | R99 = B, R100 = A, R101 |
 | Panel R40, parte 2b | 02-11-2026 | `a26168e` (v0.19.1) | `1611c4f` (v0.20.0) | Cuentas: alta con correo, renombrar y baja desactivando |
 | Panel R40, parte 2b-bis | 02-11-2026 | `1611c4f` (v0.20.0) | `2864e30` (v0.20.1) | R102 = A, R103 (correo de contacto pendiente), R104 |
+| Cambiar mis datos | 02-11-2026 | `6a197c2` (v0.20.1) | `2fa7c1d` (v0.21.0) | R69: `PATCH /user/{id}` con la contraseña actual y confirmación del correo nuevo |
 
 ---
+
+## Cambiar mis datos (R69)
+
+Luis (02-11, 13:23): sí a «cambiar mis datos». Diff: `git diff 6a197c2 2fa7c1d`. Pruebas escritas antes
+(`tests/mis-datos.php`). **Toca cuentas, contraseñas y correos: revisor principal + uno de seguridad, solo el diff.**
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **Ruta** | hecho | `PUT\|PATCH /user/{id}` en `class-zn-api-usuarios.php` (`cambiar()`), con `con_sesion_de_la_app` en la entrada. Solo la propia cuenta; otra (también la administración) o `roleId` → 401 «This action is unauthorized.»; cuenta que no existe → 404. Límite de escrituras de la cuenta (R94). 200 `{data}` como `GET /user/{id}`, `no-store`. |
+| **Campos** | hecho | `name`, `phone`, `email`, `password` con el esquema `cuenta` (R58). Ausente = no tocar; null borra solo el teléfono (nombre, correo y contraseña → 422); "" → 422 (decisión a). Lo demás (ubicación, código, `verified`…) se ignora. Nombre en `first_name`, apellidos vacíos (R53). |
+| **R69 = A** Contraseña actual | hecho | Correo o contraseña piden `currentPassword`: sin ella 422 «The current password field is required.»; mala 422 «The password is incorrect.». Orden: formato (422, no gasta intentos) → `ZN_Limite::intentar( 'datos' )` (cuenta+IP 5/15 min, cuenta 20/h; 429) → `wp_check_password`. Nombre y teléfono, sin ella (pregunta abierta a Luis). |
+| **Correo ocupado** | hecho | El `unique` del correo se mira solo después de la contraseña actual buena: con la mala, el error es solo `currentPassword`. Su mismo correo (sin distinguir mayúsculas) = nada que hacer. |
+| **Contraseña** | hecho | `wp_set_password()`: el gancho de `ZN_Tokens` anula los demás tokens y deja el de quien la cambia (R56). Borra el código de recuperación y el cambio de correo pendiente (gancho `wp_set_password` en `ZN_API_Cuenta`, también al recuperar con código). Aviso por correo sin la contraseña. |
+| **Correo nuevo** | hecho | Queda pendiente (`zn_email_nuevo`, huella SHA-256 del token de 32 bytes, 48 h). Al nuevo, enlace `GET /verify-email?id=&token=` (página con botón, como R88; `&format=json` da JSON); al viejo, aviso sin enlace. `POST /verify-email` confirma: cuenta de la app, no de baja, token vigente; si otra cuenta se ha quedado el correo entre medias → 400 y se anula. `wp_update_user` sin el correo propio de WordPress; se anulan **todos** los tokens (se vuelve a entrar con el correo nuevo); sigue verificada. Un solo uso. |
+| **Privacidad** | hecho | Exportador: «Correo nuevo sin confirmar». Borrador: quita el pendiente y su token. |
+
+`node tests/todas.mjs`: **1067 bien en 24 juegos, todo bien a la primera** (`mis-datos` nuevo).
 
 ## Panel R40, parte 2b-bis (R102, R103, R104)
 
