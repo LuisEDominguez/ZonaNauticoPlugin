@@ -76,8 +76,7 @@ siguiente.
 
 `node tests/todas.mjs`: **557 comprobaciones bien en 18 juegos, todo bien**. Nueva `tests/login.php`: 60
 (login por dentro desde IPs de documentación y por HTTP de verdad, refresh, logout, límite, sesiones de
-WordPress, limpieza de cuentas, tokens y filas de intentos). El resto, igual que en el segundo bloque-ter
-(`seguridad` 84, `roles` 90, `tokens` 60, `esquema` 65 con las pruebas añadidas entonces).
+WordPress, limpieza de cuentas, tokens y filas de intentos). El resto de juegos, todos en verde.
 
 ## Segundo bloque-ter (R82, R83)
 
