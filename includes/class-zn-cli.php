@@ -40,11 +40,11 @@ class ZN_CLI {
 			WP_CLI::error( 'Solo se pueden meter datos de prueba en un WordPress local (WP_ENVIRONMENT_TYPE = local).' );
 		}
 
-		self::rellenar( ZN_Negocios::TIPO, ZN_Negocios::CAMPOS, self::negocios_inventados(), 'negocios' );
+		self::rellenar( ZN_Negocios::TIPO, ZN_Negocios::campos(), self::negocios_inventados(), 'negocios' );
 
 		$taberna = get_posts( array( 'post_type' => ZN_Negocios::TIPO, 'title' => 'Taberna O Peirao (prueba)', 'numberposts' => 1, 'fields' => 'ids' ) );
-		self::rellenar( ZN_Eventos::TIPO, ZN_Eventos::CAMPOS, self::eventos_inventados( $taberna[0] ?? null ), 'novedades' );
-		self::rellenar( ZN_Sorteos::TIPO, ZN_Sorteos::CAMPOS, self::sorteos_inventados(), 'sorteos' );
+		self::rellenar( ZN_Eventos::TIPO, ZN_Eventos::campos(), self::eventos_inventados( $taberna[0] ?? null ), 'novedades' );
+		self::rellenar( ZN_Sorteos::TIPO, ZN_Sorteos::campos(), self::sorteos_inventados(), 'sorteos' );
 		self::dueno_de_prueba( $taberna[0] ?? null );
 		self::rellenar_comentarios( ZN_Comentarios::RESENA, self::resenas_inventadas(), 'reseñas' );
 		self::rellenar_comentarios( ZN_Comentarios::PREGUNTA, self::preguntas_inventadas(), 'preguntas' );

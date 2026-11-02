@@ -6,6 +6,7 @@
  *   texto y lo manda en `Authorization: Bearer …` (Zona-Nautico/src/api/cliente.ts).
  * - En la base de datos solo se guarda su huella SHA-256 (tabla `{prefijo}zn_tokens`), nunca el token.
  * - Caduca a los 60 minutos, como en la app (src/auth/sesion.ts) y en el Laravel.
+ * - Como mucho MAX_ACTIVOS tokens activos por cuenta (R59): uno nuevo anula los más antiguos.
  * - Se anula al cerrar sesión, y todos los de una cuenta al cambiar su rol o al borrarla; al cambiar su
  *   contraseña o su correo, todos menos el que está haciendo el cambio (R52, R56).
  * - Solo vale en /zonanautico/v1 (R39, R46): se ignora en admin-ajax, wp-cron, XML-RPC, wp-admin, wp-login
@@ -21,6 +22,8 @@ defined( 'ABSPATH' ) || exit;
 class ZN_Tokens {
 
 	const DURACION = HOUR_IN_SECONDS;
+	// Sesiones abiertas a la vez por cuenta (R59): al pasar, se anulan las más antiguas.
+	const MAX_ACTIVOS = 10;
 	const VERSION_TABLA = '2';
 
 	/** ¿La cuenta de esta petición salió de un token? (para la segunda barrera de R46). */
@@ -101,6 +104,17 @@ class ZN_Tokens {
 				'caduca'  => gmdate( 'Y-m-d H:i:s', $ahora + self::DURACION ),
 			),
 			array( '%s', '%d', '%s', '%s' )
+		);
+		// Tope de tokens activos por cuenta (R59): se quedan los MAX_ACTIVOS más nuevos.
+		$wpdb->query(
+			$wpdb->prepare(
+				'UPDATE ' . self::tabla() . ' SET anulado = %s WHERE user_id = %d AND anulado IS NULL AND id NOT IN ( SELECT id FROM ( SELECT id FROM ' . self::tabla() . ' WHERE user_id = %d AND anulado IS NULL AND caduca > %s ORDER BY id DESC LIMIT %d ) AS nuevos )', // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+				gmdate( 'Y-m-d H:i:s', $ahora ),
+				$usuario,
+				$usuario,
+				gmdate( 'Y-m-d H:i:s', $ahora ),
+				self::MAX_ACTIVOS
+			)
 		);
 		// De paso, se limpian los que caducaron hace más de un día.
 		$wpdb->query( $wpdb->prepare( 'DELETE FROM ' . self::tabla() . ' WHERE caduca < %s', gmdate( 'Y-m-d H:i:s', $ahora - DAY_IN_SECONDS ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared

@@ -123,18 +123,8 @@ class ZN_API_Eventos {
 	public static function formatear( WP_Post $entrada, array $incluir = array() ): array {
 		$id = $entrada->ID;
 
-		$evento = array(
-			'_id'         => (string) $id,
-			'name'        => $entrada->post_title,
-			'description' => ZN_API::texto_plano( $entrada->post_content ),
-			'latitude'    => ZN_API::numero( ZN_API::campo( $id, 'latitude' ) ),
-			'longitude'   => ZN_API::numero( ZN_API::campo( $id, 'longitude' ) ),
-		);
-		foreach ( array( 'photo', 'video' ) as $tipo ) {
-			for ( $i = 0; $i < 3; $i++ ) {
-				$evento[ "{$tipo}_{$i}" ] = ZN_API::campo( $id, "{$tipo}_{$i}" );
-			}
-		}
+		// name, description, coordenadas, photo_0..2 y video_0..2 salen del esquema común (R58); las fechas, en tres formatos.
+		$evento = array( '_id' => (string) $id ) + ZN_Esquema::salida( ZN_Eventos::TIPO, $entrada );
 		foreach ( array( 'start' => 'start_date', 'end' => 'end_date' ) as $prefijo => $clave ) {
 			$evento += self::fechas( $prefijo, ZN_API::campo( $id, $clave ) );
 		}

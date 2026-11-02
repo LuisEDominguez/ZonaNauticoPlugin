@@ -19,22 +19,10 @@ class ZN_Eventos {
 		3 => 'Noticia',
 	);
 
-	const CAMPOS = array(
-		// Dueño: cuenta de la app que la organiza (comercio, asociación, federación o administración). R63.
-		'user_id'           => 'integer',
-		'event_category_id' => 'integer',
-		'business_id'       => 'integer',
-		'latitude'          => 'number',
-		'longitude'         => 'number',
-		'start_date'        => 'string',
-		'end_date'          => 'string',
-		'photo_0'           => 'string',
-		'photo_1'           => 'string',
-		'photo_2'           => 'string',
-		'video_0'           => 'string',
-		'video_1'           => 'string',
-		'video_2'           => 'string',
-	);
+	/** Campos personalizados (nombres de la tabla `events` del Laravel) y su tipo: salen de ZN_Esquema (R58). */
+	public static function campos(): array {
+		return ZN_Esquema::metas( self::TIPO );
+	}
 
 	public static function registrar(): void {
 		register_post_type(
@@ -61,7 +49,7 @@ class ZN_Eventos {
 			)
 		);
 
-		foreach ( self::CAMPOS as $campo => $tipo ) {
+		foreach ( self::campos() as $campo => $tipo ) {
 			register_post_meta(
 				self::TIPO,
 				$campo,

@@ -99,21 +99,9 @@ class ZN_API_Negocios {
 	public static function formatear( WP_Post $entrada, bool $incluir_usuario = false ): array {
 		$id = $entrada->ID;
 
-		$negocio = array(
-			'_id'         => (string) $id,
-			'name'        => $entrada->post_title,
-			'description' => ZN_API::texto_plano( $entrada->post_content ),
-			'latitude'    => ZN_API::numero( ZN_API::campo( $id, 'latitude' ) ),
-			'longitude'   => ZN_API::numero( ZN_API::campo( $id, 'longitude' ) ),
-		);
-		foreach ( array( 'address', 'postcode', 'state', 'city', 'country', 'phone', 'email', 'web', 'schedule' ) as $clave ) {
-			$negocio[ $clave ] = ZN_API::campo( $id, $clave );
-		}
-		foreach ( array( 'photo', 'video' ) as $tipo ) {
-			for ( $i = 0; $i < 3; $i++ ) {
-				$negocio[ "{$tipo}_{$i}" ] = ZN_API::campo( $id, "{$tipo}_{$i}" );
-			}
-		}
+		// Los campos que salen tal cual, del esquema común (R58): name, description, coordenadas, dirección,
+		// contacto, horario, photo_0..2 y video_0..2.
+		$negocio          = array( '_id' => (string) $id ) + ZN_Esquema::salida( ZN_Negocios::TIPO, $entrada );
 		$negocio['score'] = ZN_API::numero( ZN_API::campo( $id, 'score' ) ) ?? 0;
 
 		// El dueño (cuenta Comercio elegida en la ficha), solo con sus datos públicos (H27). La app lo usa para pedir sus preguntas.

@@ -89,6 +89,24 @@ el servidor de producción: `define( 'ZN_CORREO_REAL', true );` en `wp-config.ph
 `wp-login.php` y el rol por defecto nunca es uno de la app. Las cuentas de administración de la app no
 salen nunca como `user` en la API.
 
+**Campos y validación comunes (R58).** Los campos de negocios, novedades, sorteos, reseñas y preguntas
+están definidos una sola vez en `includes/class-zn-esquema.php`: nombre en la app (camelCase) → campo
+guardado, tipo, máximo (sección 4.3 del traspaso) y si es obligatorio. De ahí salen los campos
+personalizados que se registran, los campos «simples» de las respuestas, las reglas de las fichas de
+wp-admin (con su `maxlength`) y los de la orden de datos de prueba. Las rutas de escritura validarán con
+`ZN_Esquema::validar( $recurso, $cuerpo, $guardado_o_null )` y responderán con `ZN_Esquema::respuesta()`
+(422 con los textos del Laravel). Regla del PATCH: campo ausente → no se toca; `null` → se borra (en un
+obligatorio, 422); `""` → 422.
+
+**Límite de intentos (R59).** `ZN_Limite::intentar( 'login', $email )` cuenta por IP y por email (huellas
+en la tabla `{prefijo}zn_limites`) y devuelve los segundos de espera si se pasa;
+`ZN_Limite::demasiados( $espera )` da el 429 `{"message":"Too Many Attempts."}` con `Retry-After`. Los
+topes están en `ZN_Limite::REGLAS`. La IP es `REMOTE_ADDR`; `X-Forwarded-For` solo se mira si
+`REMOTE_ADDR` es un proxy de confianza declarado en `wp-config.php`:
+`define( 'ZN_PROXIES', '10.0.0.0/8' );` (IPs o rangos, separados por comas). **Al subir al servidor,
+averiguar si Dinahosting pone un proxy delante y cuáles son sus IPs.** Además, como mucho 10 tokens
+activos por cuenta (`ZN_Tokens::MAX_ACTIVOS`): uno nuevo anula los más antiguos.
+
 **Dueños de novedades y sorteos.** Campo `user_id`, elegido en su ficha («Dueño») entre las cuentas de
 comercio, asociación, federación o administración de la app; sale como `user` con `includesUser`.
 
@@ -101,7 +119,8 @@ paquete se hace con git, que ya excluye lo demás (`.gitattributes`):
 
 El `.htaccess` (Apache) bloquea además `.md`, `.mjs` y `tests/` por si se copiara la carpeta entera.
 Pendiente de comprobar en el servidor: que llega la cabecera `Authorization`, que `SCRIPT_NAME` es
-`index.php` (R39) y que las respuestas con token no se guardan en caché (R49).
+`index.php` (R39), que las respuestas con token no se guardan en caché (R49) y si hay un proxy delante
+(entonces, `ZN_PROXIES` con sus IPs, R59).
 
 ## Desarrollo en local
 
@@ -119,5 +138,7 @@ un enlace de carpeta en `wp-content/plugins/zona-nautico`.
 - Puertas de WordPress cerradas, vistas desde fuera: `node tests/puertas.mjs`
 - Roles y permisos (crea y borra sus propias cuentas): `wp eval-file tests/roles.php`
 - Token y `GET /user/{id}` (crea y borra cuentas y tokens; peticiones HTTP de verdad): `wp eval-file tests/tokens.php`
+- Campos y validación comunes (solo lee): `wp eval-file tests/esquema.php`
+- Límite de intentos (escribe y borra filas de prueba): `wp eval-file tests/limite.php`
 - Formato de los errores: `node tests/contrato-errores.mjs` y `wp eval-file tests/errores.php` (los dos solo leen)
 - Recalcular todas las puntuaciones (al final de una migración): `wp zona-nautico recalcular-puntuaciones`

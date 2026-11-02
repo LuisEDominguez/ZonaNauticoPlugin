@@ -75,7 +75,9 @@ class ZN_Admin_Eventos {
 			return;
 		}
 		$errores = array();
-		ZN_Admin_Campos::guardar( $id, self::limpiar( $datos, $errores ), $errores );
+		$limpio  = self::limpiar( $datos, $errores );
+		ZN_Admin_Campos::aviso_titulo( ZN_Eventos::TIPO, $id, $errores );
+		ZN_Admin_Campos::guardar( $id, $limpio, $errores );
 	}
 
 	/**
@@ -88,12 +90,7 @@ class ZN_Admin_Eventos {
 
 		ZN_Admin_Campos::limpiar_dueno( $datos, $limpio, $errores, ZN_Roles::ORGANIZADORES );
 
-		$categoria = $texto( 'event_category_id' );
-		if ( '' === $categoria ) {
-			$limpio['event_category_id'] = null;
-		} elseif ( isset( ZN_Eventos::CATEGORIAS[ (int) $categoria ] ) ) {
-			$limpio['event_category_id'] = (int) $categoria;
-		}
+		ZN_Admin_Campos::con_esquema( ZN_Eventos::TIPO, 'event_category_id', $texto( 'event_category_id' ), $limpio, $errores );
 
 		$negocio = $texto( 'business_id' );
 		if ( '' === $negocio ) {
@@ -117,7 +114,7 @@ class ZN_Admin_Eventos {
 			$errores[] = 'El dueño de una novedad de un negocio tiene que ser el dueño de ese negocio, su asociación o la administración; no se ha cambiado.';
 		}
 
-		ZN_Admin_Campos::limpiar_coordenadas( $datos, $limpio, $errores );
+		ZN_Admin_Campos::limpiar_coordenadas( ZN_Eventos::TIPO, $datos, $limpio, $errores );
 		ZN_Admin_Campos::limpiar_urls( $datos, 'photo', $limpio );
 		ZN_Admin_Campos::limpiar_urls( $datos, 'video', $limpio );
 

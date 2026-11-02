@@ -12,30 +12,22 @@ class ZN_Negocios {
 
 	const TIPO = 'negocio';
 
-	// Campos extra y su tipo. Los nombres son los de la tabla `businesses` del Laravel.
-	const CAMPOS = array(
-		'business_category_id' => 'integer',
-		'latitude'             => 'number',
-		'longitude'            => 'number',
-		'address'              => 'string',
-		'postcode'             => 'string',
-		'state'                => 'string',
-		'city'                 => 'string',
-		'country'              => 'string',
-		'phone'                => 'string',
-		'email'                => 'string',
-		'web'                  => 'string',
-		'schedule'             => 'string',
-		'photo_0'              => 'string',
-		'photo_1'              => 'string',
-		'photo_2'              => 'string',
-		'video_0'              => 'string',
-		'video_1'              => 'string',
-		'video_2'              => 'string',
-		'score'                => 'number',
-		// Dueño: cuenta de la app con rol Comercio (no el autor de la entrada, R1).
-		'user_id'              => 'integer',
+	// Mismos ids que la API Laravel; nombres provisionales del export de Adalo (src/data/provisional de la app).
+	// En este orden salen en la ficha de wp-admin.
+	const CATEGORIAS = array(
+		2 => 'Comercio',
+		4 => 'Alimentación',
+		6 => 'Servicios',
+		1 => 'Cafeterías, café-bar, terrazas',
+		3 => 'Restauración',
+		5 => 'Hospedaje',
+		7 => 'Ocio nocturno',
 	);
+
+	/** Campos personalizados (nombres de la tabla `businesses` del Laravel) y su tipo: salen de ZN_Esquema (R58). */
+	public static function campos(): array {
+		return ZN_Esquema::metas( self::TIPO );
+	}
 
 	/** IDs de los negocios que la API enseña: publicados y sin contraseña. */
 	public static function visibles(): array {
@@ -81,7 +73,7 @@ class ZN_Negocios {
 			)
 		);
 
-		foreach ( self::CAMPOS as $campo => $tipo ) {
+		foreach ( self::campos() as $campo => $tipo ) {
 			register_post_meta(
 				self::TIPO,
 				$campo,

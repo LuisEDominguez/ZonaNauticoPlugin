@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Zona Náutico
  * Description: API de la app Zona Náutico. Imita el contrato de la API Laravel actual ({data, links, meta}) para no rehacer la app.
- * Version:     0.12.1
+ * Version:     0.13.0
  * Author:      Visual Publinet
  * Text Domain: zona-nautico
  * Requires at least: 6.8
@@ -11,11 +11,13 @@
 
 defined( 'ABSPATH' ) || exit;
 
-const ZN_VERSION   = '0.12.1';
+const ZN_VERSION   = '0.13.0';
 const ZN_NAMESPACE = 'zonanautico/v1';
 
 require_once __DIR__ . '/includes/class-zn-api.php';
 require_once __DIR__ . '/includes/class-zn-errores.php';
+require_once __DIR__ . '/includes/class-zn-esquema.php';
+require_once __DIR__ . '/includes/class-zn-limite.php';
 require_once __DIR__ . '/includes/class-zn-puertas.php';
 require_once __DIR__ . '/includes/class-zn-roles.php';
 require_once __DIR__ . '/includes/class-zn-tokens.php';
@@ -38,6 +40,7 @@ ZN_Puertas::iniciar();
 ZN_Errores::iniciar();
 ZN_Roles::iniciar();
 ZN_Tokens::iniciar();
+ZN_Limite::iniciar();
 add_action( 'rest_api_init', array( 'ZN_API_Negocios', 'registrar_rutas' ) );
 add_action( 'rest_api_init', array( 'ZN_API_Eventos', 'registrar_rutas' ) );
 add_action( 'rest_api_init', array( 'ZN_API_Sorteos', 'registrar_rutas' ) );
@@ -45,8 +48,15 @@ add_action( 'rest_api_init', array( 'ZN_API_Resenas', 'registrar_rutas' ) );
 add_action( 'rest_api_init', array( 'ZN_API_Preguntas', 'registrar_rutas' ) );
 add_action( 'rest_api_init', array( 'ZN_API_Usuarios', 'registrar_rutas' ) );
 
-// La tabla de tokens se crea al activar el plugin (y se comprueba en cada carga por si se actualiza sin reactivar).
-register_activation_hook( __FILE__, array( 'ZN_Tokens', 'instalar' ) );
+// Las tablas de tokens y de intentos se crean al activar el plugin (y se comprueban en cada carga por si se
+// actualiza sin reactivar).
+register_activation_hook(
+	__FILE__,
+	static function () {
+		ZN_Tokens::instalar();
+		ZN_Limite::instalar();
+	}
+);
 
 if ( is_admin() ) {
 	require_once __DIR__ . '/includes/class-zn-admin-campos.php';

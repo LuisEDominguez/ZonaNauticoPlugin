@@ -63,6 +63,44 @@ class ZN_Admin_Campos {
 		}
 	}
 
+	/**
+	 * Comprueba un valor del formulario con la regla del esquema común, la misma que aplicará la API (R58).
+	 * Vacío → borrar (si es obligatorio, aviso y no se cambia). Si no vale, aviso y se conserva el anterior.
+	 */
+	public static function con_esquema( string $recurso, string $guardado, string $valor, array &$limpio, array &$errores ): void {
+		$campo = ZN_Esquema::por_guardado( $recurso, $guardado );
+		if ( '' === $valor && empty( $campo['obligatorio'] ) ) {
+			$limpio[ $guardado ] = null;
+			return;
+		}
+		$resultado = ZN_Esquema::comprobar( $campo, $valor, $campo['app'] );
+		if ( isset( $resultado['errores'] ) ) {
+			$errores[] = ZN_Esquema::aviso( $campo, $resultado );
+			return;
+		}
+		$limpio = array_merge( $limpio, $resultado['valores'] );
+	}
+
+	/** Máximo de caracteres del campo en el esquema, para el atributo maxlength de la casilla. */
+	public static function maximo( string $recurso, string $guardado ): string {
+		$campo = ZN_Esquema::por_guardado( $recurso, $guardado );
+		return isset( $campo['max'] ) ? sprintf( ' maxlength="%d"', (int) $campo['max'] ) : '';
+	}
+
+	/** El título lo guarda WordPress: si pasa del máximo de la API, solo se avisa (la app no podría guardarlo así). */
+	public static function aviso_titulo( string $recurso, int $id, array &$errores ): void {
+		$campo  = ZN_Esquema::por_guardado( $recurso, 'post_title' );
+		$titulo = (string) get_post_field( 'post_title', $id, 'raw' );
+		if ( isset( $campo['max'] ) && mb_strlen( $titulo ) > $campo['max'] ) {
+			$errores[] = sprintf( '%s pasa de %d caracteres: la app no podría guardarlo así. Conviene acortarlo.', $campo['etiqueta'], $campo['max'] );
+		}
+	}
+
+	/** Web o enlace escrito sin http(s)://: se le pone https:// antes de comprobarlo. */
+	public static function con_protocolo( string $url ): string {
+		return '' === $url || preg_match( '#^[a-z][a-z0-9+.-]*:#i', $url ) ? $url : 'https://' . $url;
+	}
+
 	public static function texto( array $datos, string $clave ): string {
 		return isset( $datos[ $clave ] ) && is_string( $datos[ $clave ] ) ? trim( $datos[ $clave ] ) : '';
 	}
@@ -116,16 +154,10 @@ class ZN_Admin_Campos {
 		<?php
 	}
 
-	public static function limpiar_coordenadas( array $datos, array &$limpio, array &$errores ): void {
-		foreach ( array( 'latitude' => 90, 'longitude' => 180 ) as $campo => $limite ) {
-			$numero = str_replace( ',', '.', self::texto( $datos, $campo ) );
-			if ( '' === $numero ) {
-				$limpio[ $campo ] = null;
-			} elseif ( is_numeric( $numero ) && abs( (float) $numero ) <= $limite ) {
-				$limpio[ $campo ] = (string) round( (float) $numero, 7 );
-			} else {
-				$errores[] = ( 'latitude' === $campo ? 'La latitud' : 'La longitud' ) . ' no es válida; no se ha cambiado.';
-			}
+	/** Latitud y longitud con la regla del esquema; se admite la coma decimal. */
+	public static function limpiar_coordenadas( string $recurso, array $datos, array &$limpio, array &$errores ): void {
+		foreach ( array( 'latitude', 'longitude' ) as $campo ) {
+			self::con_esquema( $recurso, $campo, str_replace( ',', '.', self::texto( $datos, $campo ) ), $limpio, $errores );
 		}
 	}
 

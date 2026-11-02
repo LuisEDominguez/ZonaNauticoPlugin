@@ -12,20 +12,10 @@ class ZN_Sorteos {
 
 	const TIPO = 'sorteo';
 
-	const CAMPOS = array(
-		// Dueño: cuenta de la app que lo organiza (comercio, asociación, federación o administración). R63.
-		'user_id'    => 'integer',
-		'start_date' => 'string',
-		'end_date'   => 'string',
-		'winners'    => 'integer',
-		'legal_url'  => 'string',
-		'photo_0'    => 'string',
-		'photo_1'    => 'string',
-		'photo_2'    => 'string',
-		'video_0'    => 'string',
-		'video_1'    => 'string',
-		'video_2'    => 'string',
-	);
+	/** Campos personalizados (nombres de la tabla `draws` del Laravel) y su tipo: salen de ZN_Esquema (R58). */
+	public static function campos(): array {
+		return ZN_Esquema::metas( self::TIPO );
+	}
 
 	public static function registrar(): void {
 		register_post_type(
@@ -52,7 +42,7 @@ class ZN_Sorteos {
 			)
 		);
 
-		foreach ( self::CAMPOS as $campo => $tipo ) {
+		foreach ( self::campos() as $campo => $tipo ) {
 			register_post_meta(
 				self::TIPO,
 				$campo,

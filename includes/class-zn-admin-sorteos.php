@@ -36,7 +36,7 @@ class ZN_Admin_Sorteos {
 			</tr>
 			<tr>
 				<th><label for="zn-bases">Bases legales</label></th>
-				<td><input type="url" class="regular-text" id="zn-bases" name="zn[legal_url]" placeholder="https://" value="<?php echo esc_attr( ZN_Admin_Campos::valor( $id, 'legal_url' ) ); ?>"></td>
+				<td><input type="url" class="regular-text" id="zn-bases" name="zn[legal_url]" maxlength="255" placeholder="https://" value="<?php echo esc_attr( ZN_Admin_Campos::valor( $id, 'legal_url' ) ); ?>"></td>
 			</tr>
 		</table>
 		<?php
@@ -62,7 +62,9 @@ class ZN_Admin_Sorteos {
 			return;
 		}
 		$errores = array();
-		ZN_Admin_Campos::guardar( $id, self::limpiar( $datos, $errores ), $errores );
+		$limpio  = self::limpiar( $datos, $errores );
+		ZN_Admin_Campos::aviso_titulo( ZN_Sorteos::TIPO, $id, $errores );
+		ZN_Admin_Campos::guardar( $id, $limpio, $errores );
 	}
 
 	/**
@@ -78,24 +80,9 @@ class ZN_Admin_Sorteos {
 			$errores[] = 'Faltan fechas: sin inicio y fin el sorteo no se abrirá en la app.';
 		}
 
-		$ganadores = ZN_Admin_Campos::texto( $datos, 'winners' );
-		if ( ctype_digit( $ganadores ) && (int) $ganadores >= 1 ) {
-			$limpio['winners'] = (int) $ganadores;
-		} else {
-			$errores[] = 'El número de ganadores tiene que ser 1 o más; no se ha cambiado.';
-		}
-
-		$bases = ZN_Admin_Campos::texto( $datos, 'legal_url' );
-		if ( '' === $bases ) {
-			$limpio['legal_url'] = null;
-		} else {
-			$url = esc_url_raw( preg_match( '#^https?://#i', $bases ) ? $bases : 'https://' . $bases, array( 'http', 'https' ) );
-			if ( $url && wp_http_validate_url( $url ) ) {
-				$limpio['legal_url'] = $url;
-			} else {
-				$errores[] = 'La dirección de las bases no es válida; no se ha cambiado.';
-			}
-		}
+		// Mismas reglas que la API (ZN_Esquema, R58).
+		ZN_Admin_Campos::con_esquema( ZN_Sorteos::TIPO, 'winners', ZN_Admin_Campos::texto( $datos, 'winners' ), $limpio, $errores );
+		ZN_Admin_Campos::con_esquema( ZN_Sorteos::TIPO, 'legal_url', ZN_Admin_Campos::con_protocolo( ZN_Admin_Campos::texto( $datos, 'legal_url' ) ), $limpio, $errores );
 
 		ZN_Admin_Campos::limpiar_urls( $datos, 'photo', $limpio );
 		ZN_Admin_Campos::limpiar_urls( $datos, 'video', $limpio );

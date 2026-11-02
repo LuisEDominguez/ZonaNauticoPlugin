@@ -101,20 +101,8 @@ class ZN_API_Sorteos {
 		$fin    = ZN_API::campo( $id, 'end_date' );
 		$ahora  = ZN_Sorteos::ahora();
 
-		$sorteo = array(
-			'_id'         => (string) $id,
-			'title'       => $entrada->post_title,
-			'description' => ZN_API::texto_plano( $entrada->post_content ),
-			'startDate'   => $inicio,
-			'endDate'     => $fin,
-			'winners'     => (int) ZN_API::campo( $id, 'winners' ),
-		);
-		foreach ( array( 'photo', 'video' ) as $tipo ) {
-			for ( $i = 0; $i < 3; $i++ ) {
-				$sorteo[ "{$tipo}_{$i}" ] = ZN_API::campo( $id, "{$tipo}_{$i}" );
-			}
-		}
-		$sorteo['legalUrl']           = ZN_API::campo( $id, 'legal_url' );
+		// title, description, startDate, endDate, winners, photo_0..2, video_0..2 y legalUrl salen del esquema común (R58).
+		$sorteo                       = array( '_id' => (string) $id ) + ZN_Esquema::salida( ZN_Sorteos::TIPO, $entrada );
 		$sorteo['controlParticipar']  = $inicio && $fin && $inicio <= $ahora && $ahora <= $fin ? 1 : 0;
 		$sorteo['controlVisibilidad'] = $fin && $ahora <= $fin ? 1 : 0;
 

@@ -219,6 +219,20 @@ try {
 	$ok( 'R64: wp_check_password acepta la contraseña buena', wp_check_password( 'Inventada-del-Laravel-1', $hash, $migrada ) );
 	$ok( 'R64: y rechaza una mala', ! wp_check_password( 'otra', $hash, $migrada ) );
 
+	// --- R59: tope de tokens activos por cuenta ---
+	$vecina       = $cuenta( 'zn_usuario' );
+	$de_la_vecina = ZN_Tokens::emitir( $vecina );
+	$muchos       = $cuenta( 'zn_usuario' );
+	$suyos        = array();
+	for ( $i = 0; $i < ZN_Tokens::MAX_ACTIVOS + 3; $i++ ) {
+		$suyos[] = ZN_Tokens::emitir( $muchos );
+	}
+	$activos = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . ZN_Tokens::tabla() . ' WHERE user_id = %d AND anulado IS NULL', $muchos ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+	$ok( sprintf( 'R59: con %d tokens emitidos quedan %d activos', count( $suyos ), ZN_Tokens::MAX_ACTIVOS ), ZN_Tokens::MAX_ACTIVOS === $activos );
+	$ok( 'R59: los anulados son los más antiguos', 0 === ZN_Tokens::validar( $suyos[0] ) && 0 === ZN_Tokens::validar( $suyos[2] ) && $muchos === ZN_Tokens::validar( $suyos[3] ) );
+	$ok( 'R59: el último sigue valiendo', $muchos === ZN_Tokens::validar( end( $suyos ) ) );
+	$ok( 'R59: el tope de una cuenta no toca los tokens de otra', $vecina === ZN_Tokens::validar( $de_la_vecina ) );
+
 	// --- R48 y R51 ---
 	$ok( 'R48: la tabla se instala en plugins_loaded (antes de mirar el usuario)', false !== has_action( 'plugins_loaded', array( 'ZN_Tokens', 'instalar' ) ) );
 	$ok( 'R48: índice en caduca', (bool) $wpdb->get_row( "SHOW INDEX FROM " . ZN_Tokens::tabla() . " WHERE Key_name = 'caduca'" ) );

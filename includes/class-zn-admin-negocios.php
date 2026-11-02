@@ -8,17 +8,6 @@ defined( 'ABSPATH' ) || exit;
 
 class ZN_Admin_Negocios {
 
-	// Mismos ids que la API Laravel; nombres provisionales del export de Adalo (src/data/provisional de la app).
-	const CATEGORIAS = array(
-		2 => 'Comercio',
-		4 => 'Alimentación',
-		6 => 'Servicios',
-		1 => 'Cafeterías, café-bar, terrazas',
-		3 => 'Restauración',
-		5 => 'Hospedaje',
-		7 => 'Ocio nocturno',
-	);
-
 	// Casillas de texto de una línea: campo => etiqueta.
 	const TEXTOS = array(
 		'address'  => 'Dirección',
@@ -54,7 +43,7 @@ class ZN_Admin_Negocios {
 				<td>
 					<select id="zn-categoria" name="zn[business_category_id]">
 						<option value="">— Sin categoría —</option>
-						<?php foreach ( self::CATEGORIAS as $valor => $nombre ) : ?>
+						<?php foreach ( ZN_Negocios::CATEGORIAS as $valor => $nombre ) : ?>
 							<option value="<?php echo esc_attr( $valor ); ?>" <?php selected( $categoria, $valor ); ?>><?php echo esc_html( $nombre ); ?></option>
 						<?php endforeach; ?>
 					</select>
@@ -75,16 +64,16 @@ class ZN_Admin_Negocios {
 			<?php foreach ( self::TEXTOS as $campo => $etiqueta ) : ?>
 				<tr>
 					<th><label for="zn-<?php echo esc_attr( $campo ); ?>"><?php echo esc_html( $etiqueta ); ?></label></th>
-					<td><input type="text" class="regular-text" id="zn-<?php echo esc_attr( $campo ); ?>" name="zn[<?php echo esc_attr( $campo ); ?>]" value="<?php echo esc_attr( ZN_Admin_Campos::valor( $id, $campo ) ); ?>"></td>
+					<td><input type="text" class="regular-text" id="zn-<?php echo esc_attr( $campo ); ?>" name="zn[<?php echo esc_attr( $campo ); ?>]"<?php echo ZN_Admin_Campos::maximo( ZN_Negocios::TIPO, $campo ); // phpcs:ignore WordPress.Security.EscapeOutput ?> value="<?php echo esc_attr( ZN_Admin_Campos::valor( $id, $campo ) ); ?>"></td>
 				</tr>
 			<?php endforeach; ?>
 			<tr>
 				<th><label for="zn-email">Email de contacto</label></th>
-				<td><input type="email" class="regular-text" id="zn-email" name="zn[email]" value="<?php echo esc_attr( ZN_Admin_Campos::valor( $id, 'email' ) ); ?>"></td>
+				<td><input type="email" class="regular-text" id="zn-email" name="zn[email]" maxlength="50" value="<?php echo esc_attr( ZN_Admin_Campos::valor( $id, 'email' ) ); ?>"></td>
 			</tr>
 			<tr>
 				<th><label for="zn-web">Web</label></th>
-				<td><input type="url" class="regular-text" id="zn-web" name="zn[web]" placeholder="https://" value="<?php echo esc_attr( ZN_Admin_Campos::valor( $id, 'web' ) ); ?>"></td>
+				<td><input type="url" class="regular-text" id="zn-web" name="zn[web]" maxlength="255" placeholder="https://" value="<?php echo esc_attr( ZN_Admin_Campos::valor( $id, 'web' ) ); ?>"></td>
 			</tr>
 			<tr>
 				<th><label for="zn-schedule">Horario</label></th>
@@ -112,30 +101,27 @@ class ZN_Admin_Negocios {
 			return;
 		}
 		$errores = array();
-		ZN_Admin_Campos::guardar( $id, self::limpiar( $datos, $errores ), $errores );
+		$limpio  = self::limpiar( $datos, $errores );
+		ZN_Admin_Campos::aviso_titulo( ZN_Negocios::TIPO, $id, $errores );
+		ZN_Admin_Campos::guardar( $id, $limpio, $errores );
 	}
 
 	/**
-	 * Valida y limpia lo que llega del formulario. Devuelve campo => valor (null = borrar).
-	 * Un valor no válido no se guarda (se conserva el anterior) y se añade a $errores.
+	 * Valida y limpia lo que llega del formulario con las mismas reglas que la API (ZN_Esquema, R58).
+	 * Devuelve campo => valor (null = borrar). Un valor no válido no se guarda (se conserva el anterior)
+	 * y se añade a $errores.
 	 */
 	public static function limpiar( array $datos, array &$errores ): array {
 		$limpio = array();
 		$texto  = static fn( $clave ) => ZN_Admin_Campos::texto( $datos, $clave );
+		$regla  = static function ( string $campo, string $valor ) use ( &$limpio, &$errores ) {
+			ZN_Admin_Campos::con_esquema( ZN_Negocios::TIPO, $campo, $valor, $limpio, $errores );
+		};
 
 		foreach ( array_keys( self::TEXTOS ) as $campo ) {
-			$limpio[ $campo ] = '' === $texto( $campo ) ? null : sanitize_text_field( $texto( $campo ) );
+			$regla( $campo, $texto( $campo ) );
 		}
-		if ( null !== $limpio['country'] ) {
-			$limpio['country'] = strtoupper( substr( $limpio['country'], 0, 2 ) );
-		}
-
-		$categoria = $texto( 'business_category_id' );
-		if ( '' === $categoria ) {
-			$limpio['business_category_id'] = null;
-		} elseif ( isset( self::CATEGORIAS[ (int) $categoria ] ) ) {
-			$limpio['business_category_id'] = (int) $categoria;
-		}
+		$regla( 'business_category_id', $texto( 'business_category_id' ) );
 
 		// El dueño solo puede ser una cuenta Comercio de la app, nunca una de wp-admin (R1).
 		$dueno = $texto( 'user_id' );
@@ -147,33 +133,11 @@ class ZN_Admin_Negocios {
 			$errores[] = 'El dueño elegido no es una cuenta de comercio; no se ha cambiado.';
 		}
 
-		$email = $texto( 'email' );
-		if ( '' === $email ) {
-			$limpio['email'] = null;
-		} elseif ( is_email( $email ) ) {
-			$limpio['email'] = sanitize_email( $email );
-		} else {
-			$errores[] = 'El email no es válido; no se ha cambiado.';
-		}
+		$regla( 'email', $texto( 'email' ) );
+		$regla( 'web', ZN_Admin_Campos::con_protocolo( $texto( 'web' ) ) );
+		$regla( 'schedule', $texto( 'schedule' ) );
 
-		$web = $texto( 'web' );
-		if ( '' === $web ) {
-			$limpio['web'] = null;
-		} else {
-			$web = preg_match( '#^https?://#i', $web ) ? $web : 'https://' . $web;
-			$url = esc_url_raw( $web, array( 'http', 'https' ) );
-			if ( $url && wp_http_validate_url( $url ) ) {
-				$limpio['web'] = $url;
-			} else {
-				$errores[] = 'La web no es válida; no se ha cambiado.';
-			}
-		}
-
-		// Los horarios del Laravel separan día y horas con tabulador; sanitize_textarea_field lo convertiría en espacio.
-		$horario            = str_replace( "\t", ': ', $texto( 'schedule' ) );
-		$limpio['schedule'] = '' === $horario ? null : sanitize_textarea_field( $horario );
-
-		ZN_Admin_Campos::limpiar_coordenadas( $datos, $limpio, $errores );
+		ZN_Admin_Campos::limpiar_coordenadas( ZN_Negocios::TIPO, $datos, $limpio, $errores );
 		ZN_Admin_Campos::limpiar_urls( $datos, 'photo', $limpio );
 
 		return $limpio;
