@@ -13,7 +13,7 @@ el sí de Luis.
 |---|---|
 | Todas a la vez (hilo que desarrolla) | `node tests/todas.mjs` |
 | Revisores (solo lectura, todas las que necesiten) | `node tests/contrato-negocios.mjs`, `contrato-eventos.mjs`, `contrato-sorteos.mjs`, `contrato-resenas.mjs`, `contrato-preguntas.mjs`, `contrato-muestras.mjs`, `contrato-errores.mjs`, `wp eval-file tests/admin-fichas.php`, `tests/esquema.php` y `tests/errores.php` (no guardan nada; `errores.php` registra rutas de prueba solo en memoria), además de peticiones GET y lectura de código |
-| Hilo que desarrolla (pasa el resultado a los revisores) | `wp eval-file tests/seguridad.php`, `tests/comentarios.php`, `tests/roles.php`, `tests/tokens.php`, `tests/limite.php`, `tests/escrituras.php`, `tests/login.php`, `tests/registro.php`, `tests/opiniones.php` y `tests/privacidad.php` (crean datos, cuentas o filas temporales y los borran) y `node tests/puertas.mjs` (no guarda nada, pero envía una petición a XML-RPC) |
+| Hilo que desarrolla (pasa el resultado a los revisores) | `wp eval-file tests/seguridad.php`, `tests/comentarios.php`, `tests/roles.php`, `tests/tokens.php`, `tests/limite.php`, `tests/escrituras.php`, `tests/login.php`, `tests/registro.php`, `tests/opiniones.php`, `tests/privacidad.php` y `tests/panel.php` (crean datos, cuentas o filas temporales y los borran) y `node tests/puertas.mjs` (no guarda nada, pero envía una petición a XML-RPC) |
 
 Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** · **espera decisión** ·
 **se propone descartar**.
@@ -45,8 +45,30 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Escrituras y RGPD | 02-11-2026 | `daa57ab` (v0.15.1) | `3e598f5` (v0.16.0) | Reseñas y preguntas desde la app, R65 y el 405 de `/verify` |
 | Escrituras-bis | 02-11-2026 | `3e598f5` (v0.16.0) | `5f1352e` (v0.16.1) | R93, R94, R95 = A |
 | Novedades y sorteos | 02-11-2026 | `5f1352e` (v0.16.1) | `077f02a` (v0.17.0) | Escrituras de novedades y sorteos desde la app y R96 |
+| Panel R40, parte 1 | 02-11-2026 | `077f02a` (v0.17.0) | `20959b2` (v0.18.0) | Asociación y federación entran a wp-admin y solo ven lo suyo (sin editar) |
 
 ---
+
+## Panel de wp-admin para asociación y federación (R40, parte 1: solo ver)
+
+Luis dio el sí (02-11, 11:09) solo a la **parte 1**: entrar y ver lo suyo, sin editar nada. La parte 2
+(editar) necesita otro sí. Diff de la ronda: `git diff cfc3eb8 20959b2`. Pruebas escritas antes
+(`tests/panel.php` y el cambio de `tests/roles.php` fallaban). **Revisor principal + uno de seguridad, solo el diff.**
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **Quién entra** | hecho | `ZN_Panel::puede_entrar()`: rol único `zn_asociacion` o `zn_federacion` (R37) y `zn_verificado = 1`. Esos dos roles reciben de WordPress solo `read` y `zn_panel_ver` (`ZN_Roles::ROLES_PANEL`, `PERMISOS_PANEL`); los otros tres siguen sin ninguno. `ZN_Puertas::sin_panel_para_la_app` (antes de mirar la contraseña) deja pasar solo a esas cuentas y llama a `ZN_Limite::intentar( 'login', correo )`: wp-login.php y `POST /login` cuentan juntos; al entrar bien (`wp_login`) se olvidan, como en la app. Mismo aviso genérico para todo. «¿Has olvidado tu contraseña?» sigue cerrado: se recupera desde la app. |
+| **Qué ve** | hecho | Página «Mi zona» (`admin.php?page=zn-panel`). «Lo suyo» = él y las cuentas que cuelgan directamente de él y puede leer (`ZN_Roles::puede( 'user:read', … )`: asociación → sus comercios y usuarios; federación → sus asociaciones; un nivel, como los permisos de la app). Tablas de esas cuentas (nombre, correo, tipo, verificada) y de negocios, novedades y sorteos cuyo `user_id` es él o una de ellas (también borradores; sin papelera). Máximo 200 filas por tabla. Todo con `esc_html`, sin enlaces ni formularios. |
+| **Nada más de wp-admin** | hecho | `admin_init` (prioridad 0): una cuenta de la app que ya no puede entrar (otro rol, sin verificar) se queda sin sesión; si puede, solo su página y el latido de admin-ajax; lo demás (escritorio, perfil, admin-post, otras acciones de admin-ajax) vuelve al panel o da 403. Las páginas de tipos y ajustes ya las corta WordPress por permisos (403). Sin «Escritorio» ni «Perfil» en el menú; la barra de arriba sin perfil, sitio ni «Añadir»; solo «Salir». Sin barra en la parte pública. Al entrar va directo al panel. |
+| **Sin editar** | hecho | `map_meta_cap`: `edit_user` denegado a toda cuenta de la app, también sobre sí misma (perfil y `/wp/v2/users/me`). Sin `edit_posts` ni permisos de los tipos (comprobado en la prueba). |
+| **Cookie y API de la app** | hecho | `ZN_Tokens::usuario_del_token`: en `/zonanautico/v1` la cookie de una cuenta de la app no abre sesión (allí solo el token); la de un administrador de WordPress, como antes. Así la sesión del panel no sirve para escribir por la API (ni con el nonce de wp-admin). |
+| Aviso | apuntado | `POST /login` desde la app cierra las sesiones de WordPress de la cuenta (R39): entrar en la app saca del panel. Se deja así salvo que Luis diga otra cosa. |
+
+### Resultado de las pruebas (panel, 02-11)
+
+`node tests/todas.mjs`: **894 comprobaciones bien en 23 juegos** (`panel` 75) (`panel` nueva, `roles` cambiada: asociación y federación tienen `read` y
+`zn_panel_ver`). Comprobado también por HTTP, una vez, con la cuenta de prueba: wp-login → panel; `profile.php` →
+panel; `edit.php?post_type=negocio` → 403; la página no enlaza a `profile.php` ni a crear nada.
 
 ## Escrituras de novedades y sorteos (y R96)
 
