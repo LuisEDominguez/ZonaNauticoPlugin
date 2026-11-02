@@ -363,6 +363,14 @@ try {
 	$ok( '2b: sin verificar (lo verifica al poner su contraseña con el código)', '1' !== (string) get_user_meta( $nuevo->ID, 'zn_verificado', true ) );
 	$aviso = end( $correos );
 	$ok( '2b: le llega un correo que explica cómo entrar, sin contraseña', $aviso && 'nuevo-comercio-temporal-panel@ejemplo.invalid' === $aviso['to'] && false !== strpos( $aviso['message'], 'Olvidé la contraseña' ) && false === stripos( $aviso['message'], 'contraseña:' ) );
+	$ok( 'R103: dice a quién avisar si no esperaba el alta', false !== strpos( $aviso['message'], 'Si no conoces' ) );
+	$ok( 'R103: con el correo de contacto, si está puesto', false !== strpos( ZN_Panel::linea_contacto( 'contacto@ejemplo.invalid' ), 'contacto@ejemplo.invalid' ) && false === strpos( ZN_Panel::linea_contacto( 'no es un correo' ), 'no es un correo' ) );
+	$nombre_antes = get_user_meta( $asociacion, 'first_name', true );
+	update_user_meta( $asociacion, 'first_name', "Asoc\nVisita https://malo.example/x y www.malo.example o malo.com <b>ya</b>" );
+	$alta( $asociacion, 'Comercio con nombre raro (temporal)', 'raro-comercio-temporal-panel@ejemplo.invalid' );
+	$raro = end( $correos )['message'];
+	$ok( 'R103: el nombre de la asociación sale limpio (sin enlaces, etiquetas ni saltos de línea)', false === stripos( $raro, 'http' ) && false === stripos( $raro, 'www.' ) && false === stripos( $raro, 'malo.com' ) && false === strpos( $raro, '<b>' ) && false !== strpos( $raro, "Hola:\n\nAsoc Visita" ) );
+	update_user_meta( $asociacion, 'first_name', $nombre_antes );
 	$ok( '2b: su contraseña es al azar y nadie la conoce (no es vacía)', ! wp_check_password( '', $nuevo->user_pass, $nuevo->ID ) );
 	$antes = $cuantas();
 	$ok( '2b: correo repetido: aviso y no se crea', ! $alta( $asociacion, 'Otro', 'nuevo-comercio-temporal-panel@ejemplo.invalid' )['ok'] );
@@ -412,6 +420,12 @@ try {
 	$ok( '2b: no da de baja: la asociación, un comercio ajeno', ! $desactiva( $asociacion, $ajeno ) && ! ZN_Panel::desactivada( $ajeno ) );
 	$ok( '2b: no da de baja: la federación, el comercio del 2.º nivel', ! $desactiva( $federacion, $comercio ) && ! ZN_Panel::desactivada( $comercio ) );
 	$ok( '2b: la asociación da de baja su comercio (desactivada)', $desactiva( $asociacion, $comercio ) && ZN_Panel::desactivada( $comercio ) );
+	$mandados = count( $correos );
+	$pedir    = new WP_REST_Request( 'POST', '/' . ZN_NAMESPACE . '/reset-password-code' );
+	$pedir->set_header( 'Content-Type', 'application/json' );
+	$pedir->set_body( wp_json_encode( array( 'email' => get_userdata( $comercio )->user_email ) ) );
+	$claves = array_merge( $claves, array_keys( ZN_Limite::claves( 'recuperar', get_userdata( $comercio )->user_email ) ) );
+	$ok( 'R104: una cuenta dada de baja no recibe códigos de «Olvidé la contraseña» (la respuesta, la de siempre)', 200 === rest_do_request( $pedir )->get_status() && count( $correos ) === $mandados );
 	$ok( '2b: no se borra nada: la cuenta sigue y sus cosas también', false !== get_userdata( $comercio ) && null !== get_post( $neg_baja ) && null !== get_post( $nov_baja ) && null !== get_post( $sor_baja ) );
 	$ok( '2b: sus negocios, novedades y sorteos pasan a borrador', 'draft' === get_post_status( $neg_baja ) && 'draft' === get_post_status( $nov_baja ) && 'draft' === get_post_status( $sor_baja ) );
 	$ok( '2b: sus sesiones de la app se cierran', 0 === ZN_Tokens::validar( (string) $token ) );
@@ -449,6 +463,8 @@ try {
 	$_GET['cuenta'] = (string) $comercio;
 	$form           = $pintar( $asociacion );
 	$ok( '2b: editar un comercio: nombre y «Dar de baja»; el correo no se cambia', false !== strpos( $form, 'name="zn_cuenta[name]"' ) && false === strpos( $form, 'name="zn_cuenta[email]"' ) && false !== strpos( $form, 'value="baja"' ) );
+	$_GET['cuenta'] = (string) $asociacion;
+	$ok( 'R102: la federación, al dar de baja una asociación, ve que sus comercios se quedan sin gestionar', false !== stripos( $pintar( $federacion ), 'sus comercios' ) );
 	$_GET['cuenta'] = (string) $ajeno;
 	$ok( '2b: el de un comercio ajeno no sale', false === strpos( $pintar( $asociacion ), '<form' ) );
 	unset( $_GET['cuenta'] );

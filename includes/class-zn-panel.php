@@ -330,12 +330,34 @@ class ZN_Panel {
 			$valores['user_email'],
 			'Zona Náutico: se ha creado tu cuenta',
 			sprintf(
-				"Hola:\n\n%s ha creado tu cuenta %s en la app Zona Náutico con este correo.\n\nPara entrar, abre la app, ve a «Iniciar sesión» y pulsa «Olvidé la contraseña». Te llegará un código para elegir tu contraseña.\n\nSi no esperabas este correo, no hagas nada.\n",
-				ZN_API::nombre_publico( $yo ) ?? 'Tu asociación',
-				'zn_comercio' === $rol ? 'de comercio' : 'de asociación'
+				"Hola:\n\n%s ha creado tu cuenta %s en la app Zona Náutico con este correo.\n\nPara entrar, abre la app, ve a «Iniciar sesión» y pulsa «Olvidé la contraseña». Te llegará un código para elegir tu contraseña.\n\n%s\n",
+				self::nombre_para_correo( $yo ),
+				'zn_comercio' === $rol ? 'de comercio' : 'de asociación',
+				self::linea_contacto()
 			)
 		);
 		return array( 'ok' => true, 'avisos' => array(), 'id' => (int) $id );
+	}
+
+	/**
+	 * Línea final del correo de alta (R103): a quién avisar si no conoce a quien le ha dado de alta. El correo de
+	 * contacto va en wp-config.php: define( 'ZN_CORREO_CONTACTO', '…' ); (pendiente de que Luis diga cuál). Sin él,
+	 * o si no es un correo, una línea sin dirección.
+	 */
+	public static function linea_contacto( ?string $correo = null ): string {
+		$correo = $correo ?? ( defined( 'ZN_CORREO_CONTACTO' ) ? (string) ZN_CORREO_CONTACTO : '' );
+		return is_email( $correo )
+			? "Si no conoces a quien te ha dado de alta o no esperabas este correo, no entres y escribe a $correo."
+			: 'Si no conoces a quien te ha dado de alta o no esperabas este correo, no entres y avisa a Zona Náutico.';
+	}
+
+	/** Nombre de quien da de alta, para el correo (R103): una línea, sin etiquetas ni nada que parezca un enlace. */
+	private static function nombre_para_correo( WP_User $yo ): string {
+		$nombre = wp_strip_all_tags( (string) ( ZN_API::nombre_publico( $yo ) ?? '' ), true );
+		$nombre = preg_replace( '#(?:[a-z][a-z0-9+.-]*://|www\.)\S*#i', '', $nombre );
+		$nombre = preg_replace( '#\b[\w-]+(?:\.[\w-]+)*\.[a-z]{2,}\b\S*#i', '', (string) $nombre );
+		$nombre = trim( (string) preg_replace( '/\s+/u', ' ', (string) $nombre ) );
+		return '' === $nombre ? 'Tu asociación' : mb_substr( $nombre, 0, 100 );
 	}
 
 	/** Cambia el nombre de una cuenta que gestiona (first_name, R53). Cuenta para el límite de escrituras. */
@@ -752,7 +774,7 @@ class ZN_Panel {
 			<p>
 				<button type="submit" class="button button-primary" name="zn_hacer" value="<?php echo $nueva ? 'alta' : 'guardar'; ?>"><?php echo $nueva ? 'Dar de alta' : 'Guardar cambios'; ?></button>
 				<?php if ( $baja ) : ?>
-					<button type="submit" class="button button-link-delete" name="zn_hacer" value="baja" onclick="return confirm('¿Dar de baja esta cuenta? No podrá entrar en la app y sus negocios, novedades y sorteos pasarán a borrador. Solo la administración puede reactivarla.');">Dar de baja</button>
+					<button type="submit" class="button button-link-delete" name="zn_hacer" value="baja" onclick="return confirm('<?php echo esc_js( '¿Dar de baja esta cuenta? No podrá entrar en la app y sus negocios, novedades y sorteos pasarán a borrador. Solo la administración puede reactivarla.' . ( 'asociación' === $tipo ? ' Sus comercios se quedarán sin nadie que los gestione en el panel hasta que la administración los pase a otra asociación.' : '' ) ); ?>');">Dar de baja</button>
 				<?php endif; ?>
 			</p>
 		</form>

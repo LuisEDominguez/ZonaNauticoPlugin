@@ -285,7 +285,8 @@ class ZN_API_Cuenta {
 
 	private static function cuenta_de_la_app( string $email ): ?WP_User {
 		$cuenta = get_user_by( 'email', $email );
-		return $cuenta && ZN_Roles::rol_app( $cuenta ) ? $cuenta : null;
+		// Una cuenta dada de baja en el panel no recibe códigos ni correos (R104).
+		return $cuenta && ZN_Roles::rol_app( $cuenta ) && ! ZN_Panel::desactivada( $cuenta->ID ) ? $cuenta : null;
 	}
 
 	/** Solo el cuerpo (JSON o formulario): lo que venga en la dirección se ignora (H8). */
