@@ -259,9 +259,17 @@ try {
 	$ok( '2a: puede pasarlo a borrador', 'draft' === get_post_status( $neg_hijo ) );
 	$ok( '2a: el dueño no cambia aunque se mande', $comercio === (int) $meta( $neg_hijo, 'user_id' ) );
 	$ok( '2a: guarda sin autor de WordPress (post_author sigue en 0)', 0 === (int) get_post( $neg_hijo )->post_author );
-	$r = $edita( $asociacion, $neg_hijo, array( 'post_title' => '', 'email' => 'no-es-un-correo', 'phone' => '600 000 000', 'estado' => 'publish' ) );
+	$r = $edita( $asociacion, $neg_hijo, array( 'post_title' => '', 'email' => 'no-es-un-correo', 'phone' => '600 000 000' ) );
 	$ok( '2a: lo que no vale no se guarda y se avisa en español; lo demás, sí', ! $r['ok'] && 'Negocio editado (temporal)' === get_post( $neg_hijo )->post_title && '' === $meta( $neg_hijo, 'email' ) && '600 000 000' === $meta( $neg_hijo, 'phone' ) && 2 === count( $r['avisos'] ) && false !== strpos( implode( ' ', $r['avisos'] ), 'El nombre' ) );
-	$ok( '2a: y vuelve a publicarlo', 'publish' === get_post_status( $neg_hijo ) );
+	// Luis (02-11, R99): desde el panel no se publica nada; solo se pasa a borrador. Publicar, la administración.
+	$r = $edita( $asociacion, $neg_hijo, array( 'estado' => 'publish' ) );
+	$ok( 'R99: no puede volver a publicarlo (solo la administración)', ! $r['ok'] && 'draft' === get_post_status( $neg_hijo ) && false !== strpos( implode( ' ', $r['avisos'] ), 'administración' ) );
+	$ok( 'R99: dejarlo en borrador sí vale', $edita( $asociacion, $neg_hijo, array( 'estado' => 'draft' ) )['ok'] );
+	$_GET['editar'] = (string) $neg_hijo;
+	$ok( 'R99: en borrador, el formulario no ofrece «Publicado»', false === strpos( $pintar( $asociacion ), 'value="publish"' ) );
+	unset( $_GET['editar'] );
+	wp_update_post( array( 'ID' => $neg_hijo, 'post_status' => 'publish' ) );
+	$ok( 'R99: publicado, dejarlo publicado no es publicar', $edita( $asociacion, $neg_hijo, array( 'estado' => 'publish', 'city' => 'Cangas' ) )['ok'] && 'publish' === get_post_status( $neg_hijo ) );
 	$r = $edita( $asociacion, $neg_hijo, array( 'estado' => 'private' ) );
 	$ok( '2a: solo «publicado» o «borrador»', 'publish' === get_post_status( $neg_hijo ) && ! $r['ok'] );
 	$r = $edita( $asociacion, $nov_hijo, array( 'post_title' => 'Novedad editada', 'event_category_id' => '2', 'start_date' => '2026-12-01T10:00', 'end_date' => '2026-12-02T10:00' ) );
@@ -270,6 +278,9 @@ try {
 	$ok( '2a: sorteo: sin inicio (obligatorio) y 0 ganadores, no se guarda nada de eso', ! $r['ok'] && '' === $meta( $sor_asoc, 'winners' ) && '' === $meta( $sor_asoc, 'start_date' ) );
 	$r = $edita( $asociacion, $sor_asoc, array( 'start_date' => '2026-12-10T10:00', 'end_date' => '2026-12-01T10:00', 'winners' => '2' ) );
 	$ok( '2a: el fin antes del inicio no se guarda; los ganadores, sí', ! $r['ok'] && '2026-12-10 10:00:00' !== $meta( $sor_asoc, 'end_date' ) && '2026-12-01 10:00:00' !== $meta( $sor_asoc, 'end_date' ) && '2' === $meta( $sor_asoc, 'winners' ) );
+	$r = $edita( $asociacion, $sor_asoc, array( 'start_date' => '2026-12-01T10:00', 'end_date' => '2026-12-20T10:00' ) );
+	$r = $edita( $asociacion, $sor_asoc, array( 'start_date' => '2026-12-25T10:00' ) );
+	$ok( 'R101: solo el inicio, después del fin guardado: no se guarda (como la API)', ! $r['ok'] && '2026-12-01 10:00:00' === $meta( $sor_asoc, 'start_date' ) );
 	$r = $edita( $federacion, $nov_asoc, array( 'post_title' => 'Novedad de la asociación, por la federación' ) );
 	$ok( '2a: la federación edita la novedad de su asociación (en novedades la app hereda)', $r['ok'] && 'Novedad de la asociación, por la federación' === get_post( $nov_asoc )->post_title );
 
@@ -293,13 +304,24 @@ try {
 	// Borrar.
 	$ok( '2a: la asociación no borra el sorteo de su comercio', ! $borra( $asociacion, $sor_hijo ) && null !== get_post( $sor_hijo ) );
 	$ok( '2a: la federación no borra el negocio del segundo nivel', ! $borra( $federacion, $neg_borr ) && null !== get_post( $neg_borr ) );
-	$ok( '2a: la asociación borra la novedad de su comercio', $borra( $asociacion, $nov_hijo ) && null === get_post( $nov_hijo ) );
-	$ok( '2a: y su propio sorteo', $borra( $asociacion, $sor_asoc ) && null === get_post( $sor_asoc ) );
+	// Luis (02-11, R100): borrar desde el panel = a la papelera (se puede deshacer desde wp-admin).
+	$ok( 'R100: la asociación manda a la papelera la novedad de su comercio', $borra( $asociacion, $nov_hijo ) && 'trash' === get_post_status( $nov_hijo ) );
+	$ok( 'R100: y su propio sorteo', $borra( $asociacion, $sor_asoc ) && 'trash' === get_post_status( $sor_asoc ) );
+	$ok( 'R100: lo que está en la papelera ya no se edita ni se vuelve a borrar', ! $edita( $asociacion, $sor_asoc, array( 'winners' => '3' ) )['ok'] && ! $borra( $asociacion, $sor_asoc ) );
+	$neg_bor = $entrada( ZN_Negocios::TIPO, $comercio, 'Negocio que se borra (temporal)' );
+	$nov_del = $entrada( ZN_Eventos::TIPO, $comercio, 'Novedad del negocio que se borra' );
+	update_post_meta( $nov_del, 'business_id', $neg_bor );
+	$resena  = wp_insert_comment( array( 'comment_post_ID' => $neg_bor, 'comment_type' => ZN_Comentarios::RESENA, 'comment_approved' => 1, 'user_id' => $usuario, 'comment_content' => 'Temporal panel', 'comment_meta' => array( 'score' => 4 ) ) );
+	$ok( 'R100: el negocio de su comercio va a la papelera', $borra( $asociacion, $neg_bor ) && 'trash' === get_post_status( $neg_bor ) );
+	$ok( 'R100: sus novedades pasan a borrador (no se quedan colgando)', 'draft' === get_post_status( $nov_del ) );
+	$ok( 'R100: sus reseñas se conservan', null !== get_comment( $resena ) );
+	wp_delete_comment( $resena, true );
 
 	// El formulario.
 	$_GET['editar'] = (string) $neg_hijo;
 	$form           = $pintar( $asociacion );
 	$ok( '2a: el formulario lleva su sello (nonce) y no usa «action»', false !== strpos( $form, 'name="_wpnonce"' ) && false === strpos( $form, 'name="action"' ) && false !== strpos( $form, 'name="zn_hacer"' ) );
+	$ok( 'R99: publicado, el formulario ofrece dejarlo publicado o pasarlo a borrador', false !== strpos( $form, 'value="publish"' ) && false !== strpos( $form, 'value="draft"' ) );
 	$ok( '2a: sin campo de dueño ni fotos', false === strpos( $form, '[user_id]' ) && false === strpos( $form, 'photo' ) );
 	update_post_meta( $neg_hijo, 'city', '"><script>alert(1)</script>' );
 	$form = $pintar( $asociacion );

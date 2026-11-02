@@ -15,7 +15,8 @@
  *   (ZN_Roles::puede: lo suyo y, donde la app hereda, lo de sus hijas; un nivel). Formulario propio en «Mi zona»
  *   (admin.php?page=zn-panel&editar=<id>, enviado con `zn_hacer`, nunca `action`, R97), con sello (nonce), el
  *   esquema común (ZN_Esquema::comprobar, avisos en español) y el límite de escrituras de la app (R94). Sin dueño,
- *   fotos, vídeos, coordenadas ni negocio de la novedad. Estado: solo publicado o borrador. Borrar, definitivo.
+ *   fotos, vídeos, coordenadas ni negocio de la novedad. Estado: solo pasar a borrador; publicar, solo la
+ *   administración (R99, Luis). Borrar = a la papelera, y las novedades de un negocio borrado, a borrador (R100, Luis).
  * - Su propio perfil de WordPress no se edita (edit_user denegado a todas las cuentas de la app). La cookie del
  *   panel no vale en /zonanautico/v1 (ZN_Tokens).
  * - Entrar en la app no cierra su sesión del panel (R98, decisión de Luis); a las demás cuentas, sí (R39).
@@ -272,12 +273,21 @@ class ZN_Panel {
 			$valores = array_merge( $valores, $resultado['valores'] );
 		}
 
-		// El fin no puede ir antes del inicio (con lo nuevo y lo guardado); si no, no cambia ninguna de las dos.
-		if ( array_key_exists( 'start_date', $valores ) || array_key_exists( 'end_date', $valores ) ) {
-			$fecha  = static fn( string $clave ) => array_key_exists( $clave, $valores ) ? (string) $valores[ $clave ] : (string) get_post_meta( $entrada->ID, $clave, true );
-			$inicio = $fecha( 'start_date' );
-			$fin    = $fecha( 'end_date' );
-			if ( '' !== $inicio && '' !== $fin && $fin < $inicio ) {
+		// El fin no puede ir antes del inicio, con lo nuevo y lo guardado: la misma comprobación que el PATCH de la
+		// API (ZN_Esquema::validar, R101). Si falla, no cambia ninguna de las dos fechas.
+		$fechas = array_intersect_key( $valores, array( 'start_date' => 1, 'end_date' => 1 ) );
+		if ( $fechas ) {
+			$app      = array( 'start_date' => 'startDate', 'end_date' => 'endDate' );
+			$guardado = array(
+				'start_date' => (string) get_post_meta( $entrada->ID, 'start_date', true ),
+				'end_date'   => (string) get_post_meta( $entrada->ID, 'end_date', true ),
+			);
+			$enviado = array();
+			foreach ( $fechas as $clave => $fecha ) {
+				$enviado[ $app[ $clave ] ] = $fecha;
+			}
+			$errores = ZN_Esquema::validar( $tipo, $enviado, $guardado )['errores'];
+			if ( isset( $errores['startDate'] ) || isset( $errores['endDate'] ) ) {
 				unset( $valores['start_date'], $valores['end_date'] );
 				$avisos[] = 'La fecha de fin es anterior a la de inicio; no se han cambiado las fechas.';
 			}
@@ -287,6 +297,8 @@ class ZN_Panel {
 		if ( isset( $datos['estado'] ) && '' !== $datos['estado'] ) {
 			if ( ! is_string( $datos['estado'] ) || ! isset( self::ESTADOS_EDITABLES[ $datos['estado'] ] ) ) {
 				$avisos[] = 'El estado solo puede ser «Publicado» o «Borrador»; no se ha cambiado.';
+			} elseif ( 'publish' === $datos['estado'] && 'publish' !== $entrada->post_status ) {
+				$avisos[] = 'Publicar lo hace la administración; sigue sin publicar.';
 			} elseif ( $datos['estado'] !== $entrada->post_status ) {
 				$extra['post_status'] = $datos['estado'];
 			}
@@ -301,10 +313,34 @@ class ZN_Panel {
 		return array( 'ok' => ! $avisos, 'avisos' => $avisos );
 	}
 
-	/** Borra (definitivo, como DELETE de la app) si la app le deja borrarlo. */
+	/**
+	 * Si la app le deja borrarlo, a la papelera (se recupera desde wp-admin; R100, Luis). Si es un negocio, sus
+	 * novedades publicadas pasan a borrador, para que no se queden apuntando a un negocio que ya no sale; sus reseñas
+	 * y preguntas se quedan con él.
+	 */
 	public static function borrar( WP_User $yo, int $id ): bool {
 		$entrada = self::editable( $yo, $id, 'delete' );
-		return $entrada && wp_delete_post( $entrada->ID, true );
+		if ( ! $entrada || ! wp_trash_post( $entrada->ID ) ) {
+			return false;
+		}
+		if ( ZN_Negocios::TIPO === $entrada->post_type ) {
+			$novedades = get_posts(
+				array(
+					'post_type'        => ZN_Eventos::TIPO,
+					'post_status'      => array( 'publish', 'future', 'pending', 'private' ),
+					'meta_key'         => 'business_id', // phpcs:ignore WordPress.DB.SlowDBQuery
+					'meta_value'       => (string) $entrada->ID, // phpcs:ignore WordPress.DB.SlowDBQuery
+					'posts_per_page'   => -1,
+					'fields'           => 'ids',
+					'no_found_rows'    => true,
+					'suppress_filters' => true,
+				)
+			);
+			foreach ( $novedades as $novedad ) {
+				wp_update_post( array( 'ID' => (int) $novedad, 'post_status' => 'draft' ) );
+			}
+		}
+		return true;
 	}
 
 	public static function url_editar( int $id ): string {
@@ -494,17 +530,19 @@ class ZN_Panel {
 								<option value="" selected><?php echo esc_html( get_post_status_object( $entrada->post_status )->label ?? $entrada->post_status ); ?> (sin cambiar)</option>
 							<?php endif; ?>
 							<?php foreach ( self::ESTADOS_EDITABLES as $clave => $texto ) : ?>
-								<option value="<?php echo esc_attr( $clave ); ?>" <?php selected( $entrada->post_status, $clave ); ?>><?php echo esc_html( $texto ); ?></option>
+								<?php if ( 'publish' !== $clave || 'publish' === $entrada->post_status ) : // Publicar, solo la administración (R99). ?>
+									<option value="<?php echo esc_attr( $clave ); ?>" <?php selected( $entrada->post_status, $clave ); ?>><?php echo esc_html( $texto ); ?></option>
+								<?php endif; ?>
 							<?php endforeach; ?>
 						</select>
-						<p class="description">En borrador no sale en la app.</p>
+						<p class="description">En borrador no sale en la app. Para volver a publicarlo hay que pedírselo a la administración.</p>
 					</td>
 				</tr>
 			</table>
 			<p>
 				<button type="submit" class="button button-primary" name="zn_hacer" value="guardar">Guardar cambios</button>
 				<?php if ( $puede_borrar ) : ?>
-					<button type="submit" class="button button-link-delete" name="zn_hacer" value="borrar" onclick="return confirm('¿Borrar para siempre? No se puede deshacer.');">Borrar</button>
+					<button type="submit" class="button button-link-delete" name="zn_hacer" value="borrar" onclick="return confirm('¿Borrar? Irá a la papelera; solo la administración puede recuperarlo.');">Borrar</button>
 				<?php endif; ?>
 			</p>
 		</form>

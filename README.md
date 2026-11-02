@@ -172,8 +172,9 @@ negocios, novedades y sorteos suyos o de esas cuentas, sin enlaces ni formulario
 wp-admin las devuelve ahí; no editan ni su perfil. Comercios, usuarios y la administración de la app siguen
 sin wp-admin. En `/zonanautico/v1` la cookie del panel no vale: solo el token; por eso entrar en la app no cierra la
 sesión del panel (R98). **Editar (parte 2a):** en «Mi zona», «Editar» en los negocios, novedades y sorteos
-que la app les deja guardar (`ZN_Roles::puede`, un nivel): textos, categoría, fechas, ganadores, bases y estado
-(publicado o borrador), y borrar si la app les deja borrar. Con sello, el esquema común y el límite de escrituras
+que la app les deja guardar (`ZN_Roles::puede`, un nivel): textos, categoría, fechas, ganadores y bases; pueden
+pasar a borrador pero no publicar (eso, la administración); y borrar, a la papelera, si la app les deja borrar
+(las novedades de un negocio borrado pasan a borrador). Con sello, el esquema común y el límite de escrituras
 de la app. Sin dueño, fotos, vídeos ni coordenadas.
 
 **Dueños de novedades y sorteos.** Campo `user_id`, elegido en su ficha («Dueño») entre las cuentas de
