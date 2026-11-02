@@ -48,8 +48,22 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Panel R40, parte 1 | 02-11-2026 | `077f02a` (v0.17.0) | `20959b2` (v0.18.0) | Asociación y federación entran a wp-admin y solo ven lo suyo (sin editar) |
 | Panel R40, parte 1-bis | 02-11-2026 | `20959b2` (v0.18.0) | `b11dd54` (v0.18.1) | R97, R98 = A y nombres de pila en «Mi zona» |
 | Panel R40, parte 1-ter | 02-11-2026 | `b11dd54` (v0.18.1) | `2cece16` (v0.18.2) | La federación ve dos niveles (decisión de Luis) |
+| Panel R40, nota ronda 24 | 02-11-2026 | `2cece16` (v0.18.2) | `b7f2297` (v0.18.3) | La federación no ve el correo de los comercios de sus asociaciones |
 
 ---
+
+## Panel R40: nota de la ronda 24 (correo del segundo nivel)
+
+Ronda 24: 1-ter OK. Sobre la nota de privacidad, Luis (02-11, 12:47): la federación sigue viendo los comercios de
+sus asociaciones, pero **sin su correo**. Diff: `git diff 42d15c8 b7f2297`. Prueba escrita antes (fallaba).
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| Correo en «Mi zona» | hecho | Solo si `ZN_Roles::puede( 'user:read', cuenta, yo )`: la federación ve el de sus asociaciones (`user:read_association`), no el de los comercios de estas (sale «—»); la asociación sigue viendo el de los suyos. Así nadie ve más datos personales que en el Laravel. |
+
+`node tests/todas.mjs`: **907 comprobaciones bien en 23 juegos** (`panel` 88). Cuenta de prueba nueva en Local:
+`federacion-prueba@ejemplo.invalid`, madre de `asociacion-prueba` (comprobado una vez por HTTP: ve la
+asociación con su correo y el comercio sin él).
 
 ## Panel R40, parte 1-ter (la federación ve dos niveles)
 
