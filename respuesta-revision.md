@@ -59,6 +59,10 @@ Diff de la ronda: `git diff f1722fd daa57ab`.
 | **R91** Ubicación en el alta | hecho | `/register` quita `latitude` y `longitude` antes de validar y no las guarda. Prueba: se mandan y no quedan. |
 | **R92** Comentario | hecho | La cabecera dice ahora que el registro mira primero el límite y por qué. |
 
+**Veredicto del revisor (ronda 18):** R88, R89, R91, R92 arreglados y R90 aceptado, sin fallos nuevos. Detalle
+del 405 en `/verify` (con PUT sale la página HTML en vez de JSON): apuntado para el siguiente bloque (Luis lo deja a
+mi criterio, 02-11 10:19).
+
 ### Resultado de las pruebas (login B-bis, 02-11)
 
 `node tests/todas.mjs`: **649 comprobaciones bien en 19 juegos, todo bien** (`registro` 76).
