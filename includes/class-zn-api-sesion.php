@@ -13,7 +13,8 @@
  *   tampoco lo delate (con una huella de relleno si no hay cuenta, hecha con el coste de este servidor, R85). «Sin verificar» solo se dice con la
  *   contraseña buena.
  * - Sin wp_authenticate() ni wp_signon(): las cuentas de la app no pueden entrar por wp-login.php (R22, R38).
- *   Tampoco se abre sesión de WordPress ni se ponen cookies; al entrar se cierran las que tuviera la cuenta (R39).
+ *   Tampoco se abre sesión de WordPress ni se ponen cookies; al entrar se cierran las que tuviera la cuenta (R39),
+ *   salvo las del panel de asociación y federación (R98).
  * - POST /refresh: con un token que vale, uno nuevo (misma respuesta que el login) y el anterior anulado. Con
  *   un token caducado hay que entrar de nuevo, y también pasados ZN_Tokens::MAX_RENOVAR desde el login (R86).
  *   Primero se anula el viejo y solo si lo ha anulado esta petición se da el nuevo: dos /refresh a la vez con el
@@ -87,7 +88,10 @@ class ZN_API_Sesion {
 		}
 
 		ZN_Limite::olvidar( 'login', $email );
-		WP_Session_Tokens::get_instance( $cuenta->ID )->destroy_all();
+		// R39; salvo la sesión del panel de asociación y federación (R98, decisión de Luis): su cookie no vale aquí.
+		if ( ! ZN_Panel::puede_entrar( $cuenta ) ) {
+			WP_Session_Tokens::get_instance( $cuenta->ID )->destroy_all();
+		}
 		return self::con_token( $cuenta );
 	}
 

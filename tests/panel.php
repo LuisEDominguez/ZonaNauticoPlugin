@@ -26,7 +26,8 @@ $creados = array( 'usuarios' => array(), 'entradas' => array() );
 $claves  = array();
 $cuenta  = static function ( string $rol_wp, int $padre = 0, bool $verificada = true, string $nombre = '' ) use ( &$creados, &$claves, $clave ) {
 	$login = str_replace( 'zn_', '', $rol_wp ) . '-' . count( $creados['usuarios'] ) . '-temporal-panel';
-	$id    = wp_insert_user( array( 'user_login' => $login, 'user_email' => "$login@ejemplo.invalid", 'user_pass' => $clave, 'role' => $rol_wp, 'display_name' => $nombre ?: $login ) );
+	// Como las cuentas de /register: display_name es un nombre interno al azar; el nombre, en first_name.
+	$id    = wp_insert_user( array( 'user_login' => $login, 'user_email' => "$login@ejemplo.invalid", 'user_pass' => $clave, 'role' => $rol_wp, 'display_name' => 'znInterno' . count( $creados['usuarios'] ), 'first_name' => $nombre ) );
 	if ( $padre ) {
 		update_user_meta( $id, 'zn_parent_id', $padre );
 	}
@@ -133,6 +134,8 @@ try {
 		$ok( "R40: $pagina no", ! ZN_Panel::pagina_permitida( $pagina, array() ) );
 	}
 	$ok( 'R40: otra página de admin.php no', ! ZN_Panel::pagina_permitida( 'admin.php', array( 'page' => 'otra' ) ) );
+	$ok( 'R97: la página se mira en la dirección ($_GET), no en el cuerpo', ! ZN_Panel::pagina_permitida( 'admin.php', array( 'page' => 'otra' ), array( 'page' => ZN_Panel::PAGINA ) ) && ! ZN_Panel::pagina_permitida( 'admin.php', array(), array( 'page' => ZN_Panel::PAGINA ) ) );
+	$ok( 'R97: con «action» (en la dirección o en el cuerpo), no', ! ZN_Panel::pagina_permitida( 'admin.php', array( 'page' => ZN_Panel::PAGINA, 'action' => 'x' ) ) && ! ZN_Panel::pagina_permitida( 'admin.php', array( 'page' => ZN_Panel::PAGINA ), array( 'action' => 'x' ) ) );
 	$ok( 'R40: admin-ajax solo el latido (heartbeat)', ZN_Panel::pagina_permitida( 'admin-ajax.php', array( 'action' => 'heartbeat' ) ) && ! ZN_Panel::pagina_permitida( 'admin-ajax.php', array( 'action' => 'closed-postboxes' ) ) && ! ZN_Panel::pagina_permitida( 'admin-ajax.php', array() ) );
 	$ok( 'R40: al entrar va al panel', ZN_Panel::url() === apply_filters( 'login_redirect', admin_url(), '', get_userdata( $asociacion ) ) );
 	$wp_admin = (int) get_users( array( 'role' => 'administrator', 'number' => 1, 'fields' => 'ids' ) )[0];
@@ -156,6 +159,24 @@ try {
 	$ok( 'R40: la barra de arriba no enlaza al perfil ni al escritorio', false === strpos( $enlaces, 'profile.php' ) && ! $barra->get_node( 'edit-profile' ) && ! $barra->get_node( 'site-name' ) && ! $barra->get_node( 'new-content' ) );
 	$ok( 'R40: pero sí deja salir', $barra->get_node( 'logout' ) && false !== strpos( (string) $barra->get_node( 'logout' )->href, 'action=logout' ) );
 	wp_set_current_user( 0 );
+
+	// --- R98: entrar en la app no cierra la sesión del panel (sí la de las demás cuentas, R39) ---
+	$entrar_app = static function ( int $id ) use ( $clave ) {
+		$peticion = new WP_REST_Request( 'POST', '/' . ZN_NAMESPACE . '/login' );
+		$peticion->set_header( 'Content-Type', 'application/json' );
+		$peticion->set_body( wp_json_encode( array( 'email' => get_userdata( $id )->user_email, 'password' => $clave ) ) );
+		return rest_do_request( $peticion )->get_status();
+	};
+	foreach ( array( 'asociación' => $asociacion, 'federación' => $federacion, 'comercio' => $comercio ) as $quien => $id ) {
+		WP_Session_Tokens::get_instance( $id )->create( time() + HOUR_IN_SECONDS );
+		$estado = $entrar_app( $id );
+		$quedan = count( WP_Session_Tokens::get_instance( $id )->get_all() );
+		if ( 'comercio' === $quien ) {
+			$ok( 'R98/R39: el comercio entra en la app y se cierran sus sesiones de WordPress', 200 === $estado && 0 === $quedan );
+		} else {
+			$ok( "R98: la $quien entra en la app y su sesión del panel sigue", 200 === $estado && 1 === $quedan );
+		}
+	}
 
 	// --- La cookie del panel no vale en la API de la app (allí solo el token) ---
 	$servidor = $_SERVER;
@@ -187,6 +208,7 @@ try {
 	// --- La página: lo suyo, solo para leer ---
 	$html = $pintar( $asociacion );
 	$ok( 'R40: la página enseña lo de su rama', false !== strpos( $html, 'Comercio hijo temporal' ) && false !== strpos( $html, 'Sorteo del hijo' ) && false !== strpos( $html, 'Novedad de la asociación' ) && false !== strpos( $html, 'Negocio borrador del hijo' ) );
+	$ok( 'Detalle R53: nombres de pila, nunca el nombre interno (display_name)', false === strpos( $html, 'znInterno' ) );
 	$ok( 'R40: y nada ajeno', false === strpos( $html, 'ajeno temporal' ) && false === strpos( $html, 'Novedad de otra asociación' ) && false === strpos( $html, 'Sorteo de la federación' ) && false === strpos( $html, 'Negocio en la papelera' ) );
 	$ok( 'R40: los textos van escapados', false === strpos( $html, '<script>alert(1)</script>' ) && false !== strpos( $html, '&lt;script&gt;' ) );
 	$ok( 'R40: sin enlaces para editar ni formularios', ! preg_match( '/post\.php|post-new\.php|user-edit\.php|profile\.php|action=|<form|<input|<button|<textarea|<select/i', $html ) );
@@ -200,6 +222,9 @@ try {
 	}
 	foreach ( $creados['usuarios'] as $id ) {
 		wp_delete_user( $id );
+	}
+	if ( $creados['usuarios'] ) {
+		$wpdb->query( 'DELETE FROM ' . ZN_Tokens::tabla() . ' WHERE user_id IN (' . implode( ',', array_map( 'intval', $creados['usuarios'] ) ) . ')' ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 	}
 	if ( $claves ) {
 		$wpdb->query( 'DELETE FROM ' . ZN_Limite::tabla() . " WHERE clave IN ('" . implode( "','", array_map( 'esc_sql', array_unique( $claves ) ) ) . "')" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared

@@ -11,6 +11,7 @@
  *   los permisos de la app): esas cuentas, y los negocios, novedades y sorteos de los que alguno es dueño.
  * - Nada se edita: ni enlaces ni formularios; tampoco su propio perfil de WordPress (edit_user denegado a todas
  *   las cuentas de la app). Los cambios, desde la app. La cookie del panel no vale en /zonanautico/v1 (ZN_Tokens).
+ * - Entrar en la app no cierra su sesión del panel (R98, decisión de Luis); a las demás cuentas, sí (R39).
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -45,13 +46,16 @@ class ZN_Panel {
 		return admin_url( 'admin.php?page=' . self::PAGINA );
 	}
 
-	/** Lo único de wp-admin que puede abrir una cuenta del panel: su página y el latido de admin-ajax. */
-	public static function pagina_permitida( string $pagina, array $peticion ): bool {
+	/**
+	 * Lo único de wp-admin que puede abrir una cuenta del panel: su página y el latido de admin-ajax.
+	 * La página se mira en la dirección, como la enruta admin.php, y sin ninguna `action` (R97).
+	 */
+	public static function pagina_permitida( string $pagina, array $get, array $post = array() ): bool {
 		if ( 'admin.php' === $pagina ) {
-			return self::PAGINA === ( $peticion['page'] ?? null );
+			return self::PAGINA === ( $get['page'] ?? null ) && ! isset( $get['action'] ) && ! isset( $post['action'] );
 		}
 		if ( 'admin-ajax.php' === $pagina ) {
-			return 'heartbeat' === ( $peticion['action'] ?? null );
+			return 'heartbeat' === ( $post['action'] ?? $get['action'] ?? null );
 		}
 		return false;
 	}
@@ -66,7 +70,7 @@ class ZN_Panel {
 				'role__in'   => array_keys( ZN_Roles::ROLES_APP ),
 				'meta_key'   => 'zn_parent_id', // phpcs:ignore WordPress.DB.SlowDBQuery
 				'meta_value' => (string) $yo->ID, // phpcs:ignore WordPress.DB.SlowDBQuery
-				'orderby'    => 'display_name',
+				'orderby'    => 'ID',
 				'number'     => self::MAXIMO,
 			)
 		);
@@ -133,8 +137,7 @@ class ZN_Panel {
 			exit;
 		}
 		global $pagenow;
-		$peticion = wp_unslash( $_REQUEST ); // phpcs:ignore WordPress.Security.NonceVerification
-		if ( self::pagina_permitida( (string) $pagenow, is_array( $peticion ) ? $peticion : array() ) ) {
+		if ( self::pagina_permitida( (string) $pagenow, wp_unslash( $_GET ), wp_unslash( $_POST ) ) ) { // phpcs:ignore WordPress.Security.NonceVerification
 			return;
 		}
 		if ( wp_doing_ajax() ) {
@@ -169,22 +172,24 @@ class ZN_Panel {
 			return;
 		}
 		$cuentas = self::cuentas( $yo );
+		// Nombre y apellidos (R53); display_name puede ser el nombre interno al azar de /register.
+		$nombre  = static fn( WP_User $c ) => ZN_API::nombre_publico( $c ) ?? '';
 		$nombres = array( $yo->ID => 'Tú' );
 		foreach ( $cuentas as $c ) {
-			$nombres[ $c->ID ] = $c->display_name;
+			$nombres[ $c->ID ] = $nombre( $c );
 		}
-		$dueno  = static fn( WP_Post $e ) => $nombres[ (int) get_post_meta( $e->ID, 'user_id', true ) ] ?? '—';
+		$dueno  = static fn( WP_Post $e ) => $nombres[ (int) get_post_meta( $e->ID, 'user_id', true ) ] ?? '';
 		$estado = static fn( WP_Post $e ) => get_post_status_object( $e->post_status )->label ?? $e->post_status;
 		?>
 		<div class="wrap">
 			<h1>Mi zona</h1>
-			<p><?php echo esc_html( sprintf( '%s (%s). Aquí ves lo tuyo y lo de las cuentas que dependen de ti. Solo lectura: los cambios se hacen desde la app.', $yo->display_name, ZN_Roles::NOMBRES[ $yo->roles[0] ] ?? '' ) ); ?></p>
+			<p><?php echo esc_html( sprintf( '%s (%s). Aquí ves lo tuyo y lo de las cuentas que dependen de ti. Solo lectura: los cambios se hacen desde la app.', $nombre( $yo ), ZN_Roles::NOMBRES[ $yo->roles[0] ] ?? '' ) ); ?></p>
 			<?php
 			self::tabla(
 				'Cuentas que dependen de ti',
 				array( 'Nombre', 'Correo', 'Tipo', 'Correo verificado' ),
 				array_map(
-					static fn( WP_User $c ) => array( $c->display_name, $c->user_email, ZN_Roles::NOMBRES[ $c->roles[0] ] ?? '', '1' === (string) get_user_meta( $c->ID, 'zn_verificado', true ) ? 'Sí' : 'No' ),
+					static fn( WP_User $c ) => array( $nombre( $c ), $c->user_email, ZN_Roles::NOMBRES[ $c->roles[0] ] ?? '', '1' === (string) get_user_meta( $c->ID, 'zn_verificado', true ) ? 'Sí' : 'No' ),
 					$cuentas
 				)
 			);

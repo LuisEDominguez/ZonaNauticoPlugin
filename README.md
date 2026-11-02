@@ -169,7 +169,8 @@ por `wp-login.php` con su misma cuenta de la app (correo verificado, un solo rol
 que `POST /login`). Solo ven «Mi zona»: las cuentas que cuelgan de ellas (un nivel, las que pueden leer) y los
 negocios, novedades y sorteos suyos o de esas cuentas, sin enlaces ni formularios. Cualquier otra página de
 wp-admin las devuelve ahí; no editan ni su perfil. Comercios, usuarios y la administración de la app siguen
-sin wp-admin. En `/zonanautico/v1` la cookie del panel no vale: solo el token. Editar será la parte 2.
+sin wp-admin. En `/zonanautico/v1` la cookie del panel no vale: solo el token; por eso entrar en la app no cierra la
+sesión del panel (R98). Editar será la parte 2.
 
 **Dueños de novedades y sorteos.** Campo `user_id`, elegido en su ficha («Dueño») entre las cuentas de
 comercio, asociación, federación o administración de la app; sale como `user` con `includesUser`.
