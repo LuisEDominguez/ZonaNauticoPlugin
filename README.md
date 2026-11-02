@@ -111,9 +111,23 @@ segundos de espera si se pasa;
 `ZN_Limite::demasiados( $espera )` da el 429 `{"message":"Too Many Attempts."}` con `Retry-After`. Los
 topes están en `ZN_Limite::REGLAS`. La IP es `REMOTE_ADDR`; `X-Forwarded-For` solo se mira si
 `REMOTE_ADDR` es un proxy de confianza declarado en `wp-config.php`:
-`define( 'ZN_PROXIES', '10.0.0.0/8' );` (IPs o rangos, separados por comas). **Al subir al servidor,
+`define( 'ZN_PROXIES', '10.0.0.0/8' );` (IPs o rangos, separados por comas). Los rangos IPv4 se escriben en
+su forma normal (`10.0.0.0/8`), nunca como IPv6 (`::ffff:10.0.0.0/104`): así escritos se ignorarían. Una IP
+que llegue como `::ffff:10.1.2.3` sí se reconoce (R78, R83). **Al subir al servidor,
 averiguar si Dinahosting pone un proxy delante y cuáles son sus IPs.** Además, como mucho 10 tokens
 activos por cuenta (`ZN_Tokens::MAX_ACTIVOS`): uno nuevo anula los más antiguos.
+
+**Entrar y salir de la app (R30, R38, R39).** `includes/class-zn-api-sesion.php`. `POST /login` con
+`{email, password}` en el cuerpo JSON (lo que llegue en la dirección se ignora): responde como el Laravel,
+`{status: "success", token, id, role}`; con credenciales malas, `401 {status: "error", message: "Unauthorized"}`
+(igual si la cuenta no existe o es de wp-admin, y con una comprobación de contraseña en todos los casos para
+que el tiempo no lo delate); sin verificar el correo (`zn_verificado`), `401 {status: "email-not-verified"}`,
+solo con la contraseña buena. Primero valida el formato (422, sin contar el intento), luego el límite de
+intentos (429) y luego la contraseña con `wp_check_password()` (nunca `wp_authenticate()`, que rechaza las
+cuentas de la app). No abre sesión de WordPress ni pone cookies, y cierra las que tuviera la cuenta.
+`POST /refresh` (con un token que vale) da uno nuevo con la misma respuesta y anula el anterior; con uno
+caducado hay que entrar de nuevo. `POST /logout` anula el token de la petición. Sin token, los dos dan
+`401 «Unauthenticated.»`. Las respuestas con token llevan `Cache-Control: no-store`.
 
 **Dueños de novedades y sorteos.** Campo `user_id`, elegido en su ficha («Dueño») entre las cuentas de
 comercio, asociación, federación o administración de la app; sale como `user` con `includesUser`.
@@ -148,6 +162,7 @@ un enlace de carpeta en `wp-content/plugins/zona-nautico`.
 - Token y `GET /user/{id}` (crea y borra cuentas y tokens; peticiones HTTP de verdad): `wp eval-file tests/tokens.php`
 - Campos y validación comunes (solo lee): `wp eval-file tests/esquema.php`
 - Límite de intentos (escribe y borra solo sus filas): `wp eval-file tests/limite.php`
+- Login, refresh y logout (crea y borra cuentas, tokens y sus filas de intentos; también por HTTP): `wp eval-file tests/login.php`
 - Dueño con permisos y guardado común (crea y borra cuentas, negocios y comentarios): `wp eval-file tests/escrituras.php`
 - Formato de los errores: `node tests/contrato-errores.mjs` y `wp eval-file tests/errores.php` (los dos solo leen)
 - Recalcular todas las puntuaciones (al final de una migración): `wp zona-nautico recalcular-puntuaciones`
