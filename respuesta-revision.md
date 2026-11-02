@@ -43,8 +43,25 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Login B | 02-11-2026 | `a7fd98e` (v0.14.1) | `f1722fd` (v0.15.0) | Registro, verificación y recuperación (R30, R53, R62) |
 | Login B-bis | 02-11-2026 | `f1722fd` (v0.15.0) | `daa57ab` (v0.15.1) | R88, R89, R91, R92; R90 aceptado |
 | Escrituras y RGPD | 02-11-2026 | `daa57ab` (v0.15.1) | `3e598f5` (v0.16.0) | Reseñas y preguntas desde la app, R65 y el 405 de `/verify` |
+| Escrituras-bis | 02-11-2026 | `3e598f5` (v0.16.0) | `5f1352e` (v0.16.1) | R93, R94, R95 = A |
 
 ---
+
+## Escrituras-bis (R93–R95)
+
+El revisor dio por bueno el bloque (ronda 19). Luis dio el sí a R93 y R94 y eligió **A** en R95 (02-11, 10:44).
+Diff de la ronda: `git diff 095bc2d 5f1352e`. Pruebas escritas antes (fallaban).
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **R93** Dos reseñas a la vez | hecho | Tras guardar, `POST /review` vuelve a mirar las reseñas de esa persona en ese negocio (`suyas()`, por id): si la nueva no es la primera, la borra y responde el mismo 422. Prueba: `comments_pre_query` simula que la otra petición guarda la suya justo después de la comprobación → 422 y queda solo la primera. |
+| **R94** Límite de escrituras | hecho | Regla `ZN_Limite::REGLAS['escritura']` = 20 por hora y **cuenta** (`ZN_API::limite_de_escritura()`, con el correo de la sesión). En `POST /review`, `PATCH /review/reply`, `POST /faq` y `PATCH /faq`, antes de validar (las que no valen también cuentan); en las dos `PATCH`, después de ver que existe y que hay permiso. Borrar no cuenta. Al pasarse, 429 «Too Many Attempts.». Prueba: 20 seguidas pasan, la 21.ª (de otro tipo) da 429 y no guarda; otra cuenta sigue. |
+| **R95** Negocios de un comercio borrado | hecho (Luis: A) | `delete_user`: sus negocios (campo `user_id`, cualquier estado) pasan a borrador y se les quita el dueño; sus reseñas se quedan. Comentario de `class-zn-privacidad.php` corregido. Novedades y sorteos de esa cuenta, sin tocar (no entraba). |
+| App: «ya has opinado» | apuntado | A Luis le parece bien el texto «Ya has opinado sobre este negocio». Es un cambio en la app (`errores.ts`): lo hacen Luis y Alejandro. |
+
+### Resultado de las pruebas (escrituras-bis, 02-11)
+
+`node tests/todas.mjs`: **757 comprobaciones bien en 21 juegos, todo bien** (`opiniones` 78, `privacidad` 27).
 
 ## Escrituras de reseñas y preguntas, y RGPD (R65)
 
