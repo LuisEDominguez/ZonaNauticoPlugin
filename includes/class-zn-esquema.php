@@ -46,6 +46,7 @@ class ZN_Esquema {
 		'alpha'    => 'The :attribute field must only contain letters.',
 		'date_format' => 'The :attribute field must match the format :format.',
 		'after_or_equal' => 'The :attribute field must be a date after or equal to :date.',
+		'before_or_equal' => 'The :attribute field must be a date before or equal to :date.',
 		'exists'   => 'The selected :attribute is invalid.',
 		'unique'   => 'The :attribute has already been taken.',
 		'min_string' => 'The :attribute field must be at least :min characters.',
@@ -72,6 +73,7 @@ class ZN_Esquema {
 		'alpha'    => 'solo puede llevar letras',
 		'date_format' => 'no es una fecha válida',
 		'after_or_equal' => 'es anterior a la de inicio',
+		'before_or_equal' => 'es posterior a la de fin',
 		'exists'   => 'no existe o no se puede elegir',
 		'unique'   => 'ya está en uso',
 		'min_string' => 'tiene que tener al menos :min caracteres',
@@ -293,15 +295,25 @@ class ZN_Esquema {
 			}
 		}
 
-		// El fin no puede ir antes del inicio (el Laravel solo lo tenía en un comentario).
+		// El fin no puede ir antes del inicio (el Laravel solo lo tenía en un comentario). Con lo que llega y, en un PATCH,
+		// lo guardado: si solo cambia el inicio y queda después del fin guardado, el error va en el inicio.
 		foreach ( $campos as $app => $campo ) {
-			if ( empty( $campo['despues_de'] ) || isset( $errores[ $app ] ) || empty( $valores[ $campo['guardado'] ] ) ) {
+			if ( empty( $campo['despues_de'] ) ) {
 				continue;
 			}
-			$otro   = $campos[ $campo['despues_de'] ];
-			$inicio = array_key_exists( $otro['guardado'], $valores ) ? $valores[ $otro['guardado'] ] : ( ( $actual ?? array() )[ $otro['guardado'] ] ?? null );
-			if ( $inicio && $valores[ $campo['guardado'] ] < $inicio ) {
+			$otro    = $campos[ $campo['despues_de'] ];
+			$cambia  = array_key_exists( $campo['guardado'], $valores );
+			$valor   = static fn( string $clave ) => array_key_exists( $clave, $valores ) ? $valores[ $clave ] : ( ( $actual ?? array() )[ $clave ] ?? null );
+			$fin     = $valor( $campo['guardado'] );
+			$inicio  = $valor( $otro['guardado'] );
+			$tocados = $cambia || array_key_exists( $otro['guardado'], $valores );
+			if ( ! $tocados || isset( $errores[ $app ] ) || isset( $errores[ $campo['despues_de'] ] ) || ! $fin || ! $inicio || $fin >= $inicio ) {
+				continue;
+			}
+			if ( $cambia ) {
 				$errores[ $app ][] = self::mensaje( 'after_or_equal', $app, array( ':date' => self::atributo( $campo['despues_de'] ) ) );
+			} else {
+				$errores[ $campo['despues_de'] ][] = self::mensaje( 'before_or_equal', $campo['despues_de'], array( ':date' => self::atributo( $app ) ) );
 			}
 		}
 

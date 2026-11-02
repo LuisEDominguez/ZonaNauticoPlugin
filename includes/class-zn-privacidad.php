@@ -5,8 +5,9 @@
  *   editarlas, vengan de la API, de wp-admin o de otro plugin. Los comentarios que no son de la app no se tocan.
  * - Al borrar una cuenta (decisión e de Luis, como la cascada del Laravel) se borran del todo las reseñas y
  *   preguntas que escribió y las preguntas que le hicieron si es un comercio; las puntuaciones se recalculan
- *   solas (ZN_Comentarios, al borrar cada reseña). Sus negocios no se borran (R95, decisión A de Luis): pasan a
- *   borrador y se quedan sin dueño, con sus reseñas, y la administración decide qué hacer con ellos.
+ *   solas (ZN_Comentarios, al borrar cada reseña). Sus negocios, novedades y sorteos no se borran (R95 y R96,
+ *   decisión A de Luis): pasan a borrador y se quedan sin dueño, con sus reseñas, y la administración decide qué
+ *   hacer con ellos. Los que estén en la papelera siguen allí, también sin dueño.
  * - Herramientas › Exportar / Borrar datos personales de WordPress incluyen los datos de la app: la cuenta
  *   (nombre, correo, teléfono, ubicación, rol), sus reseñas y sus preguntas. Borrar quita sus reseñas y
  *   preguntas, el teléfono y la ubicación; la cuenta (nombre y correo) sigue y se borra en Usuarios.
@@ -67,14 +68,16 @@ class ZN_Privacidad {
 		foreach ( array_merge( self::escritos_por( $id ), self::preguntas_a( $id ) ) as $comentario ) {
 			wp_delete_comment( $comentario, true );
 		}
-		foreach ( self::negocios_de( $id ) as $negocio ) {
-			wp_update_post( array( 'ID' => $negocio, 'post_status' => 'draft' ) );
-			delete_post_meta( $negocio, 'user_id' );
+		foreach ( self::entradas_de( $id ) as $entrada ) {
+			if ( 'trash' !== get_post_status( $entrada ) ) {
+				wp_update_post( array( 'ID' => $entrada, 'post_status' => 'draft' ) );
+			}
+			delete_post_meta( $entrada, 'user_id' );
 		}
 	}
 
-	/** Ids de los negocios cuyo dueño (campo user_id) es la cuenta, en cualquier estado. */
-	private static function negocios_de( int $id ): array {
+	/** Ids de los negocios, novedades y sorteos cuyo dueño (campo user_id) es la cuenta, en cualquier estado. */
+	private static function entradas_de( int $id ): array {
 		if ( $id <= 0 ) {
 			return array();
 		}
@@ -82,8 +85,8 @@ class ZN_Privacidad {
 			'intval',
 			get_posts(
 				array(
-					'post_type'      => ZN_Negocios::TIPO,
-					'post_status'    => 'any',
+					'post_type'      => array( ZN_Negocios::TIPO, ZN_Eventos::TIPO, ZN_Sorteos::TIPO ),
+					'post_status'    => array( 'publish', 'future', 'draft', 'pending', 'private', 'trash' ),
 					'meta_query'     => array( array( 'key' => 'user_id', 'value' => $id, 'type' => 'NUMERIC' ) ),
 					'posts_per_page' => -1,
 					'fields'         => 'ids',

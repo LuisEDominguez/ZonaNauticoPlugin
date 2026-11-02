@@ -114,7 +114,16 @@ try {
 
 	$p_a_comercio = $pregunta( $tienda, $ana, $comercio );
 	$r_a_comercio = $resena( $tienda, $ana, 3 );
+	// R96: sus novedades (con y sin negocio) y sus sorteos; y un negocio suyo en la papelera.
+	$nov_suelta = ZN_Esquema::guardar( 'evento', null, array( 'post_title' => 'Novedad (prueba)', 'user_id' => $comercio ), array( 'post_status' => 'publish' ) );
+	$sor_suyo   = ZN_Esquema::guardar( 'sorteo', null, array( 'post_title' => 'Sorteo (prueba)', 'user_id' => $comercio, 'winners' => 1 ), array( 'post_status' => 'publish' ) );
+	$papelera   = $negocio( $comercio );
+	$entradas[] = $nov_suelta;
+	$entradas[] = $sor_suyo;
+	wp_trash_post( $papelera );
 	wp_delete_user( $comercio );
+	$ok( 'R96: sus novedades y sus sorteos pasan a borrador y sin dueño', 'draft' === get_post_status( $nov_suelta ) && 'draft' === get_post_status( $sor_suyo ) && '' === get_post_meta( $nov_suelta, 'user_id', true ) && '' === get_post_meta( $sor_suyo, 'user_id', true ) );
+	$ok( 'R96: un negocio suyo en la papelera sigue en la papelera, pero sin dueño', 'trash' === get_post_status( $papelera ) && '' === get_post_meta( $papelera, 'user_id', true ) );
 	$ok( 'al borrar un comercio se borran las preguntas que le hicieron (como el Laravel)', ! $existe( $p_a_comercio ) );
 	$ok( 'R95 (Luis: A): sus negocios pasan a borrador y se quedan sin dueño', 'draft' === get_post_status( $tienda ) && '' === get_post_meta( $tienda, 'user_id', true ) );
 	$ok( 'R95: los negocios de otros comercios no se tocan', 'publish' === get_post_status( $ajena ) && (string) $otro_com === get_post_meta( $ajena, 'user_id', true ) );

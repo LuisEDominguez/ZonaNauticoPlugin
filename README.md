@@ -25,6 +25,11 @@ Base de la API: `<sitio>/wp-json/zonanautico/v1`
 | `PATCH /review/reply/{id}` | **con token** | `response` (null la borra). El dueño del negocio o la administración de la app. `200 {data}` |
 | `POST /faq` | **con token** | `userId` (el comercio; si no lo es, 422), `question`. Queda sin publicar. `201 {data}` |
 | `PATCH /faq/{id}` | **con token** | `question`, `answer`, `published` (`true`/`false` o `1`/`0`). Comercio, su asociación y administración: todo; quien preguntó: solo el texto (y vuelve a no publicada). `200 {data}` |
+| `POST /event` | **con token** | `name`*, `userId`* (el dueño: uno mismo o, la asociación o federación, su comercio), `businessId`, `category`, `description`, `latitude`, `longitude`, `startDate`, `endDate` (`Y-m-d H:i:s`), `photos[]`. Se publica. `201 {data}` |
+| `PUT\|PATCH /event/{id}` | **con token** | Los mismos, opcionales (null borra; "" es 422). El dueño, su asociación o federación, o la administración de la app (la única que cambia el dueño). `200 {data}` |
+| `DELETE /event/{id}` | **con token** | Los mismos. Borrado definitivo. `200 {status: "success"}` |
+| `POST /draw` | **con token** | `title`*, `userId`*, `startDate`*, `endDate`*, `winners`* (≥ 1), `description`, `legalUrl`, `photos[]`. `201 {data}` |
+| `PUT\|PATCH /draw/{id}`, `DELETE /draw/{id}` | **con token** | Solo su dueño o la administración de la app. Un PATCH sin `legalUrl` no lo borra |
 | `GET /user/{id}` | **con token** | La propia cuenta, o la que pueda ver (`user:read`…). Formato del UserResource del Laravel con `id` numérico |
 
 Los negocios se guardan como entradas personalizadas de WordPress (tipo `negocio`, menú «Negocios»
@@ -86,12 +91,13 @@ destinatario se guarda en la propia pregunta (`user_id`), como en el Laravel. La
 del negocio se recalcula sola con la media de sus reseñas aprobadas. Los comentarios nativos de
 WordPress están cerrados (sin formulario, sin `/wp/v2/comments` y fuera de feeds y widgets).
 
-**Límite de escrituras (R94).** Crear reseñas, responderlas y hacer o modificar preguntas: 20 por hora y cuenta
+**Límite de escrituras (R94).** Crear reseñas, responderlas, hacer o modificar preguntas y crear o modificar
+novedades y sorteos: 20 por hora y cuenta
 (cuentan también las que no valen); al pasarse, `429 «Too Many Attempts.»`.
 
 **Datos personales (R65).** Reseñas y preguntas no guardan la IP, el navegador ni el correo de quien escribe.
 Al borrar una cuenta se borran sus reseñas y preguntas (y las que le hicieron, si es un comercio) y se recalculan
-las puntuaciones; sus negocios pasan a borrador y se quedan sin dueño (R95). En Herramientas › Exportar / Borrar datos personales aparece «App Zona Náutico»: exporta la
+las puntuaciones; sus negocios, novedades y sorteos pasan a borrador y se quedan sin dueño (R95, R96). En Herramientas › Exportar / Borrar datos personales aparece «App Zona Náutico»: exporta la
 cuenta, sus reseñas y sus preguntas; borrar quita sus reseñas y preguntas, el teléfono y la ubicación (la cuenta se
 borra en Usuarios). `includes/class-zn-privacidad.php`.
 
@@ -195,6 +201,7 @@ un enlace de carpeta en `wp-content/plugins/zona-nautico`.
 - Registro, verificación y recuperación (crea y borra cuentas; los correos se recogen y no salen): `wp eval-file tests/registro.php`
 - Dueño con permisos y guardado común (crea y borra cuentas, negocios y comentarios): `wp eval-file tests/escrituras.php`
 - Reseñas y preguntas desde la app (crea y borra cuentas, negocios y comentarios; también por HTTP): `wp eval-file tests/opiniones.php`
+- Novedades y sorteos desde la app (crea y borra cuentas, negocios, novedades y sorteos; también por HTTP): `wp eval-file tests/novedades-sorteos.php`
 - Datos personales: borrar cuenta, exportar y borrar (crea y borra cuentas, negocios y comentarios): `wp eval-file tests/privacidad.php`
 - Formato de los errores: `node tests/contrato-errores.mjs` y `wp eval-file tests/errores.php` (los dos solo leen)
 - Recalcular todas las puntuaciones (al final de una migración): `wp zona-nautico recalcular-puntuaciones`

@@ -86,8 +86,13 @@ const pruebas = {
     const { cuerpo: negocios } = await pedir('/business');
     assert.equal((await pedir(`/event/${negocios.data[0]._id}`)).estado, 404);
   },
-  'solo lectura: POST da 405, como el Laravel': async () => {
-    assert.equal((await pedir('/event', 'POST')).estado, 405);
+  'escribir pide sesión: POST sin token da 401 «Unauthenticated.»': async () => {
+    const r = await pedir('/event', 'POST');
+    assert.equal(r.estado, 401);
+    assert.deepEqual(r.cuerpo, { message: 'Unauthenticated.' });
+  },
+  'PUT en la lista da 405, como el Laravel': async () => {
+    assert.equal((await pedir('/event', 'PUT')).estado, 405);
   },
 };
 
