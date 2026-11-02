@@ -12,8 +12,8 @@ el sí de Luis.
 | Quién | Pruebas |
 |---|---|
 | Todas a la vez (hilo que desarrolla) | `node tests/todas.mjs` |
-| Revisores (solo lectura, todas las que necesiten) | `node tests/contrato-negocios.mjs`, `contrato-eventos.mjs`, `contrato-sorteos.mjs`, `contrato-resenas.mjs`, `contrato-preguntas.mjs`, `contrato-muestras.mjs`, `contrato-errores.mjs`, `wp eval-file tests/admin-fichas.php` y `tests/errores.php` (no guardan nada; `errores.php` registra rutas de prueba solo en memoria), además de peticiones GET y lectura de código |
-| Hilo que desarrolla (pasa el resultado a los revisores) | `wp eval-file tests/seguridad.php`, `tests/comentarios.php`, `tests/roles.php` y `tests/tokens.php` (crean datos o cuentas temporales y los borran) y `node tests/puertas.mjs` (no guarda nada, pero envía una petición a XML-RPC) |
+| Revisores (solo lectura, todas las que necesiten) | `node tests/contrato-negocios.mjs`, `contrato-eventos.mjs`, `contrato-sorteos.mjs`, `contrato-resenas.mjs`, `contrato-preguntas.mjs`, `contrato-muestras.mjs`, `contrato-errores.mjs`, `wp eval-file tests/admin-fichas.php`, `tests/esquema.php` y `tests/errores.php` (no guardan nada; `errores.php` registra rutas de prueba solo en memoria), además de peticiones GET y lectura de código |
+| Hilo que desarrolla (pasa el resultado a los revisores) | `wp eval-file tests/seguridad.php`, `tests/comentarios.php`, `tests/roles.php`, `tests/tokens.php` y `tests/limite.php` (crean datos, cuentas o filas temporales y los borran) y `node tests/puertas.mjs` (no guarda nada, pero envía una petición a XML-RPC) |
 
 Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** · **espera decisión** ·
 **se propone descartar**.
@@ -35,6 +35,30 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | 11 | 30-10-2026 | `af480bc` (v0.11.1) | `b877325` (v0.11.2) | R54 (camino de la API sin rest_url) |
 | Global | 30-10-2026 | `b877325` (v0.11.2) | `df0b1b5` (v0.12.0) | Primer bloque: R55, R56, R57, R60, R61, R63, R64 (+R52). Decisiones a-e de Luis |
 | Global-bis | 30-10-2026 | `df0b1b5` (v0.12.0) | `7bf450f` (v0.12.1) | R57-bis, R70, R71. Decisión R69: A |
+| Segundo bloque | 02-11-2026 | `7bf450f` (v0.12.1) | `100e42b` (v0.13.0) | R58 (esquema y validación comunes) y R59 (límite de intentos, tope de tokens). Decisión R40 de Luis |
+
+---
+
+## Segundo bloque (R58 y R59)
+
+El revisor dio OK al segundo bloque en la verificación de global-bis. Luis dio el sí el 02-11
+(primero este bloque y después el panel de R40).
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **R58** Esquema y validación comunes | hecho | `includes/class-zn-esquema.php`: una definición por recurso (`negocio`, `evento`, `sorteo`, `zn_resena`, `zn_pregunta`): campo de la app en camelCase → campo guardado, tipo, máximo de la sección 4.3, obligatorio, nombre en la respuesta y etiqueta para wp-admin. **La usan:** el registro de los campos personalizados (`ZN_Negocios::campos()`… sustituyen a las constantes `CAMPOS`; los mismos campos que antes, comprobado), los formateadores (los campos «simples» salen de `ZN_Esquema::salida()`; mismas claves, mismo orden y mismos tipos, comprobado), las fichas de wp-admin (`ZN_Admin_Campos::con_esquema()`: mismas reglas que la API, avisos en español y `maxlength`) y la orden de datos de prueba. **Validador:** `ZN_Esquema::validar( $recurso, $cuerpo, $guardado_o_null )` devuelve los valores con su nombre guardado y los errores con los textos del Laravel 10 («The name field must not be greater than 50 characters.», «The selected user id is invalid.», «The photos.0 field must be a valid URL.»…), con `:attribute` como lo pinta el Laravel (`categoryId` → «category id»); `ZN_Esquema::respuesta()` → 422 con `ZN_Errores::no_valido()`. **Regla del PATCH (decisión a):** ausente → no se toca; `null` → se borra (en un obligatorio, 422 «is required»); `""` o solo espacios → 422 «must have a value». Fotos y vídeos: `photos[i]` → `photo_i`, los huecos que no llegan no se tocan (como `processMedia`), `photos: null` borra los tres. Campos que no están en el esquema, ignorados (también `score`, H14). |
+| R58: diferencias con el Laravel (a propósito) | para revisar | `name` del negocio y `title` del sorteo y de la reseña: máximo 50, el de la columna (el Laravel valida 255, H31). `score` de la reseña entre 1 y 5 (H13). `question` obligatoria. Textos de personas (reseña, pregunta, respuesta): máximo 2000 (el Laravel no pone tope). `email` y `web` con formato válido (el Laravel solo pedía texto). `endDate` no antes de `startDate`, también en PATCH contra la fecha guardada. En novedades se acepta `category` y su alias `categoryId` (H37). |
+| R58: cambios en wp-admin | hecho | Las fichas validan con las reglas del esquema: un país de 3 letras, un teléfono de más de 20 caracteres o un email de más de 50 ya no se guardan (antes el país se recortaba a 2 y no había máximos); una categoría inventada ahora avisa (antes se ignoraba en silencio). Si el título pasa del máximo de la API, se guarda (lo guarda WordPress) pero avisa. Ganadores vacío: avisa y no se borra (es obligatorio). |
+| **R59** Límite de intentos común | hecho | `includes/class-zn-limite.php`: `ZN_Limite::intentar( $accion, $email )` cuenta por IP y por email a la vez (ventana fija, una sola consulta atómica `INSERT … ON DUPLICATE KEY UPDATE`), devuelve los segundos de espera si alguna clave se pasa; `olvidar()` tras un acierto (solo el email); `demasiados()` → 429 `{"message":"Too Many Attempts."}` con `Retry-After`, que la app ya entiende. Topes en `ZN_Limite::REGLAS` (login 5 por email y 30 por IP cada 15 min; recuperar y reenviar 3 por email y 10 por IP por hora; código 5 por email cada 15 min; registro 10 por IP por hora). Tabla `{prefijo}zn_limites` con huellas SHA-256 («acción\|ip\|…»): ni IP ni correo en claro; se instala en `plugins_loaded` y al activar; filas de más de un día se borran solas. Todavía no la usa ninguna ruta: la usarán login, recuperación, reenvío y registro. |
+| R59: de dónde sale la IP | hecho, falta el dato del servidor | `REMOTE_ADDR`. `X-Forwarded-For` solo si `REMOTE_ADDR` es un proxy de confianza declarado en `ZN_PROXIES` (IPs o rangos IPv4/IPv6 en `wp-config.php`), leyendo de derecha a izquierda y saltando los proxies de confianza; si algo no es una IP, se queda la última buena. Sin la constante, nunca se mira. **Al subir al servidor:** averiguar si Dinahosting pone un proxy y sus IPs (junto a R39 y R49). |
+| R59: tope de tokens por cuenta | hecho | `ZN_Tokens::MAX_ACTIVOS = 10`: al emitir uno nuevo se anulan los más antiguos de esa cuenta. Pruebas en `tests/tokens.php`. |
+| **R40** Panel para los encargados | **decidido (Luis, 02-11)** | Asociación y federación entran a wp-admin con su misma cuenta de la app y solo ven y gestionan lo suyo (usuarios, comercios y concursos de su rama). Los comercios no entran: todo desde la app. Cambia la regla «cuentas de la app sin `read`»; se hará en un bloque aparte, después de este, con el sí de Luis. |
+
+### Resultado de las pruebas (código del segundo bloque, 02-11)
+
+`node tests/todas.mjs`: **447 comprobaciones bien en 16 juegos, todo bien**. Nuevas: `esquema.php` 54
+(solo lee; la pueden lanzar los revisores) y `limite.php` 20 (escribe y borra filas de prueba; hilo que
+desarrolla); `tokens.php` pasa de 56 a 60. El resto, igual que en global-bis.
 
 ---
 
