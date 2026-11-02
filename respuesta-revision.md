@@ -54,8 +54,26 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Panel R40, parte 2b | 02-11-2026 | `a26168e` (v0.19.1) | `1611c4f` (v0.20.0) | Cuentas: alta con correo, renombrar y baja desactivando |
 | Panel R40, parte 2b-bis | 02-11-2026 | `1611c4f` (v0.20.0) | `2864e30` (v0.20.1) | R102 = A, R103 (correo de contacto pendiente), R104 |
 | Cambiar mis datos | 02-11-2026 | `6a197c2` (v0.20.1) | `2fa7c1d` (v0.21.0) | R69: `PATCH /user/{id}` con la contraseña actual y confirmación del correo nuevo |
+| Cambiar mis datos-bis | 02-11-2026 | `2fa7c1d` (v0.21.0) | `75fc042` (v0.21.1) | R105, R106, R107, R108 |
 
 ---
+
+## Cambiar mis datos-bis (R105-R108)
+
+Ronda 29: sin fallos importantes. Luis (02-11, 13:42): sí a las cuatro, como se recomendaron. Diff: `git diff f5ee0b4 75fc042`.
+Pruebas escritas antes (5 fallaban). Luis decidió también (13:39) que nombre y teléfono **no** pidan la contraseña actual.
+**Un solo revisor, solo el diff.**
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **R105** Correos a cualquier dirección | hecho | Regla nueva `ZN_Limite::REGLAS['correo']` = 3 por cuenta al día; se cuenta tras la contraseña actual buena y el `unique`, antes de mandar nada (429 sin correo ni cambio del pendiente). El correo nuevo dice «Si no tienes cuenta en Zona Náutico o no lo has pedido tú, ignora este correo y no pulses nada». |
+| **R106** Cancelar el pendiente | hecho | `email` = su correo actual (sin distinguir mayúsculas) → `anular_cambio_de_correo()`; sin pedir la contraseña actual y sin correos. |
+| **R107** Aviso al confirmar | hecho | Tras confirmar, al correo viejo: «el correo de tu cuenta ha cambiado» (sin el nuevo). |
+| **R108** Carrera | hecho | Tras `wp_update_user`, si hay más de una fila en `users` con ese correo, se vuelve al correo viejo y 400 `{status: "error"}`. Probado colando otra fila en `profile_update`. |
+| `tests/limite.php` | ajuste | La fila caducada de R77 se crea pasada la ventana más larga de `REGLAS` (ahora un día), no 2 horas fijas. |
+
+`node tests/todas.mjs`: 1073 bien en 24 juegos; solo cayó la de R77 en `limite.php` por la ventana nueva; ajustada y
+repetida: «Todo bien».
 
 ## Cambiar mis datos (R69)
 
