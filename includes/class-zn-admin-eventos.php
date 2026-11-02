@@ -121,14 +121,8 @@ class ZN_Admin_Eventos {
 		return $limpio;
 	}
 
-	/** R70: dueño del negocio, su cuenta padre (asociación o federación) o la administración de la app. */
+	/** R70: la regla vive en ZN_Eventos, que también la usa la API (ZN_Esquema::permitir_dueno). */
 	public static function dueno_valido_para_negocio( int $dueno, int $negocio ): bool {
-		$cuenta = get_userdata( $dueno );
-		$rol    = $cuenta ? ZN_Roles::rol_app( $cuenta ) : null;
-		if ( 'administrator' === $rol ) {
-			return true;
-		}
-		$del_negocio = ZN_Negocios::dueno( $negocio );
-		return $rol && $del_negocio && ( $dueno === $del_negocio || ( in_array( $rol, ZN_Roles::PADRES, true ) && ZN_Roles::padre( $del_negocio ) === $dueno ) );
+		return ZN_Eventos::dueno_valido_para_negocio( $dueno, $negocio );
 	}
 }

@@ -1,13 +1,20 @@
 <?php
 /**
  * Límite de intentos común (R59): para el login, la recuperación de contraseña, el reenvío del correo de
- * verificación y el registro (R30, R62). Se cuenta por IP y por email a la vez; basta con que uno se pase.
+ * verificación y el registro (R30, R62). Cada acción tiene varias reglas; basta con que una se pase.
  *
+ * - Para que nadie pueda bloquear a otra persona (R75), la regla estricta es por cuenta + IP: quien falla
+ *   desde su IP se para, pero el dueño de la cuenta sigue entrando desde la suya. Por cuenta sola hay un tope
+ *   mucho más alto, contra ataques repartidos entre muchas IPs; y por IP, otro para quien prueba muchas cuentas.
+ * - La cuenta se cuenta por su número si existe y, si no, por el correo en minúsculas (R77).
+ * - Las IPv6 cuentan por su bloque /64, que suele ser de una sola casa o un solo móvil (R76).
  * - Ventana fija: cada clave cuenta sus intentos desde el primero; pasada la ventana, vuelve a empezar.
- * - Tabla `{prefijo}zn_limites` con la huella SHA-256 de «acción|ip|…» o «acción|email|…»: ni la IP ni el
- *   correo se guardan en claro. Las filas viejas se borran solas.
+ * - Tabla `{prefijo}zn_limites` con huellas HMAC-SHA256 con la clave secreta del sitio (wp_salt): ni la IP ni
+ *   el correo se guardan en claro ni se pueden sacar probando (R77). Las filas caducadas se borran en cada llamada.
+ * - Las rutas llaman a intentar() ANTES de comprobar la contraseña o el código: con 429 no se comprueba nada,
+ *   así no se delata si era la buena (R75).
  * - Al pasarse: 429 {"message":"Too Many Attempts."} con Retry-After, como el ThrottleRequests del Laravel;
- *   la app ya lo entiende («espera un minuto», src/api/errores.ts).
+ *   la app ya lo entiende (src/api/errores.ts).
  * - La IP es REMOTE_ADDR. Solo si REMOTE_ADDR es un proxy de confianza (constante ZN_PROXIES en wp-config.php,
  *   p. ej. el de Dinahosting) se mira X-Forwarded-For, de derecha a izquierda, saltando los proxies de
  *   confianza. Sin esa constante, X-Forwarded-For no se mira nunca: cualquiera podría inventárselo.
@@ -19,15 +26,16 @@ class ZN_Limite {
 
 	const VERSION_TABLA = '1';
 
-	// Acción => [clave => [intentos, segundos]]. Valores de partida; se pueden ajustar sin tocar las rutas.
+	// Acción => [regla => [intentos, segundos]]. Reglas: cuenta_ip (cuenta + IP), cuenta (sola) e ip (sola).
+	// Valores de partida; se pueden ajustar sin tocar las rutas.
 	const REGLAS = array(
-		// POST /login: 5 por cuenta cada 15 min; por IP más (una oficina o un wifi compartido).
-		'login'     => array( 'email' => array( 5, 900 ), 'ip' => array( 30, 900 ) ),
+		// POST /login.
+		'login'     => array( 'cuenta_ip' => array( 5, 900 ), 'cuenta' => array( 30, HOUR_IN_SECONDS ), 'ip' => array( 50, 900 ) ),
 		// POST /reset-password-code y GET /send-email: mandan correos.
-		'recuperar' => array( 'email' => array( 3, HOUR_IN_SECONDS ), 'ip' => array( 10, HOUR_IN_SECONDS ) ),
-		'reenviar'  => array( 'email' => array( 3, HOUR_IN_SECONDS ), 'ip' => array( 10, HOUR_IN_SECONDS ) ),
-		// POST /reset-password: 5 intentos por código (R62).
-		'codigo'    => array( 'email' => array( 5, 900 ), 'ip' => array( 30, 900 ) ),
+		'recuperar' => array( 'cuenta_ip' => array( 3, HOUR_IN_SECONDS ), 'cuenta' => array( 10, HOUR_IN_SECONDS ), 'ip' => array( 20, HOUR_IN_SECONDS ) ),
+		'reenviar'  => array( 'cuenta_ip' => array( 3, HOUR_IN_SECONDS ), 'cuenta' => array( 10, HOUR_IN_SECONDS ), 'ip' => array( 20, HOUR_IN_SECONDS ) ),
+		// POST /reset-password: además, 5 intentos por código (R62, con el código).
+		'codigo'    => array( 'cuenta_ip' => array( 5, 900 ), 'cuenta' => array( 20, HOUR_IN_SECONDS ), 'ip' => array( 50, 900 ) ),
 		'registro'  => array( 'ip' => array( 10, HOUR_IN_SECONDS ) ),
 	);
 
@@ -60,10 +68,12 @@ class ZN_Limite {
 	}
 
 	/**
-	 * Apunta un intento de $accion (por IP y, si se da, por email). Devuelve null si se puede seguir, o los
-	 * segundos que hay que esperar si alguna de las claves ya se ha pasado (el intento cuenta igual).
+	 * Apunta un intento de $accion (por cuenta + IP, cuenta e IP). Devuelve null si se puede seguir, o los
+	 * segundos que hay que esperar si alguna de las reglas ya se ha pasado (el intento cuenta igual).
+	 * Llamarla antes de mirar la contraseña o el código.
 	 */
 	public static function intentar( string $accion, ?string $email = null ): ?int {
+		self::borrar_caducadas();
 		$espera = null;
 		foreach ( self::claves( $accion, $email ) as $clave => $regla ) {
 			list( $maximo, $ventana ) = $regla;
@@ -75,10 +85,14 @@ class ZN_Limite {
 		return $espera;
 	}
 
-	/** Tras un acierto (p. ej. un login correcto), los intentos de ese email vuelven a cero; los de la IP, no. */
+	/**
+	 * Tras un acierto (p. ej. un login correcto), los intentos de esa cuenta desde esa IP vuelven a cero. Los de
+	 * la cuenta sola y los de la IP, no: si no, quien acierta una vez podría seguir probando otras cuentas.
+	 */
 	public static function olvidar( string $accion, string $email ): void {
 		global $wpdb;
-		$wpdb->delete( self::tabla(), array( 'clave' => self::huella( $accion, 'email', self::normalizar( $email ) ) ), array( '%s' ) );
+		$clave = self::huella( $accion, 'cuenta_ip', self::quien( $email ) . '|' . self::grupo( self::ip() ) );
+		$wpdb->delete( self::tabla(), array( 'clave' => $clave ), array( '%s' ) );
 	}
 
 	/** 429 con el formato del Laravel. */
@@ -110,16 +124,58 @@ class ZN_Limite {
 		return $remota;
 	}
 
-	/** Clave (huella) => [intentos, segundos] de cada regla de la acción. */
-	private static function claves( string $accion, ?string $email ): array {
+	/** Lo que cuenta como «la misma IP»: la IPv4 entera, o el bloque /64 de una IPv6 (R76). */
+	public static function grupo( string $ip ): string {
+		$binaria = '' === $ip ? false : inet_pton( $ip );
+		if ( false === $binaria || 16 !== strlen( $binaria ) ) {
+			return $ip;
+		}
+		return inet_ntop( substr( $binaria, 0, 8 ) . str_repeat( "\0", 8 ) ) . '/64';
+	}
+
+	/**
+	 * Huella => [intentos, segundos] de cada regla de la acción con la IP de esta petición. Pública para las
+	 * pruebas (para borrar justo sus filas).
+	 */
+	public static function claves( string $accion, ?string $email ): array {
+		$ip     = self::grupo( self::ip() );
+		$quien  = null === $email || '' === trim( $email ) ? '' : self::quien( $email );
 		$claves = array();
 		foreach ( self::REGLAS[ $accion ] ?? array() as $tipo => $regla ) {
-			$valor = 'ip' === $tipo ? self::ip() : ( null === $email ? '' : self::normalizar( $email ) );
+			switch ( $tipo ) {
+				case 'cuenta_ip':
+					$valor = '' === $quien || '' === $ip ? '' : "$quien|$ip";
+					break;
+				case 'cuenta':
+					$valor = $quien;
+					break;
+				default:
+					$valor = $ip;
+			}
 			if ( '' !== $valor ) {
 				$claves[ self::huella( $accion, $tipo, $valor ) ] = $regla;
 			}
 		}
 		return $claves;
+	}
+
+	/** La cuenta por su número si existe (la base de datos da por iguales variantes del correo, R77); si no, el correo. */
+	private static function quien( string $email ): string {
+		$email  = self::normalizar( $email );
+		$cuenta = get_user_by( 'email', $email );
+		return $cuenta ? 'id:' . $cuenta->ID : 'email:' . $email;
+	}
+
+	/** Las filas cuya ventana ya pasó no sirven para nada: fuera en cada llamada (R77). */
+	private static function borrar_caducadas(): void {
+		global $wpdb;
+		$mas_larga = 0;
+		foreach ( self::REGLAS as $reglas ) {
+			foreach ( $reglas as $regla ) {
+				$mas_larga = max( $mas_larga, $regla[1] );
+			}
+		}
+		$wpdb->query( $wpdb->prepare( 'DELETE FROM ' . self::tabla() . ' WHERE desde < %s', gmdate( 'Y-m-d H:i:s', time() - $mas_larga ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 	}
 
 	/** Suma un intento de forma atómica (una sola consulta) y devuelve los intentos y el inicio de la ventana. */
@@ -141,19 +197,15 @@ class ZN_Limite {
 			)
 		);
 		$fila = $wpdb->get_row( $wpdb->prepare( 'SELECT intentos, desde FROM ' . self::tabla() . ' WHERE clave = %s', $clave ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-
-		// De vez en cuando se borran las filas de hace más de un día (ninguna ventana es tan larga).
-		if ( 1 === wp_rand( 1, 50 ) ) {
-			$wpdb->query( $wpdb->prepare( 'DELETE FROM ' . self::tabla() . ' WHERE desde < %s', gmdate( 'Y-m-d H:i:s', $ahora - DAY_IN_SECONDS ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-		}
 		return array(
 			'intentos' => $fila ? (int) $fila->intentos : 1,
 			'desde'    => $fila ? (int) strtotime( $fila->desde . ' UTC' ) : $ahora,
 		);
 	}
 
+	/** HMAC con la clave secreta del sitio: sin ella no se puede probar con todas las IPs o una lista de correos (R77). */
 	private static function huella( string $accion, string $tipo, string $valor ): string {
-		return hash( 'sha256', "$accion|$tipo|$valor" );
+		return hash_hmac( 'sha256', "$accion|$tipo|$valor", wp_salt( 'auth' ) );
 	}
 
 	/** El mismo correo escrito con mayúsculas o espacios cuenta como el mismo. */

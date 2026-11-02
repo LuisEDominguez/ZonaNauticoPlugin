@@ -49,15 +49,9 @@ class ZN_Admin_Campos {
 		return isset( $_POST['zn'] ) && is_array( $_POST['zn'] ) ? wp_unslash( $_POST['zn'] ) : array();
 	}
 
-	/** Guarda campo => valor (null = borrar) y deja los avisos para la siguiente pantalla. */
+	/** Guarda campo => valor (null = borrar) con la misma pieza que la API (R80) y deja los avisos para la siguiente pantalla. */
 	public static function guardar( int $id, array $limpio, array $errores ): void {
-		foreach ( $limpio as $campo => $valor ) {
-			if ( null === $valor ) {
-				delete_post_meta( $id, $campo );
-			} else {
-				update_post_meta( $id, $campo, $valor );
-			}
-		}
+		ZN_Esquema::guardar( (string) get_post_type( $id ), $id, $limpio );
 		if ( $errores ) {
 			set_transient( 'zn_avisos_' . get_current_user_id(), $errores, 60 );
 		}

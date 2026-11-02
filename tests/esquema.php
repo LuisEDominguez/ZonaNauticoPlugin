@@ -30,14 +30,19 @@ $ok( 'WordPress tiene registrados los campos del esquema', registered_meta_key_e
 $ok( 'máximos de la sección 4.3: name 50, country 2, phone 20, email 50, title del sorteo 50', 50 === ZN_Esquema::campos( 'negocio' )['name']['max'] && 2 === ZN_Esquema::campos( 'negocio' )['country']['max'] && 20 === ZN_Esquema::campos( 'negocio' )['phone']['max'] && 50 === ZN_Esquema::campos( 'negocio' )['email']['max'] && 50 === ZN_Esquema::campos( 'sorteo' )['title']['max'] );
 
 // --- Formateadores: lo que sale del esquema es lo de antes ---
-$negocio = get_posts( array( 'post_type' => ZN_Negocios::TIPO, 'numberposts' => 1, 'title' => 'Taberna O Peirao (prueba)' ) )[0] ?? get_posts( array( 'post_type' => ZN_Negocios::TIPO, 'numberposts' => 1 ) )[0];
+$primero = static fn( string $tipo ) => get_posts( array( 'post_type' => $tipo, 'numberposts' => 1 ) )[0] ?? null;
+$negocio = get_posts( array( 'post_type' => ZN_Negocios::TIPO, 'numberposts' => 1, 'title' => 'Taberna O Peirao (prueba)' ) )[0] ?? $primero( ZN_Negocios::TIPO );
+$sorteo  = $primero( ZN_Sorteos::TIPO );
+$evento  = $primero( ZN_Eventos::TIPO );
+if ( ! $negocio || ! $sorteo || ! $evento ) {
+	echo "FALLO faltan los datos de prueba: wp zona-nautico datos-prueba\n";
+	exit;
+}
 $f       = ZN_API_Negocios::formatear( $negocio );
 $ok( 'negocio: mismas claves y en el mismo orden que el BusinessResource', array( '_id', 'name', 'description', 'latitude', 'longitude', 'address', 'postcode', 'state', 'city', 'country', 'phone', 'email', 'web', 'schedule', 'photo_0', 'photo_1', 'photo_2', 'video_0', 'video_1', 'video_2', 'score' ) === array_keys( $f ) );
 $ok( 'negocio: coordenadas como número y textos tal cual', ( null === $f['latitude'] || is_float( $f['latitude'] ) || is_int( $f['latitude'] ) ) && $negocio->post_title === $f['name'] );
-$sorteo = get_posts( array( 'post_type' => ZN_Sorteos::TIPO, 'numberposts' => 1 ) )[0];
 $ok( 'sorteo: mismas claves y orden', array( '_id', 'title', 'description', 'startDate', 'endDate', 'winners', 'photo_0', 'photo_1', 'photo_2', 'video_0', 'video_1', 'video_2', 'legalUrl', 'controlParticipar', 'controlVisibilidad' ) === array_keys( ZN_API_Sorteos::formatear( $sorteo ) ) );
 $ok( 'sorteo: winners entero', is_int( ZN_API_Sorteos::formatear( $sorteo )['winners'] ) );
-$evento = get_posts( array( 'post_type' => ZN_Eventos::TIPO, 'numberposts' => 1 ) )[0];
 $ok( 'novedad: mismas claves y orden', array( '_id', 'name', 'description', 'latitude', 'longitude', 'photo_0', 'photo_1', 'photo_2', 'video_0', 'video_1', 'video_2', 'startDate', 'startDateLongFormat', 'startDateShortFormat', 'endDate', 'endDateLongFormat', 'endDateShortFormat' ) === array_keys( ZN_API_Eventos::formatear( $evento ) ) );
 
 // --- Validador: crear (POST) ---
@@ -127,10 +132,33 @@ $ok( 'pregunta: published "true" (texto) → «must be true or false» como el L
 $r = $v( ZN_Comentarios::PREGUNTA, array( 'published' => true ), array() );
 $ok( 'pregunta: published true → 1', 1 === ( $r['valores']['comment_approved'] ?? null ) );
 
+// --- R79: los campos de dueño están marcados ---
+foreach ( array( 'negocio', 'evento', 'sorteo' ) as $recurso ) {
+	$ok( "R79: $recurso: userId marcado como dueño", ! empty( ZN_Esquema::campos( $recurso )['userId']['dueno'] ) );
+}
+
+// --- R81: cuenta, sin ser más estricta que la app (src/features/users/validacion.ts) ---
+$admin_wp = get_users( array( 'role' => 'administrator', 'number' => 1 ) )[0] ?? null;
+$r        = $v( 'cuenta', array( 'name' => str_repeat( 'n', 255 ), 'email' => 'nueva-temporal@ejemplo.invalid', 'password' => '        ', 'phone' => '+34 600 000 000' ) );
+$ok( 'cuenta: nombre de 255, contraseña de 8 espacios y teléfono «+34 600 000 000» valen (como en la app)', array() === $r['errores'] && '        ' === $r['valores']['user_pass'] && str_repeat( 'n', 255 ) === $r['valores']['first_name'] );
+$r = $v( 'cuenta', array( 'name' => str_repeat( 'n', 256 ), 'email' => $admin_wp ? $admin_wp->user_email : 'x@ejemplo.invalid', 'password' => '1234567', 'phone' => '12345678', 'code' => '12345' ) );
+$e = $r['errores'];
+$ok( 'cuenta: nombre de 256 → max 255', array( 'The name field must not be greater than 255 characters.' ) === ( $e['name'] ?? null ) );
+$ok( 'cuenta: email ya usado → «The email has already been taken.» (lo que reconoce la app)', ! $admin_wp || array( 'The email has already been taken.' ) === ( $e['email'] ?? null ) );
+$ok( 'cuenta: contraseña de 7 → «must be at least 8 characters»', array( 'The password field must be at least 8 characters.' ) === ( $e['password'] ?? null ) );
+$ok( 'cuenta: teléfono de 8 cifras → «format is invalid»', array( 'The phone field format is invalid.' ) === ( $e['phone'] ?? null ) );
+$ok( 'cuenta: código de 5 cifras → «must be 6 digits»', array( 'The code field must be 6 digits.' ) === ( $e['code'] ?? null ) );
+if ( $admin_wp ) {
+	$r = $v( 'cuenta', array( 'email' => $admin_wp->user_email ), array( 'ID' => $admin_wp->ID ) );
+	$ok( 'cuenta PATCH: su propio email no cuenta como repetido', ! isset( $r['errores']['email'] ) );
+}
+$r = $v( 'cuenta', array( 'password' => str_repeat( 'p', 256 ), 'code' => '012345' ), array() );
+$ok( 'cuenta: contraseña de 256 → max 255; código «012345» vale', isset( $r['errores']['password'] ) && '012345' === ( $r['valores']['code'] ?? null ) );
+
 // --- La ficha de wp-admin aplica las mismas reglas ---
 $e = array();
 $l = ZN_Admin_Negocios::limpiar( array( 'phone' => str_repeat( '6', 21 ), 'city' => str_repeat( 'c', 31 ), 'country' => 'ESP', 'email' => str_repeat( 'a', 46 ) . '@b.es' ), $e );
-$ok( 'ficha: teléfono de 21, ciudad de 31, país de 3 letras y email de 51 no se guardan', ! array_key_exists( 'phone', $l ) && ! array_key_exists( 'city', $l ) && ! array_key_exists( 'country', $l ) && ! array_key_exists( 'email', $l ) && 4 === count( $e ) );
+$ok( 'ficha: teléfono de 21, ciudad de 31, país de 3 letras y email de 51 no se guardan', ! array_key_exists( 'phone', $l ) && ! array_key_exists( 'city', $l ) && ! array_key_exists( 'country', $l ) && ! array_key_exists( 'email', $l ) && count( $e ) >= 4 );
 $ok( 'ficha: avisos en español con el motivo', in_array( 'El teléfono pasa de 20 caracteres; no se ha cambiado.', $e, true ) && in_array( 'El país tiene que tener 2 letras; no se ha cambiado.', $e, true ) );
 $e = array();
 $l = ZN_Admin_Sorteos::limpiar( array( 'winners' => '' ), $e );

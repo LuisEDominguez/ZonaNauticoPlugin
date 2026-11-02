@@ -24,6 +24,17 @@ class ZN_Eventos {
 		return ZN_Esquema::metas( self::TIPO );
 	}
 
+	/** R70: dueño de una novedad de un negocio = dueño del negocio, su cuenta padre (asociación o federación) o la administración de la app. */
+	public static function dueno_valido_para_negocio( int $dueno, int $negocio ): bool {
+		$cuenta = get_userdata( $dueno );
+		$rol    = $cuenta ? ZN_Roles::rol_app( $cuenta ) : null;
+		if ( 'administrator' === $rol ) {
+			return true;
+		}
+		$del_negocio = ZN_Negocios::dueno( $negocio );
+		return $rol && $del_negocio && ( $dueno === $del_negocio || ( in_array( $rol, ZN_Roles::PADRES, true ) && ZN_Roles::padre( $del_negocio ) === $dueno ) );
+	}
+
 	public static function registrar(): void {
 		register_post_type(
 			self::TIPO,

@@ -18,6 +18,9 @@
  *
  * Regla del PATCH (decisión a de Luis, por H22): campo ausente → no se toca; null → se borra (si es
  * obligatorio, 422); "" o solo espacios → 422. Los campos que no están en el esquema se ignoran (como el Laravel).
+ *
+ * Los campos de dueño ('dueno' => true) no se tratan como uno más (R79): después de validar(), la ruta llama a
+ * permitir_dueno(), que aplica los permisos. Y guarda con guardar() (R80), que reparte cada valor a su sitio.
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -44,6 +47,10 @@ class ZN_Esquema {
 		'date_format' => 'The :attribute field must match the format :format.',
 		'after_or_equal' => 'The :attribute field must be a date after or equal to :date.',
 		'exists'   => 'The selected :attribute is invalid.',
+		'unique'   => 'The :attribute has already been taken.',
+		'min_string' => 'The :attribute field must be at least :min characters.',
+		'digits'   => 'The :attribute field must be :digits digits.',
+		'regex'    => 'The :attribute field format is invalid.',
 	);
 
 	// Lo mismo para los avisos de wp-admin («La web no es válida; no se ha cambiado.»).
@@ -66,6 +73,17 @@ class ZN_Esquema {
 		'date_format' => 'no es una fecha válida',
 		'after_or_equal' => 'es anterior a la de inicio',
 		'exists'   => 'no existe o no se puede elegir',
+		'unique'   => 'ya está en uso',
+		'min_string' => 'tiene que tener al menos :min caracteres',
+		'digits'   => 'tiene que tener :digits cifras',
+		'regex'    => 'no tiene un formato válido',
+	);
+
+	// Permiso del Laravel para guardar cada recurso con dueño (R79).
+	const PERMISOS = array(
+		'negocio' => 'business:save',
+		'evento'  => 'event:save',
+		'sorteo'  => 'draw:save',
 	);
 
 	const FORMATO_FECHA = 'Y-m-d H:i:s';
@@ -82,7 +100,7 @@ class ZN_Esquema {
 				return array(
 					'name'        => array( 'guardado' => 'post_title', 'tipo' => 'texto', 'max' => 50, 'obligatorio' => true, 'salida' => 'name', 'etiqueta' => 'El nombre' ),
 					'description' => array( 'guardado' => 'post_content', 'tipo' => 'parrafos', 'salida' => 'description', 'etiqueta' => 'La descripción' ),
-					'userId'      => array( 'guardado' => 'user_id', 'tipo' => 'cuenta', 'obligatorio' => true, 'etiqueta' => 'El dueño' ),
+					'userId'      => array( 'guardado' => 'user_id', 'tipo' => 'cuenta', 'obligatorio' => true, 'dueno' => true, 'etiqueta' => 'El dueño' ),
 					'categoryId'  => array( 'guardado' => 'business_category_id', 'tipo' => 'opciones', 'opciones' => array_keys( ZN_Negocios::CATEGORIAS ), 'etiqueta' => 'La categoría' ),
 					'latitude'    => $lat,
 					'longitude'   => $lon,
@@ -107,7 +125,7 @@ class ZN_Esquema {
 					'longitude'   => $lon,
 					'photos'      => $fotos,
 					'videos'      => $videos,
-					'userId'      => array( 'guardado' => 'user_id', 'tipo' => 'cuenta', 'obligatorio' => true, 'etiqueta' => 'El dueño' ),
+					'userId'      => array( 'guardado' => 'user_id', 'tipo' => 'cuenta', 'obligatorio' => true, 'dueno' => true, 'etiqueta' => 'El dueño' ),
 					'businessId'  => array( 'guardado' => 'business_id', 'tipo' => 'negocio', 'etiqueta' => 'El negocio' ),
 					// La app manda `category` y, al editar, también `categoryId` con el mismo valor (H37).
 					'category'    => array( 'guardado' => 'event_category_id', 'tipo' => 'opciones', 'opciones' => array_keys( ZN_Eventos::CATEGORIAS ), 'alias' => 'categoryId', 'etiqueta' => 'El tipo' ),
@@ -125,7 +143,7 @@ class ZN_Esquema {
 					'photos'      => $fotos,
 					'videos'      => $videos,
 					'legalUrl'    => array( 'guardado' => 'legal_url', 'tipo' => 'url', 'max' => 255, 'salida' => 'legalUrl', 'etiqueta' => 'La dirección de las bases' ),
-					'userId'      => array( 'guardado' => 'user_id', 'tipo' => 'cuenta', 'obligatorio' => true, 'etiqueta' => 'El dueño' ),
+					'userId'      => array( 'guardado' => 'user_id', 'tipo' => 'cuenta', 'obligatorio' => true, 'dueno' => true, 'etiqueta' => 'El dueño' ),
 				);
 
 			// Reseñas y preguntas son comentarios: el autor sale siempre del token, nunca del cuerpo (H21).
@@ -145,6 +163,21 @@ class ZN_Esquema {
 					'question'    => array( 'guardado' => 'comment_content', 'tipo' => 'escrito', 'max' => 2000, 'obligatorio' => true, 'etiqueta' => 'La pregunta' ),
 					'answer'      => array( 'guardado' => 'answer', 'tipo' => 'escrito', 'max' => 2000, 'etiqueta' => 'La respuesta' ),
 					'published'   => array( 'guardado' => 'comment_approved', 'tipo' => 'booleano', 'etiqueta' => 'Publicada' ),
+				);
+
+			// Cuenta (registro, PATCH /user, recuperación): nunca más estricto que la app (src/features/users/validacion.ts).
+			case 'cuenta':
+				return array(
+					// El nombre completo va en first_name (R53).
+					'name'      => array( 'guardado' => 'first_name', 'tipo' => 'texto', 'max' => 255, 'obligatorio' => true, 'etiqueta' => 'El nombre' ),
+					// La columna user_email de WordPress es de 100.
+					'email'     => array( 'guardado' => 'user_email', 'tipo' => 'email', 'max' => 100, 'obligatorio' => true, 'unico' => true, 'etiqueta' => 'El email' ),
+					'password'  => array( 'guardado' => 'user_pass', 'tipo' => 'contrasena', 'min' => 8, 'max' => 255, 'obligatorio' => true, 'etiqueta' => 'La contraseña' ),
+					'phone'     => array( 'guardado' => 'phone', 'tipo' => 'telefono', 'max' => 20, 'etiqueta' => 'El teléfono' ),
+					'latitude'  => $lat,
+					'longitude' => $lon,
+					// Código de 6 cifras de la recuperación (obligatorio solo en esa ruta: lo exige ella).
+					'code'      => array( 'guardado' => 'code', 'tipo' => 'codigo', 'etiqueta' => 'El código' ),
 				);
 		}
 		return array();
@@ -246,6 +279,18 @@ class ZN_Esquema {
 			$valores += $resultado['valores'];
 		}
 
+		// Únicos (el email de la cuenta): sin contar la propia cuenta al modificarla. Es el único error que la app
+		// reconoce como «email ya registrado» (src/api/errores.ts).
+		foreach ( $campos as $app => $campo ) {
+			if ( empty( $campo['unico'] ) || isset( $errores[ $app ] ) || empty( $valores[ $campo['guardado'] ] ) ) {
+				continue;
+			}
+			$otra = email_exists( $valores[ $campo['guardado'] ] );
+			if ( $otra && (int) $otra !== (int) ( ( $actual ?? array() )['ID'] ?? 0 ) ) {
+				$errores[ $app ][] = self::mensaje( 'unique', $app );
+			}
+		}
+
 		// El fin no puede ir antes del inicio (el Laravel solo lo tenía en un comentario).
 		foreach ( $campos as $app => $campo ) {
 			if ( empty( $campo['despues_de'] ) || isset( $errores[ $app ] ) || empty( $valores[ $campo['guardado'] ] ) ) {
@@ -259,6 +304,154 @@ class ZN_Esquema {
 		}
 
 		return array( 'valores' => $valores, 'errores' => $errores );
+	}
+
+	/**
+	 * Campos de dueño tras validar() (R79), con los permisos de la cuenta $usuario (por defecto, la de la sesión):
+	 * - al crear ($elemento null): el dueño propuesto tiene que pasar ZN_Roles::puede_crear(); si no, 'sin_permiso'
+	 *   (la ruta responde 401 «This action is unauthorized.», como el Laravel);
+	 * - al modificar: el dueño solo cambia con el permiso general (la administración de la app) y si es otro; si
+	 *   no, se ignora en silencio (el Laravel lo descarta igual), así una asociación que edita la novedad de su
+	 *   comercio no se la queda y con `_own` no se puede regalar nada a nadie (H15);
+	 * - novedades: el dueño final y el negocio final cumplen la regla de R70 (si no, 422).
+	 * Devuelve el mismo array de validar(), con 'sin_permiso' => true si hay que responder 401.
+	 */
+	public static function permitir_dueno( string $recurso, array $resultado, ?WP_Post $elemento = null, ?int $usuario = null ): array {
+		$usuario = $usuario ?? get_current_user_id();
+		$permiso = self::PERMISOS[ $recurso ] ?? null;
+		foreach ( self::campos( $recurso ) as $app => $campo ) {
+			if ( empty( $campo['dueno'] ) || null === $permiso || ! array_key_exists( $campo['guardado'], $resultado['valores'] ) ) {
+				continue;
+			}
+			$propuesto = (int) $resultado['valores'][ $campo['guardado'] ];
+			if ( null === $elemento ) {
+				if ( ! ZN_Roles::puede_crear( $permiso, $propuesto, $usuario ) ) {
+					$resultado['sin_permiso'] = true;
+				}
+				continue;
+			}
+			$cuenta    = get_userdata( $usuario );
+			$general   = $cuenta && 'administrator' === ZN_Roles::rol_app( $cuenta ) && ZN_Roles::puede( $permiso, null, $usuario );
+			$guardado  = (int) get_post_meta( $elemento->ID, $campo['guardado'], true );
+			if ( ! $general || $propuesto === $guardado ) {
+				unset( $resultado['valores'][ $campo['guardado'] ] );
+			}
+		}
+
+		// R70: el dueño de una novedad de un negocio es el del negocio, su asociación o federación, o la administración.
+		if ( ZN_Eventos::TIPO === $recurso && ! isset( $resultado['errores']['userId'] ) && ! isset( $resultado['errores']['businessId'] ) ) {
+			$valor   = static fn( string $clave ) => array_key_exists( $clave, $resultado['valores'] ) ? (int) $resultado['valores'][ $clave ] : ( $elemento ? (int) get_post_meta( $elemento->ID, $clave, true ) : 0 );
+			$negocio = $valor( 'business_id' );
+			$dueno   = $valor( 'user_id' );
+			if ( $negocio && $dueno && ! ZN_Eventos::dueno_valido_para_negocio( $dueno, $negocio ) ) {
+				$app                           = array_key_exists( 'business_id', $resultado['valores'] ) ? 'businessId' : 'userId';
+				$resultado['errores'][ $app ][] = self::mensaje( 'exists', $app );
+			}
+		}
+		return $resultado;
+	}
+
+	/**
+	 * Guarda los valores de validar() (nombre guardado => valor; null = borrar) en su sitio (R80):
+	 * - entradas (negocio, evento, sorteo): post_title y post_content en la entrada; el resto, campos personalizados;
+	 * - comentarios (reseña, pregunta): comment_post_ID y comment_content en el comentario; comment_approved con
+	 *   wp_set_comment_status() (con sus ganchos: puntuación, avisos…); el resto, campos del comentario.
+	 * $id null = crear; $extra = campos propios de la entrada o del comentario que no manda la app (post_status,
+	 * user_id y comment_author de quien escribe…). Solo escribe campos que están en el esquema.
+	 * Devuelve el id, o WP_Error. Las cuentas se guardarán con el registro (R53, R69).
+	 *
+	 * @return int|WP_Error
+	 */
+	public static function guardar( string $recurso, ?int $id, array $valores, array $extra = array() ) {
+		$conocidos = array();
+		foreach ( self::campos( $recurso ) as $campo ) {
+			if ( 'urls' === $campo['tipo'] ) {
+				for ( $i = 0; $i < $campo['max']; $i++ ) {
+					$conocidos[] = "{$campo['guardado']}_{$i}";
+				}
+			} else {
+				$conocidos[] = $campo['guardado'];
+			}
+		}
+		$valores = array_intersect_key( $valores, array_flip( $conocidos ) );
+
+		if ( in_array( $recurso, array( ZN_Negocios::TIPO, ZN_Eventos::TIPO, ZN_Sorteos::TIPO ), true ) ) {
+			return self::guardar_entrada( $recurso, $id, $valores, $extra );
+		}
+		if ( in_array( $recurso, array( ZN_Comentarios::RESENA, ZN_Comentarios::PREGUNTA ), true ) ) {
+			return self::guardar_comentario( $recurso, $id, $valores, $extra );
+		}
+		return new WP_Error( 'zn_sin_guardado', "No se sabe guardar «{$recurso}»." );
+	}
+
+	/** @return int|WP_Error */
+	private static function guardar_entrada( string $tipo, ?int $id, array $valores, array $extra ) {
+		$propios = array_intersect_key( $valores, array_flip( array( 'post_title', 'post_content' ) ) );
+		$propios = array_map( static fn( $v ) => (string) $v, $propios ) + $extra;
+		if ( null === $id ) {
+			$id = wp_insert_post( wp_slash( array_merge( array( 'post_type' => $tipo, 'post_status' => 'publish', 'post_title' => '', 'post_content' => '' ), $propios ) ), true );
+		} elseif ( $propios ) {
+			if ( get_post_type( $id ) !== $tipo ) {
+				return new WP_Error( 'zn_no_existe', 'No existe.' );
+			}
+			$id = wp_update_post( wp_slash( array( 'ID' => $id ) + $propios ), true );
+		} elseif ( get_post_type( $id ) !== $tipo ) {
+			return new WP_Error( 'zn_no_existe', 'No existe.' );
+		}
+		if ( is_wp_error( $id ) ) {
+			return $id;
+		}
+		foreach ( array_diff_key( $valores, array_flip( array( 'post_title', 'post_content' ) ) ) as $clave => $valor ) {
+			if ( null === $valor ) {
+				delete_post_meta( $id, $clave );
+			} else {
+				update_post_meta( $id, $clave, wp_slash( $valor ) );
+			}
+		}
+		return (int) $id;
+	}
+
+	/** @return int|WP_Error */
+	private static function guardar_comentario( string $tipo, ?int $id, array $valores, array $extra ) {
+		// Aprobar o no (published de la pregunta, o la ruta en $extra: las reseñas se publican al momento) siempre
+		// con wp_set_comment_status().
+		$aprobado = $valores['comment_approved'] ?? $extra['comment_approved'] ?? null;
+		unset( $valores['comment_approved'], $extra['comment_approved'] );
+		// El user_id de $extra es quien escribe (columna del comentario); el de $valores, el comercio destinatario de
+		// una pregunta (campo del comentario). No se mezclan.
+		$columnas = array_flip( array( 'comment_post_ID', 'comment_content' ) );
+		$propios  = array_intersect_key( $valores, $columnas ) + $extra;
+		$metas    = array_diff_key( $valores, $columnas );
+
+		if ( null === $id ) {
+			// Se crea sin aprobar y se aprueba después con wp_set_comment_status(), para que pasen sus ganchos.
+			$id = wp_insert_comment( wp_slash( array_merge( array( 'comment_type' => $tipo, 'comment_content' => '' ), $propios, array( 'comment_approved' => 0 ) ) ) );
+			if ( ! $id ) {
+				return new WP_Error( 'zn_no_guardado', 'No se pudo guardar.' );
+			}
+		} else {
+			$comentario = get_comment( $id );
+			if ( ! $comentario || $tipo !== $comentario->comment_type ) {
+				return new WP_Error( 'zn_no_existe', 'No existe.' );
+			}
+			if ( $propios ) {
+				$hecho = wp_update_comment( wp_slash( array( 'comment_ID' => $id ) + $propios ), true );
+				if ( is_wp_error( $hecho ) ) {
+					return $hecho;
+				}
+			}
+		}
+		foreach ( $metas as $clave => $valor ) {
+			if ( null === $valor ) {
+				delete_comment_meta( $id, $clave );
+			} else {
+				update_comment_meta( $id, $clave, wp_slash( $valor ) );
+			}
+		}
+		if ( null !== $aprobado ) {
+			wp_set_comment_status( $id, $aprobado ? 'approve' : 'hold' );
+		}
+		return (int) $id;
 	}
 
 	/** 422 con el formato del Laravel a partir de los errores de validar(). */
@@ -284,7 +477,9 @@ class ZN_Esquema {
 			}
 			return array( 'valores' => self::borrar( $campo ) );
 		}
-		if ( is_string( $valor ) && '' === trim( $valor ) ) {
+		// La contraseña no se recorta: «        » (8 espacios) la acepta la app.
+		$en_blanco = 'contrasena' === $campo['tipo'] ? '' === $valor : is_string( $valor ) && '' === trim( $valor );
+		if ( $en_blanco ) {
 			return $fallo( $obligatorio ? 'required' : 'filled' );
 		}
 
@@ -303,6 +498,40 @@ class ZN_Esquema {
 					return $fallo( 'max', array( ':max' => $campo['max'] ) );
 				}
 				return array( 'valores' => array( $campo['guardado'] => $texto ) );
+
+			case 'contrasena':
+				if ( ! is_string( $valor ) ) {
+					return $fallo( 'string' );
+				}
+				if ( mb_strlen( $valor ) < $campo['min'] ) {
+					return $fallo( 'min_string', array( ':min' => $campo['min'] ) );
+				}
+				if ( mb_strlen( $valor ) > $campo['max'] ) {
+					return $fallo( 'max', array( ':max' => $campo['max'] ) );
+				}
+				// Tal cual: la cifra wp_insert_user / wp_set_password.
+				return array( 'valores' => array( $campo['guardado'] => $valor ) );
+
+			case 'telefono':
+				// Como la app: hasta 20 caracteres y, sin espacios, de 9 a 15 cifras con un + delante opcional.
+				if ( ! is_string( $valor ) ) {
+					return $fallo( 'string' );
+				}
+				$telefono = trim( $valor );
+				if ( mb_strlen( $telefono ) > $campo['max'] ) {
+					return $fallo( 'max', array( ':max' => $campo['max'] ) );
+				}
+				if ( ! preg_match( '/^\+?\d{9,15}$/', preg_replace( '/\s/', '', $telefono ) ) ) {
+					return $fallo( 'regex' );
+				}
+				return array( 'valores' => array( $campo['guardado'] => $telefono ) );
+
+			case 'codigo':
+				$codigo = is_int( $valor ) ? sprintf( '%06d', $valor ) : ( is_string( $valor ) ? trim( $valor ) : '' );
+				if ( ! preg_match( '/^\d{6}$/', $codigo ) ) {
+					return $fallo( 'digits', array( ':digits' => 6 ) );
+				}
+				return array( 'valores' => array( $campo['guardado'] => $codigo ) );
 
 			case 'pais':
 				if ( ! is_string( $valor ) ) {
