@@ -44,8 +44,28 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Login B-bis | 02-11-2026 | `f1722fd` (v0.15.0) | `daa57ab` (v0.15.1) | R88, R89, R91, R92; R90 aceptado |
 | Escrituras y RGPD | 02-11-2026 | `daa57ab` (v0.15.1) | `3e598f5` (v0.16.0) | Reseñas y preguntas desde la app, R65 y el 405 de `/verify` |
 | Escrituras-bis | 02-11-2026 | `3e598f5` (v0.16.0) | `5f1352e` (v0.16.1) | R93, R94, R95 = A |
+| Novedades y sorteos | 02-11-2026 | `5f1352e` (v0.16.1) | `077f02a` (v0.17.0) | Escrituras de novedades y sorteos desde la app y R96 |
 
 ---
+
+## Escrituras de novedades y sorteos (y R96)
+
+Luis dio el sí (02-11, 10:55). Diff de la ronda: `git diff 3131936 077f02a`. Pruebas escritas antes
+(`tests/novedades-sorteos.php` y lo nuevo de `tests/privacidad.php` fallaban). **Un solo revisor, solo el diff.**
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **`POST /event`, `POST /draw`** | hecho | `includes/class-zn-api-entradas.php` (las dos con el mismo código). `ZN_Esquema::validar()` (obligatorios del Laravel: novedad `name`, `userId`; sorteo `title`, `userId`, `startDate`, `endDate`, `winners` ≥ 1; fechas `Y-m-d H:i:s`) y `permitir_dueno()` (R79, R70): con `_own`, a su nombre; en novedades, la asociación o federación también a nombre de su comercio; si no, 401 (H15). Primero 422, después 401. Publicada al momento y **sin autor de WordPress (`post_author` 0)**: el dueño es `user_id`, y así `wp_delete_user()` no la borra por detrás. `201 {data}` con el mismo formato que el GET. |
+| **`PUT\|PATCH /event/{id}`, `/draw/{id}`** | hecho | `puede( '<recurso>:save', entrada )`: el dueño guardado; en novedades, también su asociación o federación (como el Laravel); en sorteos, sin herencia; la administración de la app, todo. Entrada de ese tipo y no en la papelera (un borrador sí); si no, 404. Regla del PATCH; el dueño solo lo cambia la administración (R79) y con R70. **H22:** un PATCH sin `legalUrl` ya no lo borra. `200 {data}`. |
+| **`DELETE /event/{id}`, `/draw/{id}`** | hecho | `puede( '<recurso>:delete', entrada )`. Borrado definitivo. `200 {status: "success"}` (el cuerpo del Laravel no está en los documentos; la app aún no lo usa). |
+| **Fechas en un PATCH** | hecho | `ZN_Esquema::validar()`: antes solo miraba el fin cuando llegaba el fin. Ahora, si llega el inicio solo y queda después del fin guardado, 422 en `startDate` («before or equal to end date»). Texto nuevo `before_or_equal` (y su aviso para wp-admin). |
+| **R94** | hecho | Crear y modificar novedades y sorteos cuentan para las 20 escrituras por hora y cuenta. |
+| **R96** | hecho (regla A) | `delete_user`: los negocios, novedades y sorteos de la cuenta pasan a borrador y sin dueño; los que estén en la papelera siguen allí, también sin dueño. |
+| Fechas de Adalo | apuntado | El Laravel también aceptaba fechas numéricas de Adalo (días desde 1899). La app nueva manda `Y-m-d H:i:s`; no se copia. |
+
+### Resultado de las pruebas (novedades y sorteos, 02-11)
+
+`node tests/todas.mjs`: **819 comprobaciones bien en 22 juegos** (`novedades-sorteos` 58 nueva, `privacidad` 29). `contrato-eventos` y `contrato-sorteos` comprobaban «POST da 405» (solo lectura): ahora «POST sin token → 401 Unauthenticated.» y «PUT en la lista → 405»; esas dos se repitieron solas tras corregirlas (11 y 9 bien).
 
 ## Escrituras-bis (R93–R95)
 
