@@ -55,6 +55,10 @@ archivo (02-11, 08:42). Diff de la ronda: `git diff 524ab78 a7fd98e`.
 | **R86** `/refresh` sin límite | hecho | Columna `origen` en `zn_tokens` (versión de tabla 3; los tokens anteriores usan `creado`). `emitir( $id, $origen )`: el login la pone a ahora y `/refresh` la copia. Pasados `ZN_Tokens::MAX_RENOVAR` (14 días) desde el login, `/refresh` da 401 «Unauthenticated.» y el token sigue valiendo hasta caducar. Pruebas por HTTP con 13 y 15 días. |
 | **R87** Dos `/refresh` a la vez | hecho | `anular()` devuelve si ha anulado esta llamada (`… AND anulado IS NULL`, una fila). `/refresh` anula primero y solo emite si fue él; si no, 401. Prueba: otra «petición» anula el token justo antes (filtro `query` en la prueba, sin ganchos de prueba en el código) → 401 y ningún token nuevo. |
 
+**Veredicto del revisor:** R84–R87 arreglados, sin fallos nuevos. **Nota 1 (bloqueo de una hora con dos IPs):
+Luis eligió A, dejarlo así** (02-11, 08:51); C, si se ve en los registros. Nota 2 (huellas `$2y$` y PHP 8.4),
+apuntada para la migración (R23). Registro y recuperación: todavía no (Luis).
+
 ### Resultado de las pruebas (login A-bis, 02-11)
 
 `node tests/todas.mjs`: **573 comprobaciones bien en 18 juegos, todo bien** (`login` 74, `limite` 35).
