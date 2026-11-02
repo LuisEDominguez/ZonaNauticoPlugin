@@ -174,7 +174,9 @@ sin wp-admin. En `/zonanautico/v1` la cookie del panel no vale: solo el token; p
 sesión del panel (R98). **Editar (parte 2a):** en «Mi zona», «Editar» en los negocios, novedades y sorteos
 que la app les deja guardar (`ZN_Roles::puede`, un nivel): textos, categoría, fechas, ganadores y bases; pueden
 pasar a borrador pero no publicar (eso, la administración); y borrar, a la papelera, si la app les deja borrar
-(las novedades de un negocio borrado pasan a borrador). Con sello, el esquema común y el límite de escrituras
+(las novedades de un negocio borrado pasan a borrador). Al restaurar el negocio desde la papelera, sus novedades
+siguen en borrador: hay que publicarlas a mano. En el servidor, **nunca** `EMPTY_TRASH_DAYS` a 0 en wp-config.php:
+con 0, WordPress no usa la papelera y borrar desde el panel sería para siempre. Con sello, el esquema común y el límite de escrituras
 de la app. Sin dueño, fotos, vídeos ni coordenadas.
 
 **Dueños de novedades y sorteos.** Campo `user_id`, elegido en su ficha («Dueño») entre las cuentas de
