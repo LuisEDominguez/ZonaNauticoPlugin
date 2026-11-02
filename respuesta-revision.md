@@ -13,7 +13,7 @@ el sí de Luis.
 |---|---|
 | Todas a la vez (hilo que desarrolla) | `node tests/todas.mjs` |
 | Revisores (solo lectura, todas las que necesiten) | `node tests/contrato-negocios.mjs`, `contrato-eventos.mjs`, `contrato-sorteos.mjs`, `contrato-resenas.mjs`, `contrato-preguntas.mjs`, `contrato-muestras.mjs`, `contrato-errores.mjs`, `wp eval-file tests/admin-fichas.php`, `tests/esquema.php` y `tests/errores.php` (no guardan nada; `errores.php` registra rutas de prueba solo en memoria), además de peticiones GET y lectura de código |
-| Hilo que desarrolla (pasa el resultado a los revisores) | `wp eval-file tests/seguridad.php`, `tests/comentarios.php`, `tests/roles.php`, `tests/tokens.php`, `tests/limite.php`, `tests/escrituras.php` y `tests/login.php` (crean datos, cuentas o filas temporales y los borran) y `node tests/puertas.mjs` (no guarda nada, pero envía una petición a XML-RPC) |
+| Hilo que desarrolla (pasa el resultado a los revisores) | `wp eval-file tests/seguridad.php`, `tests/comentarios.php`, `tests/roles.php`, `tests/tokens.php`, `tests/limite.php`, `tests/escrituras.php`, `tests/login.php` y `tests/registro.php` (crean datos, cuentas o filas temporales y los borran) y `node tests/puertas.mjs` (no guarda nada, pero envía una petición a XML-RPC) |
 
 Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** · **espera decisión** ·
 **se propone descartar**.
@@ -40,8 +40,37 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Segundo bloque-ter | 02-11-2026 | `494dfd9` (v0.13.1) | `f054082` (v0.13.2) | R82 (editar comentarios sin kses), R83 (IPv4 escritas como IPv6), borrador por defecto |
 | Login A | 02-11-2026 | `bdca3f1` (v0.13.2) | `524ab78` (v0.14.0) | `POST /login`, `/refresh`, `/logout` (R30, R38, R39) y línea de R78 en el README |
 | Login A-bis | 02-11-2026 | `524ab78` (v0.14.0) | `a7fd98e` (v0.14.1) | R84, R85, R86 (14 días) y R87 |
+| Login B | 02-11-2026 | `a7fd98e` (v0.14.1) | `f1722fd` (v0.15.0) | Registro, verificación y recuperación (R30, R53, R62) |
 
 ---
+
+## Login, parte B (registro, verificación y recuperación)
+
+Luis dio el sí (02-11, 09:30). Diff de la ronda: `git diff ad8d3d3 f1722fd` (desde la última respuesta; el código
+anterior era `a7fd98e`). Ronda delicada: revisor principal y, como mucho, un ayudante de seguridad.
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **`POST /register`** | hecho | `includes/class-zn-api-cuenta.php`. Primero `ZN_Limite::intentar( 'registro' )` (por IP), luego `ZN_Esquema::validar( 'cuenta', … )` (sin `code`). `201 {status: "success"}`. Rol siempre `zn_usuario` (lo que mande la app en `role`/`roleId` se ignora; las altas de otros roles con token, con las escrituras). `user_login` al azar (`zn` + 16 hex), ni correo ni nombre; `display_name` y `nickname`, el mismo. Teléfono y ubicación como metas. Solo el cuerpo (H8). |
+| **R30** Email repetido | hecho | 422 «The email has already been taken.» (la regla `unique` del esquema, sin distinguir mayúsculas). |
+| **R30** Red de seguridad | hecho | `ZN_Errores::traducir()`: `existing_user_email` → 422 con ese mismo texto en `email`; `DE_CUENTAS` (otros errores de `wp_insert_user` y `wp_authenticate`) → 422. Antes salían como 500. |
+| **R53** Nombre | hecho | Nombre entero (recortado) en `first_name`, apellidos vacíos; en blanco → 422. |
+| **R57** Alta | hecho | `wp_insert_user()` con rol explícito; no manda avisos de WordPress. |
+| **R62 / H16** Verificación | hecho | Token al azar de 32 bytes (base64url); se guarda solo su SHA-256 en `zn_verificar`, con `zn_verificar_caduca` a 48 horas; vale una vez. `GET /verify?id=&token=`: página HTML sencilla «Cuenta verificada» / «Este enlace no vale» (filtro `rest_pre_serve_request`, sin datos de la cuenta, `no-store`, `noindex`); con `&format=json`, `200 {status: "success"}` o `400 {status: "error"}`. |
+| **H17** Reenvío | hecho | `GET /send-email?email=`: 422 si el email está mal escrito; si no, `intentar( 'reenviar' )` y **siempre 200 `{status: "success"}`**; solo manda correo a una cuenta de la app sin verificar (el token nuevo anula el anterior). El Laravel daba 400 si no existía o ya estaba verificada; la app trata 200 y 400 igual (`auth.ts:56-62`) y así no se delata nada. |
+| **H24** Código | hecho | `POST /reset-password-code {email}`: siempre 200 `{status: "success"}`, sin Bearer compartido y sin el código en la respuesta. A una cuenta de la app: código `random_int` de 6 cifras por correo, guardado como HMAC con `wp_salt` (`id|código`), 15 minutos, fallos a cero. |
+| **R30 / H24** Cambio | hecho | `POST /reset-password {email, code, password}`: formato del email y de la contraseña (8–255) → 422; `intentar( 'codigo' )` → 429; código que no vale (mal escrito, ausente, caducado, gastado, de otra cuenta o de una que no existe) → **400** `{status: "error", message: "Invalid code"}`. Cada fallo suma; al 5.º el código se borra (aunque los fallos vengan de IPs distintas). Bien: `wp_set_password()` (cierra todas las sesiones, R32), borra el código, **deja el correo verificado** (quien tiene el código lo recibió en ese correo) y `olvidar()`. |
+| **R61** Pruebas | hecho | `tests/registro.php` (68), escrita antes que las rutas: por dentro (pasando por `rest_post_dispatch`, como al servir) y por HTTP el enlace del correo. Los correos se recogen en `pre_wp_mail` y no salen. |
+
+**Apuntado:**
+- Dar de alta comercios, asociaciones… con token (`user:register-<rol>`, con `parent_id`): con las escrituras de cuentas.
+- `avatar` (multipart) en el alta: la app no lo manda; con las fotos.
+- Que una cuenta exista se puede saber por el registro (lo exige la app, «email ya registrado») y por el tiempo que tarda mandar un correo en `send-email`/`reset-password-code`. Aceptado como en R85.
+- Los textos de los correos y de la página son provisionales; los puede cambiar Luis.
+
+### Resultado de las pruebas (login B, 02-11)
+
+`node tests/todas.mjs`: **641 comprobaciones bien en 19 juegos, todo bien** (`registro` 68 nueva).
 
 ## Login A-bis (R84–R87)
 
