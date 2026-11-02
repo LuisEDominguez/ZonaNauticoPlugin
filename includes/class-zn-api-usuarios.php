@@ -10,6 +10,21 @@
  * - Cuenta que no existe o que no es de la app: 404.
  * Quién ve a quién: ZN_Roles::puede( 'user:read', $cuenta ) (uno mismo, la administración de la app o
  * la cuenta padre con user:read_<rol>).
+ *
+ * PATCH /user/{id} (y PUT, como el Laravel; también POST con ?_method=PATCH): «cambiar mis datos» (R69).
+ * - Solo la propia cuenta; la de otra, o el rol (roleId) → 401 «This action is unauthorized.» (por ahora no se
+ *   cambian desde aquí).
+ * - Campos: name, phone, email, password. Ausente = no tocar; null = borrar (solo el teléfono: los demás no se
+ *   pueden borrar → 422); "" = 422 (decisión a). Lo demás que mande la app se ignora.
+ * - El correo y la contraseña piden la contraseña actual (currentPassword, decisión A de R69): sin ella, 422
+ *   «The current password field is required.»; mala, 422 «The password is incorrect.» (los textos del Laravel).
+ *   Primero el formato (422, sin gastar intentos), luego ZN_Limite 'datos' (429) y luego la contraseña actual. Que
+ *   el correo nuevo ya es de otra cuenta solo se dice con la contraseña actual buena.
+ * - La contraseña cambia al momento con wp_set_password(): se anulan los demás tokens de la cuenta (no el de quien
+ *   la cambia, R56), el código de recuperación y el cambio de correo pendiente, y se avisa por correo.
+ * - El correo nuevo no vale hasta confirmarlo con el enlace que le llega (ZN_API_Cuenta::pedir_cambio_de_correo);
+ *   al viejo le llega un aviso. Hasta entonces se entra con el viejo y la respuesta lo sigue dando.
+ * - Cuenta también en el límite de escrituras de la cuenta (R94). Responde 200 con {data} como GET /user/{id}.
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -21,12 +36,103 @@ class ZN_API_Usuarios {
 			ZN_NAMESPACE,
 			'/user/(?P<id>\d+)',
 			array(
-				'methods'             => WP_REST_Server::READABLE,
-				'callback'            => array( __CLASS__, 'ficha' ),
-				// En la entrada, no solo dentro (R51): sin sesión de una cuenta de la app no se ejecuta nada.
-				'permission_callback' => array( 'ZN_API', 'con_sesion_de_la_app' ),
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => array( __CLASS__, 'ficha' ),
+					// En la entrada, no solo dentro (R51): sin sesión de una cuenta de la app no se ejecuta nada.
+					'permission_callback' => array( 'ZN_API', 'con_sesion_de_la_app' ),
+				),
+				array(
+					'methods'             => 'PUT, PATCH',
+					'callback'            => array( __CLASS__, 'cambiar' ),
+					'permission_callback' => array( 'ZN_API', 'con_sesion_de_la_app' ),
+				),
 			)
 		);
+	}
+
+	public static function cambiar( WP_REST_Request $peticion ): WP_REST_Response {
+		$cuenta = get_userdata( (int) $peticion['id'] );
+		if ( ! $cuenta || ! ZN_Roles::rol_app( $cuenta ) ) {
+			return ZN_API::no_encontrado();
+		}
+		$cuerpo = ZN_API::cuerpo( $peticion );
+		if ( get_current_user_id() !== (int) $cuenta->ID || array_key_exists( 'roleId', $cuerpo ) ) {
+			return ZN_Errores::sin_permiso();
+		}
+		$espera = ZN_API::limite_de_escritura();
+		if ( null !== $espera ) {
+			return ZN_Limite::demasiados( $espera );
+		}
+
+		// El correo, aparte: si ya es de otra cuenta solo se dice con la contraseña actual buena.
+		$validado = ZN_Esquema::validar( 'cuenta', array_intersect_key( $cuerpo, array_flip( array( 'name', 'phone', 'password' ) ) ), array( 'ID' => $cuenta->ID ) );
+		$valores  = $validado['valores'];
+		$errores  = $validado['errores'];
+		$email    = null;
+		if ( array_key_exists( 'email', $cuerpo ) ) {
+			$resultado = ZN_Esquema::comprobar( ZN_Esquema::campos( 'cuenta' )['email'], $cuerpo['email'], 'email' );
+			if ( isset( $resultado['errores'] ) ) {
+				$errores += $resultado['errores'];
+			} elseif ( 0 !== strcasecmp( (string) $resultado['valores']['user_email'], $cuenta->user_email ) ) {
+				$email = (string) $resultado['valores']['user_email'];
+			}
+		}
+		$pide   = isset( $valores['user_pass'] ) || null !== $email || isset( $errores['password'] ) || isset( $errores['email'] );
+		$actual = $cuerpo['currentPassword'] ?? null;
+		if ( $pide && ( null === $actual || '' === $actual ) ) {
+			$errores['currentPassword'] = array( ZN_Esquema::mensaje( 'required', 'currentPassword' ) );
+		} elseif ( $pide && ! is_string( $actual ) ) {
+			$errores['currentPassword'] = array( ZN_Esquema::mensaje( 'string', 'currentPassword' ) );
+		}
+		if ( $errores ) {
+			return ZN_Errores::no_valido( $errores );
+		}
+
+		if ( $pide ) {
+			$espera = ZN_Limite::intentar( 'datos', $cuenta->user_email );
+			if ( null !== $espera ) {
+				return ZN_Limite::demasiados( $espera );
+			}
+			if ( ! wp_check_password( $actual, $cuenta->user_pass, $cuenta->ID ) ) {
+				return ZN_Errores::no_valido( array( 'currentPassword' => 'The password is incorrect.' ) );
+			}
+			ZN_Limite::olvidar( 'datos', $cuenta->user_email );
+			$otra = null === $email ? false : email_exists( $email );
+			if ( $otra && (int) $otra !== (int) $cuenta->ID ) {
+				return ZN_Errores::no_valido( array( 'email' => ZN_Esquema::mensaje( 'unique', 'email' ) ) );
+			}
+		}
+
+		if ( isset( $valores['first_name'] ) ) {
+			update_user_meta( $cuenta->ID, 'first_name', $valores['first_name'] );
+			update_user_meta( $cuenta->ID, 'last_name', '' );
+		}
+		if ( array_key_exists( 'phone', $valores ) ) {
+			if ( null === $valores['phone'] ) {
+				delete_user_meta( $cuenta->ID, 'phone' );
+			} else {
+				update_user_meta( $cuenta->ID, 'phone', $valores['phone'] );
+			}
+		}
+		// Primero la contraseña (anula el cambio de correo pendiente) y luego el correo nuevo, si viene.
+		if ( isset( $valores['user_pass'] ) ) {
+			wp_set_password( $valores['user_pass'], $cuenta->ID );
+			delete_user_meta( $cuenta->ID, 'zn_codigo' );
+			wp_mail(
+				$cuenta->user_email,
+				'Zona Náutico: tu contraseña ha cambiado',
+				"Hola:\n\nLa contraseña de tu cuenta en la app Zona Náutico acaba de cambiar.\n\nSi no has sido tú, pide un código desde la app con «Olvidé la contraseña» para ponerle otra.\n"
+			);
+		}
+		if ( null !== $email ) {
+			ZN_API_Cuenta::pedir_cambio_de_correo( get_userdata( $cuenta->ID ), $email );
+		}
+
+		clean_user_cache( $cuenta->ID );
+		$respuesta = new WP_REST_Response( array( 'data' => self::formatear( get_userdata( $cuenta->ID ) ) ) );
+		$respuesta->header( 'Cache-Control', 'no-store, private' );
+		return $respuesta;
 	}
 
 	public static function ficha( WP_REST_Request $peticion ): WP_REST_Response {

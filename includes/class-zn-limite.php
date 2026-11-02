@@ -38,6 +38,8 @@ class ZN_Limite {
 		// Por cuenta, 10 por hora (R89): también frena los fallos que lleguen a la vez sobre un mismo código.
 		'codigo'    => array( 'cuenta_ip' => array( 5, 900 ), 'cuenta' => array( 10, HOUR_IN_SECONDS ), 'ip' => array( 50, 900 ) ),
 		'registro'  => array( 'ip' => array( 10, HOUR_IN_SECONDS ) ),
+		// PATCH /user: la contraseña actual al cambiar el correo o la contraseña (R69), ya con sesión.
+		'datos'     => array( 'cuenta_ip' => array( 5, 900 ), 'cuenta' => array( 20, HOUR_IN_SECONDS ) ),
 		// Escrituras desde la app (reseñas, respuestas y preguntas; R94): por cuenta, ya con sesión.
 		'escritura' => array( 'cuenta' => array( 20, HOUR_IN_SECONDS ) ),
 	);

@@ -26,6 +26,11 @@
  *   demás. El registro mira primero el límite (por IP): así nadie prueba sin freno qué correos ya tienen cuenta (R92).
  * - Que una cuenta existe se puede saber por el tiempo de respuesta de send-email y reset-password-code (mandar un
  *   correo tarda): aceptado por Luis (R90), porque el registro ya lo dice con su 422 y la app lo necesita.
+ * - Cambio de correo desde PATCH /user (R69): el nuevo queda pendiente (zn_email_nuevo) y le llega un enlace a
+ *   /verify-email?id=&token=, igual que el de /verify (token al azar del que solo se guarda la huella, VERIFICAR_HORAS,
+ *   una vez; abrirlo pinta el botón y el POST confirma). Al viejo le llega un aviso sin el enlace. Al confirmar se
+ *   cambia user_email (si nadie se lo ha quedado entre medias y la cuenta no está de baja) y se anulan todos sus
+ *   tokens: se vuelve a entrar con el correo nuevo. Cambiar la contraseña anula el cambio pendiente.
  * - Los correos salen con wp_mail(): fuera de producción, solo a @ejemplo.invalid (R57).
  */
 
@@ -40,12 +45,15 @@ class ZN_API_Cuenta {
 	public static function iniciar(): void {
 		add_action( 'rest_api_init', array( __CLASS__, 'registrar_rutas' ) );
 		add_filter( 'rest_pre_serve_request', array( __CLASS__, 'pagina_de_verificacion' ), 10, 4 );
+		// Una contraseña nueva (desde la app o con el código) anula el cambio de correo pendiente.
+		add_action( 'wp_set_password', static fn( $clave, $id ) => self::anular_cambio_de_correo( (int) $id ), 10, 2 );
 	}
 
 	public static function registrar_rutas(): void {
 		$rutas = array(
 			'/register'            => array( WP_REST_Server::CREATABLE, 'registrar' ),
 			'/verify'              => array( 'GET, POST', 'verificar' ),
+			'/verify-email'        => array( 'GET, POST', 'confirmar_correo' ),
 			'/send-email'          => array( WP_REST_Server::READABLE, 'reenviar' ),
 			'/reset-password-code' => array( WP_REST_Server::CREATABLE, 'pedir_codigo' ),
 			'/reset-password'      => array( WP_REST_Server::CREATABLE, 'cambiar_contrasena' ),
@@ -127,6 +135,78 @@ class ZN_API_Cuenta {
 		return '' !== $huella && $caduca > time() && hash_equals( $huella, hash( 'sha256', $token ) );
 	}
 
+	/**
+	 * Correo nuevo pedido desde PATCH /user (ya comprobados la contraseña actual y que no es de otra cuenta): queda
+	 * pendiente, al nuevo le llega el enlace y al viejo un aviso. Un enlace anterior deja de valer.
+	 */
+	public static function pedir_cambio_de_correo( WP_User $cuenta, string $email ): void {
+		$token = rtrim( strtr( base64_encode( random_bytes( 32 ) ), '+/', '-_' ), '=' );
+		update_user_meta( $cuenta->ID, 'zn_email_nuevo', $email );
+		update_user_meta( $cuenta->ID, 'zn_email_nuevo_token', hash( 'sha256', $token ) );
+		update_user_meta( $cuenta->ID, 'zn_email_nuevo_caduca', time() + self::VERIFICAR_HORAS * HOUR_IN_SECONDS );
+		$enlace = add_query_arg(
+			array(
+				'id'    => $cuenta->ID,
+				'token' => $token,
+			),
+			rest_url( ZN_NAMESPACE . '/verify-email' )
+		);
+		wp_mail(
+			$email,
+			'Zona Náutico: confirma tu correo nuevo',
+			"Hola:\n\nPara usar este correo en tu cuenta de la app Zona Náutico, abre este enlace:\n\n$enlace\n\nCaduca en " . self::VERIFICAR_HORAS . " horas. Si no lo has pedido tú, no hagas nada.\n"
+		);
+		wp_mail(
+			$cuenta->user_email,
+			'Zona Náutico: has pedido cambiar tu correo',
+			"Hola:\n\nSe ha pedido cambiar el correo de tu cuenta en la app Zona Náutico. El cambio solo se hace si se confirma desde el correo nuevo.\n\nSi no has sido tú, cambia tu contraseña desde la app (con «Olvidé la contraseña» si hace falta): así el cambio se anula.\n"
+		);
+	}
+
+	public static function confirmar_correo( WP_REST_Request $peticion ): WP_REST_Response {
+		$id     = (int) $peticion->get_param( 'id' );
+		$token  = (string) $peticion->get_param( 'token' );
+		$cuenta = $id > 0 ? get_userdata( $id ) : false;
+		$huella = $cuenta ? (string) get_user_meta( $id, 'zn_email_nuevo_token', true ) : '';
+		$email  = $cuenta ? (string) get_user_meta( $id, 'zn_email_nuevo', true ) : '';
+		$vale   = $cuenta && ZN_Roles::rol_app( $cuenta ) && ! ZN_Panel::desactivada( $id ) && '' !== $email && '' !== $huella
+			&& preg_match( '/^[A-Za-z0-9_-]{43}$/', $token ) && (int) get_user_meta( $id, 'zn_email_nuevo_caduca', true ) > time()
+			&& hash_equals( $huella, hash( 'sha256', $token ) );
+		if ( ! $vale ) {
+			return new WP_REST_Response( array( 'status' => 'error', 'message' => 'Invalid token' ), 400 );
+		}
+		// Abrir el enlace no cambia nada (como /verify, R88): solo el botón de la página.
+		if ( 'POST' !== $peticion->get_method() ) {
+			return new WP_REST_Response( array( 'status' => 'pending' ) );
+		}
+		$otra = email_exists( $email );
+		if ( $otra && (int) $otra !== $id ) {
+			self::anular_cambio_de_correo( $id );
+			return new WP_REST_Response( array( 'status' => 'error', 'message' => 'The email has already been taken.' ), 400 );
+		}
+		self::anular_cambio_de_correo( $id );
+		// Sin el aviso propio de WordPress: el nuestro ya llegó al correo viejo al pedirlo.
+		add_filter( 'send_email_change_email', '__return_false', PHP_INT_MAX );
+		// profile_update anula todos sus tokens (aquí no hay ninguno en uso).
+		$resultado = wp_update_user( array( 'ID' => $id, 'user_email' => $email ) );
+		remove_filter( 'send_email_change_email', '__return_false', PHP_INT_MAX );
+		if ( is_wp_error( $resultado ) ) {
+			return new WP_REST_Response( array( 'status' => 'error', 'message' => 'Invalid token' ), 400 );
+		}
+		ZN_Tokens::anular_todos( $id );
+		update_user_meta( $id, 'zn_verificado', '1' );
+		foreach ( array( 'zn_codigo', 'zn_codigo_caduca', 'zn_codigo_fallos' ) as $clave_meta ) {
+			delete_user_meta( $id, $clave_meta );
+		}
+		return new WP_REST_Response( array( 'status' => 'success' ) );
+	}
+
+	public static function anular_cambio_de_correo( int $id ): void {
+		foreach ( array( 'zn_email_nuevo', 'zn_email_nuevo_token', 'zn_email_nuevo_caduca' ) as $clave_meta ) {
+			delete_user_meta( $id, $clave_meta );
+		}
+	}
+
 	public static function reenviar( WP_REST_Request $peticion ): WP_REST_Response {
 		list( $email, $errores ) = self::email( $peticion->get_param( 'email' ) );
 		if ( $errores ) {
@@ -195,11 +275,13 @@ class ZN_API_Cuenta {
 	}
 
 	/**
-	 * Filtro rest_pre_serve_request: el enlace del correo se abre en el navegador, así que GET /verify responde con
-	 * una página (salvo con &format=json). Sin datos de la cuenta.
+	 * Filtro rest_pre_serve_request: el enlace del correo se abre en el navegador, así que GET /verify y GET
+	 * /verify-email responden con una página (salvo con &format=json). Sin datos de la cuenta.
 	 */
 	public static function pagina_de_verificacion( $servida, $resultado, $peticion, $servidor ) {
-		if ( $servida || ! $peticion instanceof WP_REST_Request || '/' . ZN_NAMESPACE . '/verify' !== strtolower( $peticion->get_route() ) || 'json' === $peticion->get_param( 'format' ) ) {
+		$ruta = $peticion instanceof WP_REST_Request ? strtolower( $peticion->get_route() ) : '';
+		$alta = '/' . ZN_NAMESPACE . '/verify' === $ruta;
+		if ( $servida || ( ! $alta && '/' . ZN_NAMESPACE . '/verify-email' !== $ruta ) || 'json' === $peticion->get_param( 'format' ) ) {
 			return $servida;
 		}
 		// Solo el enlace (GET) y el botón (POST); con otro método, el 405 de la API sale en JSON como en las demás rutas.
@@ -212,18 +294,18 @@ class ZN_API_Cuenta {
 		header( 'Cache-Control: no-store, private' );
 		$boton = '';
 		if ( 'pending' === $estado ) {
-			$titulo = 'Confirma tu correo';
-			$texto  = 'Pulsa el botón para terminar de crear tu cuenta en la app Zona Náutico.';
-			$boton  = '<form method="post" action="' . esc_url( rest_url( ZN_NAMESPACE . '/verify' ) ) . '">'
+			$titulo = $alta ? 'Confirma tu correo' : 'Confirma tu correo nuevo';
+			$texto  = $alta ? 'Pulsa el botón para terminar de crear tu cuenta en la app Zona Náutico.' : 'Pulsa el botón para usar este correo en tu cuenta de la app Zona Náutico.';
+			$boton  = '<form method="post" action="' . esc_url( rest_url( ZN_NAMESPACE . ( $alta ? '/verify' : '/verify-email' ) ) ) . '">'
 				. '<input type="hidden" name="id" value="' . esc_attr( (string) (int) $peticion->get_param( 'id' ) ) . '">'
 				. '<input type="hidden" name="token" value="' . esc_attr( (string) $peticion->get_param( 'token' ) ) . '">'
 				. '<button type="submit">Confirmar mi correo</button></form>';
 		} elseif ( 'success' === $estado ) {
-			$titulo = 'Cuenta verificada';
-			$texto  = 'Ya puedes entrar en la app Zona Náutico con tu correo y tu contraseña.';
+			$titulo = $alta ? 'Cuenta verificada' : 'Correo cambiado';
+			$texto  = $alta ? 'Ya puedes entrar en la app Zona Náutico con tu correo y tu contraseña.' : 'Vuelve a entrar en la app Zona Náutico con tu correo nuevo y tu contraseña.';
 		} else {
 			$titulo = 'Este enlace no vale';
-			$texto  = 'El enlace no vale o ha caducado. Desde la app puedes pedir que te mandemos otro.';
+			$texto  = $alta ? 'El enlace no vale o ha caducado. Desde la app puedes pedir que te mandemos otro.' : 'El enlace no vale, ha caducado o ese correo ya lo usa otra cuenta. Desde la app puedes pedir el cambio otra vez.';
 		}
 		echo '<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">'
 			. '<title>' . esc_html( $titulo ) . '</title>'

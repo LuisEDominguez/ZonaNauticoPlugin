@@ -169,6 +169,7 @@ class ZN_Privacidad {
 					array(
 						'Nombre'           => trim( $cuenta->first_name . ' ' . $cuenta->last_name ),
 						'Correo'           => $cuenta->user_email,
+						'Correo nuevo sin confirmar' => $meta( 'zn_email_nuevo' ),
 						'Teléfono'         => $meta( 'phone' ),
 						'Latitud'          => $meta( 'latitude' ),
 						'Longitud'         => $meta( 'longitude' ),
@@ -242,7 +243,7 @@ class ZN_Privacidad {
 			return array( 'items_removed' => false, 'items_retained' => false, 'messages' => array(), 'done' => true );
 		}
 		$quitado = false;
-		foreach ( array( 'phone', 'latitude', 'longitude' ) as $clave ) {
+		foreach ( array( 'phone', 'latitude', 'longitude', 'zn_email_nuevo', 'zn_email_nuevo_token', 'zn_email_nuevo_caduca' ) as $clave ) {
 			$quitado = delete_user_meta( $cuenta->ID, $clave ) || $quitado;
 		}
 		// Siempre los primeros que queden: los de la llamada anterior ya no existen.

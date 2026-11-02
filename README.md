@@ -31,6 +31,8 @@ Base de la API: `<sitio>/wp-json/zonanautico/v1`
 | `POST /draw` | **con token** | `title`*, `userId`*, `startDate`*, `endDate`*, `winners`* (≥ 1), `description`, `legalUrl`, `photos[]`. `201 {data}` |
 | `PUT\|PATCH /draw/{id}`, `DELETE /draw/{id}` | **con token** | Solo su dueño o la administración de la app. Un PATCH sin `legalUrl` no lo borra |
 | `GET /user/{id}` | **con token** | La propia cuenta, o la que pueda ver (`user:read`…). Formato del UserResource del Laravel con `id` numérico |
+| `PUT\|PATCH /user/{id}` | **con token** | Solo la propia cuenta: `name`, `phone`, `email`, `password`. El correo y la contraseña piden `currentPassword` (R69). null borra solo el teléfono; "" es 422. `roleId` → 401. `200 {data}` como `GET /user/{id}` |
+| `GET\|POST /verify-email` | público | Enlace del correo nuevo (`id`, `token`): GET pinta el botón, POST confirma el cambio |
 
 Los negocios se guardan como entradas personalizadas de WordPress (tipo `negocio`, menú «Negocios»
 en wp-admin): nombre = título, descripción = contenido, y el resto como campos personalizados con
@@ -164,6 +166,16 @@ sesiones de la cuenta y deja el correo verificado; un código que no vale da `40
 delatarla, y nunca piden un Bearer compartido. Todas validan primero el formato (422), luego el límite de
 intentos (429). Los errores de cuentas de WordPress sin estado (`existing_user_email`…) salen como 422, no 500.
 
+**Cambiar mis datos (R69).** `PATCH /user/{id}` (también `PUT`, y `POST` con `?_method=PATCH`), solo sobre la
+propia cuenta. Nombre y teléfono cambian al momento; el correo y la contraseña piden la contraseña actual
+(`currentPassword`): sin ella, `422` «The current password field is required.»; mala, `422` «The password is
+incorrect.». Primero el formato (422), luego el límite de intentos `datos` (5 por cuenta e IP cada 15 minutos,
+429) y luego la contraseña actual; que el correo nuevo ya es de otra cuenta solo se dice con la actual buena. La
+contraseña nueva anula los demás tokens (no el de la app que la cambia), el código de recuperación y el cambio
+de correo pendiente, y avisa por correo. El correo nuevo queda pendiente (`zn_email_nuevo`) hasta que se pulsa
+el botón del enlace `GET /verify-email?id=…&token=…` que le llega (48 horas, una vez); al viejo le llega un
+aviso. Al confirmar se anulan todos los tokens de la cuenta y se entra con el correo nuevo.
+
 **Panel de asociación y federación (R40).** Asociación y federación entran a wp-admin
 por `wp-login.php` con su misma cuenta de la app (correo verificado, un solo rol; mismo límite de intentos
 que `POST /login`). Solo ven «Mi zona»: las cuentas que cuelgan de ellas (un nivel, las que pueden leer; la federación, también
@@ -223,6 +235,7 @@ un enlace de carpeta en `wp-content/plugins/zona-nautico`.
 - Límite de intentos (escribe y borra solo sus filas): `wp eval-file tests/limite.php`
 - Login, refresh y logout (crea y borra cuentas, tokens y sus filas de intentos; también por HTTP): `wp eval-file tests/login.php`
 - Registro, verificación y recuperación (crea y borra cuentas; los correos se recogen y no salen): `wp eval-file tests/registro.php`
+- Cambiar mis datos y confirmar el correo nuevo (crea y borra cuentas, tokens y sus intentos; también por HTTP): `wp eval-file tests/mis-datos.php`
 - Dueño con permisos y guardado común (crea y borra cuentas, negocios y comentarios): `wp eval-file tests/escrituras.php`
 - Reseñas y preguntas desde la app (crea y borra cuentas, negocios y comentarios; también por HTTP): `wp eval-file tests/opiniones.php`
 - Novedades y sorteos desde la app (crea y borra cuentas, negocios, novedades y sorteos; también por HTTP): `wp eval-file tests/novedades-sorteos.php`
