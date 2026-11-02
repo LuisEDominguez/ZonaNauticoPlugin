@@ -79,6 +79,10 @@ try {
 	// --- R76: IPv6 por su /64 ---
 	$ok( 'R76: grupo de una IPv6 = su /64', '2001:db8:1:2::/64' === ZN_Limite::grupo( '2001:db8:1:2:aaaa:bbbb:cccc:dddd' ) );
 	$ok( 'R76: una IPv4 se queda igual', '192.0.2.1' === ZN_Limite::grupo( '192.0.2.1' ) );
+	$ok( 'R83: una IPv4 escrita como IPv6 (::ffff:192.0.2.1) cuenta como 192.0.2.1', '192.0.2.1' === ZN_Limite::grupo( '::ffff:192.0.2.1' ) );
+	$ok( 'R83: y dos de ellas no se juntan en «::/64»', ZN_Limite::grupo( '::ffff:1.2.3.4' ) !== ZN_Limite::grupo( '::ffff:9.9.9.9' ) );
+	$_SERVER['REMOTE_ADDR'] = '::ffff:192.0.2.50';
+	$ok( 'R83: ip() también la da en su forma normal', '192.0.2.50' === ZN_Limite::ip() );
 	for ( $i = 0; $i < $max_cuenta_ip; $i++ ) {
 		$intentar( 'login', 'v6-temporal@ejemplo.invalid', '2001:db8:1:2::' . dechex( $i + 1 ) );
 	}
@@ -127,6 +131,9 @@ try {
 	$_SERVER['REMOTE_ADDR']          = '10.1.2.3';
 	$_SERVER['HTTP_X_FORWARDED_FOR'] = '1.2.3.4, 198.51.100.7, 10.9.9.9';
 	$ok( 'detrás del proxy: la primera IP por la derecha que no es un proxy (no la que pone el cliente)', '198.51.100.7' === ZN_Limite::ip() );
+	$_SERVER['REMOTE_ADDR'] = '::ffff:10.1.2.3';
+	$ok( 'R83: un proxy de confianza que llega como ::ffff:10.1.2.3 se reconoce', '198.51.100.7' === ZN_Limite::ip() );
+	$_SERVER['REMOTE_ADDR']          = '10.1.2.3';
 	$_SERVER['HTTP_X_FORWARDED_FOR'] = 'esto no es una ip';
 	$ok( 'X-Forwarded-For roto: se queda la del proxy', '10.1.2.3' === ZN_Limite::ip() );
 	$_SERVER['REMOTE_ADDR']          = '2001:db8::1';

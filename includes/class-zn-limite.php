@@ -126,6 +126,7 @@ class ZN_Limite {
 
 	/** Lo que cuenta como «la misma IP»: la IPv4 entera, o el bloque /64 de una IPv6 (R76). */
 	public static function grupo( string $ip ): string {
+		$ip      = self::ip_valida( $ip ) ?? '';
 		$binaria = '' === $ip ? false : inet_pton( $ip );
 		if ( false === $binaria || 16 !== strlen( $binaria ) ) {
 			return $ip;
@@ -222,9 +223,21 @@ class ZN_Limite {
 		return array_values( array_filter( array_map( 'trim', $lista ) ) );
 	}
 
+	/**
+	 * La IP si es válida. Una IPv4 escrita como IPv6 (::ffff:1.2.3.4, como la dan algunos servidores que escuchan
+	 * en IPv6) se pasa a su forma normal: si no, todas caerían en el mismo /64 (R83) y un proxy 10.0.0.0/8 no se
+	 * reconocería.
+	 */
 	private static function ip_valida( string $ip ): ?string {
 		$ip = trim( $ip );
-		return false === filter_var( $ip, FILTER_VALIDATE_IP ) ? null : $ip;
+		if ( false === filter_var( $ip, FILTER_VALIDATE_IP ) ) {
+			return null;
+		}
+		$binaria = inet_pton( $ip );
+		if ( 16 === strlen( $binaria ) && str_repeat( "\0", 10 ) . "\xff\xff" === substr( $binaria, 0, 12 ) ) {
+			return inet_ntop( substr( $binaria, 12 ) );
+		}
+		return $ip;
 	}
 
 	/** ¿La IP es una de la lista (exacta o dentro de un rango)? Sirve para IPv4 e IPv6. */

@@ -356,7 +356,7 @@ class ZN_Esquema {
 	 * - entradas (negocio, evento, sorteo): post_title y post_content en la entrada; el resto, campos personalizados;
 	 * - comentarios (reseña, pregunta): comment_post_ID y comment_content en el comentario; comment_approved con
 	 *   wp_set_comment_status() (con sus ganchos: puntuación, avisos…); el resto, campos del comentario.
-	 * $id null = crear; $extra = campos propios de la entrada o del comentario que no manda la app (post_status,
+	 * $id null = crear (en borrador salvo que $extra traiga post_status); $extra = campos propios de la entrada o del comentario que no manda la app (post_status,
 	 * user_id y comment_author de quien escribe…). Solo escribe campos que están en el esquema.
 	 * Devuelve el id, o WP_Error. Las cuentas se guardarán con el registro (R53, R69).
 	 *
@@ -389,7 +389,8 @@ class ZN_Esquema {
 		$propios = array_intersect_key( $valores, array_flip( array( 'post_title', 'post_content' ) ) );
 		$propios = array_map( static fn( $v ) => (string) $v, $propios ) + $extra;
 		if ( null === $id ) {
-			$id = wp_insert_post( wp_slash( array_merge( array( 'post_type' => $tipo, 'post_status' => 'publish', 'post_title' => '', 'post_content' => '' ), $propios ) ), true );
+			// Sin post_status en $extra queda en borrador (lo de WordPress): cada ruta dice si publica, y un olvido no publica nada.
+			$id = wp_insert_post( wp_slash( array_merge( array( 'post_type' => $tipo, 'post_title' => '', 'post_content' => '' ), $propios ) ), true );
 		} elseif ( $propios ) {
 			if ( get_post_type( $id ) !== $tipo ) {
 				return new WP_Error( 'zn_no_existe', 'No existe.' );
@@ -435,7 +436,7 @@ class ZN_Esquema {
 				return new WP_Error( 'zn_no_existe', 'No existe.' );
 			}
 			if ( $propios ) {
-				$hecho = wp_update_comment( wp_slash( array( 'comment_ID' => $id ) + $propios ), true );
+				$hecho = self::texto_tal_cual( $propios['comment_content'] ?? null, static fn() => wp_update_comment( wp_slash( array( 'comment_ID' => $id ) + $propios ), true ) );
 				if ( is_wp_error( $hecho ) ) {
 					return $hecho;
 				}
@@ -452,6 +453,31 @@ class ZN_Esquema {
 			wp_set_comment_status( $id, $aprobado ? 'approve' : 'hold' );
 		}
 		return (int) $id;
+	}
+
+	/**
+	 * wp_update_comment() pasa el texto por kses (pre_comment_content), que se come «<3 volveré» o «<12 años»
+	 * (R82, como R20); y si quien escribió no tiene unfiltered_html, vuelve a poner kses él mismo. Lo que escribe
+	 * una persona se guarda tal cual, igual que al crear con wp_insert_comment(), y la app lo pinta como texto:
+	 * justo antes de escribir en la base de datos (wp_update_comment_data, ya sin barras) se repone el texto
+	 * validado. El resto de wp_update_comment() (ganchos edit_comment, cachés) sigue igual.
+	 */
+	private static function texto_tal_cual( ?string $texto, callable $hacer ) {
+		if ( null === $texto ) {
+			return $hacer();
+		}
+		$reponer = static function ( $datos ) use ( $texto ) {
+			if ( is_array( $datos ) ) {
+				$datos['comment_content'] = $texto;
+			}
+			return $datos;
+		};
+		add_filter( 'wp_update_comment_data', $reponer, PHP_INT_MAX );
+		try {
+			return $hacer();
+		} finally {
+			remove_filter( 'wp_update_comment_data', $reponer, PHP_INT_MAX );
+		}
 	}
 
 	/** 422 con el formato del Laravel a partir de los errores de validar(). */

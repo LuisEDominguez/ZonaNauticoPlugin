@@ -43,7 +43,7 @@ try {
 
 	// --- R80: guardar() reparte cada valor a su sitio ---
 	$r  = ZN_Esquema::validar( 'negocio', array( 'name' => 'Negocio temporal-escrituras', 'description' => "Línea 1\nLínea 2", 'userId' => $comercio, 'city' => 'Vigo', 'photos' => array( 'https://ejemplo.invalid/a.jpg' ) ) );
-	$id = ZN_Esquema::guardar( 'negocio', null, $r['valores'] );
+	$id = ZN_Esquema::guardar( 'negocio', null, $r['valores'], array( 'post_status' => 'publish' ) );
 	$entradas[] = $id;
 	$entrada    = get_post( $id );
 	$ok( 'R80: crear negocio: título, contenido, publicado y del tipo negocio', is_int( $id ) && 'Negocio temporal-escrituras' === $entrada->post_title && "Línea 1\nLínea 2" === $entrada->post_content && 'publish' === $entrada->post_status && ZN_Negocios::TIPO === $entrada->post_type );
@@ -51,6 +51,9 @@ try {
 	$ok( 'R80: con comillas y barras no se pierde nada (wp_slash)', is_int( ZN_Esquema::guardar( 'negocio', $id, array( 'address' => 'Rúa "O" \\ 1' ) ) ) && 'Rúa "O" \\ 1' === get_post_meta( $id, 'address', true ) );
 	ZN_Esquema::guardar( 'negocio', $id, array( 'city' => null, 'post_title' => 'Negocio temporal-escrituras 2', 'inventado' => 'x' ) );
 	$ok( 'R80: PATCH: null borra, el título cambia y un campo que no está en el esquema no se escribe', '' === get_post_meta( $id, 'city', true ) && 'Negocio temporal-escrituras 2' === get_the_title( $id ) && '' === get_post_meta( $id, 'inventado', true ) );
+	$borrador   = ZN_Esquema::guardar( 'negocio', null, array( 'post_title' => 'Borrador temporal-escrituras' ) );
+	$entradas[] = $borrador;
+	$ok( 'sin post_status, una entrada nueva queda en borrador (un olvido no publica nada)', is_int( $borrador ) && 'draft' === get_post_status( $borrador ) );
 	$ok( 'R80: no guarda en una entrada de otro tipo', is_wp_error( ZN_Esquema::guardar( 'sorteo', $id, array( 'winners' => 2 ) ) ) );
 
 	$resena = ZN_Esquema::guardar( ZN_Comentarios::RESENA, null, array( 'comment_post_ID' => $id, 'comment_content' => 'me encantó <3', 'score' => '5' ), array( 'user_id' => $ajeno, 'comment_author' => 'Temporal' ) );
@@ -59,6 +62,18 @@ try {
 	$ok( 'R80: aprobar con wp_set_comment_status(): sus ganchos recalculan la puntuación del negocio', '1' === get_comment( $resena )->comment_approved && 5.0 === (float) get_post_meta( $id, 'score', true ) );
 	$pregunta = ZN_Esquema::guardar( ZN_Comentarios::PREGUNTA, null, array( 'comment_post_ID' => $id, 'comment_content' => '¿Abrís?', 'user_id' => $comercio, 'comment_approved' => 1 ), array( 'user_id' => $ajeno ) );
 	$ok( 'R80: pregunta: destinatario en su campo, quien pregunta en el comentario, publicada con wp_set_comment_status()', is_int( $pregunta ) && (string) $comercio === get_comment_meta( $pregunta, 'user_id', true ) && $ajeno === (int) get_comment( $pregunta )->user_id && '1' === get_comment( $pregunta )->comment_approved );
+	// R82: editar el texto no pasa por kses (como en R20). Se edita como una cuenta de la app (sin unfiltered_html).
+	wp_set_current_user( $ajeno );
+	kses_init();
+	$filtros = $GLOBALS['wp_filter']['wp_update_comment_data'] ?? null;
+	$antes   = $filtros ? count( $filtros->callbacks, COUNT_RECURSIVE ) : 0;
+	$editada = ZN_Esquema::guardar( ZN_Comentarios::RESENA, $resena, array( 'comment_content' => 'me encantó <3 volveré; menores <12 gratis y >65' ) );
+	$ok( 'R82: al editar, «<3 volveré» y «<12 … >65» salen enteros', is_int( $editada ) && 'me encantó <3 volveré; menores <12 gratis y >65' === get_comment( $resena )->comment_content );
+	$filtros = $GLOBALS['wp_filter']['wp_update_comment_data'] ?? null;
+	$ok( 'R82: y el arreglo no queda puesto después (solo vale durante esa llamada)', $antes === ( $filtros ? count( $filtros->callbacks, COUNT_RECURSIVE ) : 0 ) );
+	wp_update_comment( array( 'comment_ID' => $resena, 'comment_content' => 'por otra vía <b>x</b> <3' ) );
+	$ok( 'R82: una edición por fuera de ZN_Esquema sigue pasando por kses de WordPress', false !== strpos( get_comment( $resena )->comment_content, '&lt;3' ) );
+	wp_set_current_user( 0 );
 	$ok( 'R80: no guarda una reseña como pregunta', is_wp_error( ZN_Esquema::guardar( ZN_Comentarios::PREGUNTA, $resena, array( 'answer' => 'x' ) ) ) );
 
 	// --- R79: crear ---
@@ -91,7 +106,7 @@ try {
 	$entradas[] = $novedad;
 	$r          = $v( 'evento', array( 'userId' => $asociacion, 'name' => 'Cambio' ), get_post( $novedad ), $asociacion );
 	$ok( 'R79 PATCH: la asociación que edita la novedad de su comercio no se la queda', ! array_key_exists( 'user_id', $r['valores'] ) && 'Cambio' === $r['valores']['post_title'] );
-	$otro_negocio = ZN_Esquema::guardar( 'negocio', null, array( 'post_title' => 'Otro temporal-escrituras', 'user_id' => $ajeno ) );
+	$otro_negocio = ZN_Esquema::guardar( 'negocio', null, array( 'post_title' => 'Otro temporal-escrituras', 'user_id' => $ajeno ), array( 'post_status' => 'publish' ) );
 	$entradas[]   = $otro_negocio;
 	$r            = $v( 'evento', array( 'businessId' => $otro_negocio ), get_post( $novedad ), $admin_app );
 	$ok( 'R70 PATCH: mover la novedad a un negocio de otro dueño → 422', isset( $r['errores']['businessId'] ) );
