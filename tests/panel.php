@@ -224,9 +224,100 @@ try {
 	$ok( 'Detalle R53: nombres de pila, nunca el nombre interno (display_name)', false === strpos( $html, 'znInterno' ) );
 	$ok( 'R40: y nada ajeno', false === strpos( $html, 'ajeno temporal' ) && false === strpos( $html, 'Novedad de otra asociación' ) && false === strpos( $html, 'Sorteo de la federación' ) && false === strpos( $html, 'Negocio en la papelera' ) );
 	$ok( 'R40: los textos van escapados', false === strpos( $html, '<script>alert(1)</script>' ) && false !== strpos( $html, '&lt;script&gt;' ) );
-	$ok( 'R40: sin enlaces para editar ni formularios', ! preg_match( '/post\.php|post-new\.php|user-edit\.php|profile\.php|action=|<form|<input|<button|<textarea|<select/i', $html ) );
+	$ok( 'R40: la lista no enlaza a pantallas de WordPress ni tiene formularios', ! preg_match( '/post\.php|post-new\.php|user-edit\.php|profile\.php|action=|<form|<input|<button|<textarea|<select/i', $html ) );
 	$ok( 'R40: un comercio no ve la página', '' === trim( $pintar( $comercio ) ) );
 	$ok( 'R40: un administrador de WordPress, tampoco (no es su panel)', '' === trim( $pintar( $wp_admin ) ) );
+
+	// --- Parte 2a (Luis, 02-11): editar el contenido de su rama, con los mismos permisos que la app (un nivel) ---
+	$edita  = static function ( int $quien, int $id, array $datos ) {
+		wp_set_current_user( $quien );
+		$r = ZN_Panel::guardar_edicion( get_userdata( $quien ), $id, $datos );
+		wp_set_current_user( 0 );
+		clean_post_cache( $id );
+		return $r;
+	};
+	$borra  = static function ( int $quien, int $id ) {
+		wp_set_current_user( $quien );
+		$r = ZN_Panel::borrar( get_userdata( $quien ), $id );
+		wp_set_current_user( 0 );
+		return $r;
+	};
+	$meta   = static fn( int $id, string $clave ) => (string) get_post_meta( $id, $clave, true );
+	$enlace = static fn( int $id ) => 'editar=' . $id . '"';
+
+	// Enlaces «Editar» solo donde la app le deja guardar.
+	$html = $pintar( $asociacion );
+	$ok( '2a: la asociación tiene «Editar» en el negocio de su comercio, su novedad, la de su comercio y su sorteo', false !== strpos( $html, $enlace( $neg_hijo ) ) && false !== strpos( $html, $enlace( $nov_hijo ) ) && false !== strpos( $html, $enlace( $nov_asoc ) ) && false !== strpos( $html, $enlace( $sor_asoc ) ) );
+	$ok( '2a: no en el sorteo de su comercio (en sorteos la app no hereda)', false === strpos( $html, $enlace( $sor_hijo ) ) );
+	$html_fed = $pintar( $federacion );
+	$ok( '2a: la federación edita su sorteo y la novedad de su asociación, no lo del segundo nivel', false !== strpos( $html_fed, $enlace( $sor_federac ) ) && false !== strpos( $html_fed, $enlace( $nov_asoc ) ) && false === strpos( $html_fed, $enlace( $neg_hijo ) ) && false === strpos( $html_fed, $enlace( $nov_hijo ) ) && false === strpos( $html_fed, $enlace( $sor_asoc ) ) );
+	$ok( '2a: la página de editar está permitida (sin «action»)', ZN_Panel::pagina_permitida( 'admin.php', array( 'page' => ZN_Panel::PAGINA, 'editar' => (string) $neg_hijo ), array( 'zn_hacer' => 'guardar' ) ) );
+
+	// Guardar.
+	$r = $edita( $asociacion, $neg_hijo, array( 'post_title' => 'Negocio editado (temporal)', 'city' => 'Cangas', 'web' => 'ejemplo.invalid/tienda', 'estado' => 'draft', 'user_id' => (string) $asociacion ) );
+	$ok( '2a: la asociación guarda el negocio de su comercio', $r['ok'] && 'Negocio editado (temporal)' === get_post( $neg_hijo )->post_title && 'Cangas' === $meta( $neg_hijo, 'city' ) && 'https://ejemplo.invalid/tienda' === $meta( $neg_hijo, 'web' ) );
+	$ok( '2a: puede pasarlo a borrador', 'draft' === get_post_status( $neg_hijo ) );
+	$ok( '2a: el dueño no cambia aunque se mande', $comercio === (int) $meta( $neg_hijo, 'user_id' ) );
+	$ok( '2a: guarda sin autor de WordPress (post_author sigue en 0)', 0 === (int) get_post( $neg_hijo )->post_author );
+	$r = $edita( $asociacion, $neg_hijo, array( 'post_title' => '', 'email' => 'no-es-un-correo', 'phone' => '600 000 000', 'estado' => 'publish' ) );
+	$ok( '2a: lo que no vale no se guarda y se avisa en español; lo demás, sí', ! $r['ok'] && 'Negocio editado (temporal)' === get_post( $neg_hijo )->post_title && '' === $meta( $neg_hijo, 'email' ) && '600 000 000' === $meta( $neg_hijo, 'phone' ) && 2 === count( $r['avisos'] ) && false !== strpos( implode( ' ', $r['avisos'] ), 'El nombre' ) );
+	$ok( '2a: y vuelve a publicarlo', 'publish' === get_post_status( $neg_hijo ) );
+	$r = $edita( $asociacion, $neg_hijo, array( 'estado' => 'private' ) );
+	$ok( '2a: solo «publicado» o «borrador»', 'publish' === get_post_status( $neg_hijo ) && ! $r['ok'] );
+	$r = $edita( $asociacion, $nov_hijo, array( 'post_title' => 'Novedad editada', 'event_category_id' => '2', 'start_date' => '2026-12-01T10:00', 'end_date' => '2026-12-02T10:00' ) );
+	$ok( '2a: la asociación edita la novedad de su comercio (fechas del calendario)', $r['ok'] && 'Novedad editada' === get_post( $nov_hijo )->post_title && '2026-12-01 10:00:00' === $meta( $nov_hijo, 'start_date' ) && '2' === $meta( $nov_hijo, 'event_category_id' ) );
+	$r = $edita( $asociacion, $sor_asoc, array( 'start_date' => '', 'end_date' => '2026-01-01T10:00', 'winners' => '0' ) );
+	$ok( '2a: sorteo: sin inicio (obligatorio) y 0 ganadores, no se guarda nada de eso', ! $r['ok'] && '' === $meta( $sor_asoc, 'winners' ) && '' === $meta( $sor_asoc, 'start_date' ) );
+	$r = $edita( $asociacion, $sor_asoc, array( 'start_date' => '2026-12-10T10:00', 'end_date' => '2026-12-01T10:00', 'winners' => '2' ) );
+	$ok( '2a: el fin antes del inicio no se guarda; los ganadores, sí', ! $r['ok'] && '2026-12-10 10:00:00' !== $meta( $sor_asoc, 'end_date' ) && '2026-12-01 10:00:00' !== $meta( $sor_asoc, 'end_date' ) && '2' === $meta( $sor_asoc, 'winners' ) );
+	$r = $edita( $federacion, $nov_asoc, array( 'post_title' => 'Novedad de la asociación, por la federación' ) );
+	$ok( '2a: la federación edita la novedad de su asociación (en novedades la app hereda)', $r['ok'] && 'Novedad de la asociación, por la federación' === get_post( $nov_asoc )->post_title );
+
+	// Lo que no puede.
+	$titulos = static fn() => array_map( static fn( $id ) => get_post( $id )->post_title, array( $neg_ajeno, $sor_hijo, $neg_borr, $nov_ajena ) );
+	$antes   = $titulos();
+	$no      = array(
+		'la asociación, un negocio ajeno'                 => array( $asociacion, $neg_ajeno ),
+		'la asociación, el sorteo de su comercio'         => array( $asociacion, $sor_hijo ),
+		'la federación, el negocio del segundo nivel'     => array( $federacion, $neg_borr ),
+		'la federación, la novedad de otra asociación'    => array( $federacion, $nov_ajena ),
+		'un comercio, su propio negocio (no tiene panel)' => array( $comercio, $neg_borr ),
+	);
+	foreach ( $no as $caso => $quien_que ) {
+		$r = $edita( $quien_que[0], $quien_que[1], array( 'post_title' => 'Cambiado sin permiso' ) );
+		$ok( "2a: no guarda: $caso", ! $r['ok'] );
+	}
+	$ok( '2a: …y nada ha cambiado', $antes === $titulos() );
+	$ok( '2a: ni la papelera ni lo que no existe', ! $edita( $asociacion, $neg_papel, array( 'post_title' => 'x' ) )['ok'] && 'Negocio en la papelera' === get_post( $neg_papel )->post_title && ! $edita( $asociacion, 999999999, array( 'post_title' => 'x' ) )['ok'] );
+
+	// Borrar.
+	$ok( '2a: la asociación no borra el sorteo de su comercio', ! $borra( $asociacion, $sor_hijo ) && null !== get_post( $sor_hijo ) );
+	$ok( '2a: la federación no borra el negocio del segundo nivel', ! $borra( $federacion, $neg_borr ) && null !== get_post( $neg_borr ) );
+	$ok( '2a: la asociación borra la novedad de su comercio', $borra( $asociacion, $nov_hijo ) && null === get_post( $nov_hijo ) );
+	$ok( '2a: y su propio sorteo', $borra( $asociacion, $sor_asoc ) && null === get_post( $sor_asoc ) );
+
+	// El formulario.
+	$_GET['editar'] = (string) $neg_hijo;
+	$form           = $pintar( $asociacion );
+	$ok( '2a: el formulario lleva su sello (nonce) y no usa «action»', false !== strpos( $form, 'name="_wpnonce"' ) && false === strpos( $form, 'name="action"' ) && false !== strpos( $form, 'name="zn_hacer"' ) );
+	$ok( '2a: sin campo de dueño ni fotos', false === strpos( $form, '[user_id]' ) && false === strpos( $form, 'photo' ) );
+	update_post_meta( $neg_hijo, 'city', '"><script>alert(1)</script>' );
+	$form = $pintar( $asociacion );
+	$ok( '2a: los valores van escapados', false === strpos( $form, '<script>alert(1)</script>' ) );
+	$_GET['editar'] = (string) $neg_ajeno;
+	$form           = $pintar( $asociacion );
+	$ok( '2a: el formulario de algo ajeno no sale', false === strpos( $form, '<form' ) && false === strpos( $form, 'Negocio ajeno temporal' ) );
+	unset( $_GET['editar'] );
+
+	// Límite de escrituras por cuenta (el de la app, R94): 20 por hora.
+	foreach ( array( $federacion, $asociacion, $comercio ) as $id ) {
+		$claves = array_merge( $claves, array_keys( ZN_Limite::claves( 'escritura', get_userdata( $id )->user_email ) ) );
+	}
+	for ( $i = 0; $i < 20; $i++ ) {
+		$edita( $federacion, $sor_federac, array( 'winners' => (string) ( $i + 1 ) ) );
+	}
+	$r = $edita( $federacion, $sor_federac, array( 'winners' => '99' ) );
+	$ok( '2a: pasado el límite de escrituras de la app, no guarda', ! $r['ok'] && '99' !== $meta( $sor_federac, 'winners' ) );
 } finally {
 	wp_set_current_user( 0 );
 	$_SERVER['REMOTE_ADDR'] = $ip_antes;
