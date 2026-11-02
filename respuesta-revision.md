@@ -13,7 +13,7 @@ el sí de Luis.
 |---|---|
 | Todas a la vez (hilo que desarrolla) | `node tests/todas.mjs` |
 | Revisores (solo lectura, todas las que necesiten) | `node tests/contrato-negocios.mjs`, `contrato-eventos.mjs`, `contrato-sorteos.mjs`, `contrato-resenas.mjs`, `contrato-preguntas.mjs`, `contrato-muestras.mjs`, `contrato-errores.mjs`, `wp eval-file tests/admin-fichas.php`, `tests/esquema.php` y `tests/errores.php` (no guardan nada; `errores.php` registra rutas de prueba solo en memoria), además de peticiones GET y lectura de código |
-| Hilo que desarrolla (pasa el resultado a los revisores) | `wp eval-file tests/seguridad.php`, `tests/comentarios.php`, `tests/roles.php`, `tests/tokens.php` y `tests/limite.php` (crean datos, cuentas o filas temporales y los borran) y `node tests/puertas.mjs` (no guarda nada, pero envía una petición a XML-RPC) |
+| Hilo que desarrolla (pasa el resultado a los revisores) | `wp eval-file tests/seguridad.php`, `tests/comentarios.php`, `tests/roles.php`, `tests/tokens.php`, `tests/limite.php` y `tests/escrituras.php` (crean datos, cuentas o filas temporales y los borran) y `node tests/puertas.mjs` (no guarda nada, pero envía una petición a XML-RPC) |
 
 Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** · **espera decisión** ·
 **se propone descartar**.
@@ -36,6 +36,31 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Global | 30-10-2026 | `b877325` (v0.11.2) | `df0b1b5` (v0.12.0) | Primer bloque: R55, R56, R57, R60, R61, R63, R64 (+R52). Decisiones a-e de Luis |
 | Global-bis | 30-10-2026 | `df0b1b5` (v0.12.0) | `7bf450f` (v0.12.1) | R57-bis, R70, R71. Decisión R69: A |
 | Segundo bloque | 02-11-2026 | `7bf450f` (v0.12.1) | `100e42b` (v0.13.0) | R58 (esquema y validación comunes) y R59 (límite de intentos, tope de tokens). Decisión R40 de Luis |
+| Segundo bloque-bis | 02-11-2026 | `100e42b` (v0.13.0) | `494dfd9` (v0.13.1) | R75, R76, R77 (límite), R79, R80, R81 (esquema) y robustez de las pruebas. R78, al subir |
+
+---
+
+## Segundo bloque-bis (R75-R81)
+
+El revisor dio por buenos R58 (como base) y el tope de tokens; R59 parcial. Luis dio el sí a R75, R76, R77,
+R79, R80 y R81 (02-11). R78 queda para el servidor.
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **R75** Bloquear a otra persona | hecho | Reglas por acción en `ZN_Limite::REGLAS`: **cuenta + IP** (la estricta: login 5 cada 15 min), **cuenta sola** mucho más alta (login 30 por hora, 6 veces la anterior) e **IP sola** (login 50 cada 15 min). El dueño de la cuenta sigue entrando desde su IP aunque otro falle desde la suya. `olvidar()` tras un acierto borra solo cuenta + IP. El docblock y el README dicen que la ruta llama a `intentar()` antes de mirar la contraseña; se comprobará en las pruebas del login. |
+| **R76** IPv6 | hecho | `ZN_Limite::grupo()`: una IPv6 cuenta por su `/64`; la IPv4, entera. |
+| **R77** Huellas | hecho | `hash_hmac( 'sha256', …, wp_salt( 'auth' ) )`. Las filas cuya ventana más larga ya pasó se borran en cada llamada. Si el correo es de una cuenta que existe, se cuenta por `id:<número>` (`get_user_by( 'email' )`); si no, por el correo en minúsculas. |
+| **R78** Proxy de Dinahosting | pendiente (al subir) | En la lista de «al subir al servidor» del README, junto a R39 y R49. |
+| **R79** Dueño | hecho | `userId` marcado con `'dueno' => true` en negocio, novedad y sorteo. `ZN_Esquema::permitir_dueno( $recurso, $resultado, $elemento_o_null, $usuario )`: al crear, `ZN_Roles::puede_crear()` o `sin_permiso` (la ruta da 401); al modificar, el dueño solo cambia si la cuenta es la administración de la app con el permiso general y el valor es otro; si no, se ignora sin error (como el Laravel). En novedades aplica R70 con los valores finales (nuevos o guardados): 422 en `businessId` (o `userId`). La regla de R70 vive ahora en `ZN_Eventos::dueno_valido_para_negocio()`; la de `ZN_Admin_Eventos` la llama. |
+| **R80** Guardar | hecho | `ZN_Esquema::guardar( $recurso, $id_o_null, $valores, $extra )`: entradas con `wp_insert_post` / `wp_update_post` (título y contenido) y campos personalizados; comentarios con `wp_insert_comment` (sin aprobar) / `wp_update_comment` y sus campos, y la aprobación siempre con `wp_set_comment_status()` (de `published` o de `$extra['comment_approved']`). Todo con `wp_slash`. Solo escribe campos del esquema; comprueba el tipo de la entrada o del comentario. El `user_id` de `$extra` (quien escribe) y el de `$valores` (destinatario de la pregunta) no se mezclan. Las fichas de wp-admin guardan con ella. Las cuentas se guardarán con el registro (R53, R69). |
+| **R81** Cuenta y email repetido | hecho | Esquema `cuenta`: `name` 1-255 (en `first_name`, R53), `email` con formato, máximo 100 (la columna de WordPress) y **único** («The email has already been taken.», sin contar la propia cuenta en PATCH), `password` 8-255 sin recortar, `phone` opcional ≤20 y 9-15 cifras con `+` opcional, `latitude`/`longitude` y `code` de 6 cifras. Mensajes `unique`, `min_string`, `digits` y `regex` añadidos. |
+| Pruebas (mejoras del revisor) | hecho | `tests/esquema.php`: sin datos de prueba dice «FALLO … datos-prueba» en vez de error fatal; los avisos se comprueban con `>=`. `tests/limite.php`: borra solo sus propias filas (por sus claves); 429 también a través de la API con `Retry-After`. `tests/escrituras.php` (nueva): R79 y R80 con cuentas temporales. |
+| Resto de mejoras | pendiente | `TEXTOS` y `maxlength` a mano, `limpiar_urls` / `limpiar_fechas` del panel, `wp zona-nautico revisar-datos`, caracteres invisibles, `uninstall.php`. Cambios en la app («Espera unos minutos», mandar `null` para vaciar): los decide Luis. |
+
+### Resultado de las pruebas (código del segundo bloque-bis, 02-11)
+
+`node tests/todas.mjs`: **489 comprobaciones bien en 17 juegos, todo bien** (`esquema` 65, `limite` 29,
+`escrituras` 22 nueva; el resto, igual).
 
 ---
 
