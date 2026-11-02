@@ -46,8 +46,25 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Escrituras-bis | 02-11-2026 | `3e598f5` (v0.16.0) | `5f1352e` (v0.16.1) | R93, R94, R95 = A |
 | Novedades y sorteos | 02-11-2026 | `5f1352e` (v0.16.1) | `077f02a` (v0.17.0) | Escrituras de novedades y sorteos desde la app y R96 |
 | Panel R40, parte 1 | 02-11-2026 | `077f02a` (v0.17.0) | `20959b2` (v0.18.0) | Asociación y federación entran a wp-admin y solo ven lo suyo (sin editar) |
+| Panel R40, parte 1-bis | 02-11-2026 | `20959b2` (v0.18.0) | `b11dd54` (v0.18.1) | R97, R98 = A y nombres de pila en «Mi zona» |
 
 ---
+
+## Panel R40, parte 1-bis (R97, R98 y nombres)
+
+El revisor dio por buena la parte 1 (ronda 22). Luis (02-11, 12:33): R97 sí, **R98 = A**, nombres sí.
+Diff de la ronda: `git diff 3cb5532 b11dd54`. Pruebas escritas antes (5 fallaban). **Un solo revisor, solo el diff.**
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **R97** Página por `$_GET` | hecho | `ZN_Panel::pagina_permitida( $pagina, $get, $post )`: en `admin.php`, `page` solo de la dirección y ninguna `action` ni en la dirección ni en el cuerpo; en `admin-ajax.php`, la `action` como la lee WordPress (cuerpo antes que dirección). `vigilar()` le pasa `$_GET` y `$_POST`. |
+| **R98** Sesión del panel al entrar en la app | hecho (Luis: A) | `POST /login` solo hace `destroy_all()` si la cuenta no puede entrar al panel (`ZN_Panel::puede_entrar`). La cookie del panel sigue sin valer en `/zonanautico/v1`. Prueba: asociación y federación con una sesión de WordPress → login 200 y la sesión sigue; comercio → se cierra (R39). |
+| **Detalle** Nombres | hecho | «Mi zona» usa `ZN_API::nombre_publico()` (nombre y apellidos, R53/R10), nunca `display_name`; las cuentas se ordenan por id. |
+
+### Resultado de las pruebas (parte 1-bis, 02-11)
+
+`node tests/todas.mjs`: **900 comprobaciones bien en 23 juegos** (`panel` 81; la prueba ahora crea las cuentas
+como `/register`, con `display_name` interno y el nombre en `first_name`).
 
 ## Panel de wp-admin para asociación y federación (R40, parte 1: solo ver)
 
@@ -62,7 +79,7 @@ Luis dio el sí (02-11, 11:09) solo a la **parte 1**: entrar y ver lo suyo, sin 
 | **Nada más de wp-admin** | hecho | `admin_init` (prioridad 0): una cuenta de la app que ya no puede entrar (otro rol, sin verificar) se queda sin sesión; si puede, solo su página y el latido de admin-ajax; lo demás (escritorio, perfil, admin-post, otras acciones de admin-ajax) vuelve al panel o da 403. Las páginas de tipos y ajustes ya las corta WordPress por permisos (403). Sin «Escritorio» ni «Perfil» en el menú; la barra de arriba sin perfil, sitio ni «Añadir»; solo «Salir». Sin barra en la parte pública. Al entrar va directo al panel. |
 | **Sin editar** | hecho | `map_meta_cap`: `edit_user` denegado a toda cuenta de la app, también sobre sí misma (perfil y `/wp/v2/users/me`). Sin `edit_posts` ni permisos de los tipos (comprobado en la prueba). |
 | **Cookie y API de la app** | hecho | `ZN_Tokens::usuario_del_token`: en `/zonanautico/v1` la cookie de una cuenta de la app no abre sesión (allí solo el token); la de un administrador de WordPress, como antes. Así la sesión del panel no sirve para escribir por la API (ni con el nonce de wp-admin). |
-| Aviso | apuntado | `POST /login` desde la app cierra las sesiones de WordPress de la cuenta (R39): entrar en la app saca del panel. Se deja así salvo que Luis diga otra cosa. |
+| Aviso | resuelto en 1-bis | `POST /login` cerraba también la sesión del panel (R39). Ahora no (R98 = A). |
 
 ### Resultado de las pruebas (panel, 02-11)
 
