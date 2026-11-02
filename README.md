@@ -131,6 +131,18 @@ vez: dos a la vez con el mismo token no dan dos, R87); con uno caducado, o pasad
 (`ZN_Tokens::MAX_RENOVAR`, R86), hay que entrar de nuevo. `POST /logout` anula el token de la petición. Sin token, los dos dan
 `401 «Unauthenticated.»`. Las respuestas con token llevan `Cache-Control: no-store`.
 
+**Alta, verificación y recuperación (R30, R53, R62).** `includes/class-zn-api-cuenta.php`, con las respuestas
+del Laravel que espera la app. `POST /register` (nombre, email, contraseña y, si quiere, teléfono y ubicación):
+`201 {status: "success"}`, siempre con el rol «user»; el nombre entero en `first_name`; email repetido →
+`422` «The email has already been taken.». Manda un correo con el enlace `GET /verify?id=…&token=…` (token al azar,
+solo su huella guardada, 48 horas, una sola vez), que abre una página «Cuenta verificada» (o, con
+`&format=json`, JSON). `GET /send-email?email=` lo reenvía. `POST /reset-password-code` manda un código de 6
+cifras (15 minutos, 5 intentos) y `POST /reset-password` (email, código y contraseña nueva) la cambia, cierra las
+sesiones de la cuenta y deja el correo verificado; un código que no vale da `400 {status: "error", message:
+"Invalid code"}`. Reenvío y código responden siempre `200 {status: "success"}`, exista o no la cuenta, para no
+delatarla, y nunca piden un Bearer compartido. Todas validan primero el formato (422), luego el límite de
+intentos (429). Los errores de cuentas de WordPress sin estado (`existing_user_email`…) salen como 422, no 500.
+
 **Dueños de novedades y sorteos.** Campo `user_id`, elegido en su ficha («Dueño») entre las cuentas de
 comercio, asociación, federación o administración de la app; sale como `user` con `includesUser`.
 
@@ -165,6 +177,7 @@ un enlace de carpeta en `wp-content/plugins/zona-nautico`.
 - Campos y validación comunes (solo lee): `wp eval-file tests/esquema.php`
 - Límite de intentos (escribe y borra solo sus filas): `wp eval-file tests/limite.php`
 - Login, refresh y logout (crea y borra cuentas, tokens y sus filas de intentos; también por HTTP): `wp eval-file tests/login.php`
+- Registro, verificación y recuperación (crea y borra cuentas; los correos se recogen y no salen): `wp eval-file tests/registro.php`
 - Dueño con permisos y guardado común (crea y borra cuentas, negocios y comentarios): `wp eval-file tests/escrituras.php`
 - Formato de los errores: `node tests/contrato-errores.mjs` y `wp eval-file tests/errores.php` (los dos solo leen)
 - Recalcular todas las puntuaciones (al final de una migración): `wp zona-nautico recalcular-puntuaciones`

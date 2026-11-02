@@ -20,6 +20,9 @@ class ZN_Errores {
 	// (rest_forbidden, rest_forbidden_context…) dependen de si hay sesión: lo decide is_user_logged_in() (R31).
 	const DE_SESION = array( 'rest_not_logged_in', 'rest_cookie_invalid_nonce' );
 
+	// Errores de wp_insert_user y wp_authenticate que se dan como 422 (R30).
+	const DE_CUENTAS = array( 'existing_user_login', 'empty_user_login', 'user_login_too_long', 'invalid_username', 'user_nicename_too_long', 'invalid_email', 'empty_email', 'empty_username', 'empty_password', 'incorrect_password' );
+
 	public static function iniciar(): void {
 		add_filter( 'rest_post_dispatch', array( __CLASS__, 'traducir' ), 10, 3 );
 	}
@@ -61,6 +64,14 @@ class ZN_Errores {
 		$detalle = is_array( $datos['data'] ?? null ) ? $datos['data'] : array();
 		$estado  = $respuesta->get_status();
 
+		// Red de seguridad (R30): errores de cuentas de WordPress (wp_insert_user, wp_authenticate) sin estado propio
+		// saldrían como 500; son datos que no valen. El email repetido, con el texto que la app reconoce.
+		if ( 'existing_user_email' === $codigo ) {
+			return self::con_cabeceras( self::no_valido( array( 'email' => ZN_Esquema::mensaje( 'unique', 'email' ) ) ), $respuesta );
+		}
+		if ( in_array( $codigo, self::DE_CUENTAS, true ) ) {
+			return self::con_cabeceras( self::no_valido( array( 'email' => 'The given data was invalid.' ) ), $respuesta );
+		}
 		if ( 'rest_invalid_param' === $codigo || 'rest_missing_callback_param' === $codigo ) {
 			return self::con_cabeceras( self::no_valido( self::errores_de_parametros( $codigo, $detalle ) ), $respuesta );
 		}
