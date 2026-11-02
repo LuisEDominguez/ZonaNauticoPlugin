@@ -75,10 +75,14 @@ class ZN_Limite {
 	public static function intentar( string $accion, ?string $email = null ): ?int {
 		self::borrar_caducadas();
 		$espera = null;
-		foreach ( self::claves( $accion, $email ) as $clave => $regla ) {
+		$claves = self::claves_por_tipo( $accion, $email );
+		// La regla por cuenta sola va la última (R84): un intento ya frenado por cuenta + IP o por IP no suma en
+		// ella; si no, desde una sola IP se podría llegar a su tope y bloquear a la dueña desde cualquier sitio.
+		uksort( $claves, static fn( $a, $b ) => ( 'cuenta' === $a ) <=> ( 'cuenta' === $b ) );
+		foreach ( $claves as $tipo => list( $clave, $regla ) ) {
 			list( $maximo, $ventana ) = $regla;
-			$fila = self::contar( $clave, $ventana );
-			if ( $fila['intentos'] > $maximo ) {
+			$fila = 'cuenta' === $tipo && null !== $espera ? self::leer( $clave ) : self::contar( $clave, $ventana );
+			if ( $fila['intentos'] > $maximo && $fila['desde'] + $ventana > time() ) {
 				$espera = max( (int) $espera, max( 1, $fila['desde'] + $ventana - time() ) );
 			}
 		}
@@ -139,6 +143,11 @@ class ZN_Limite {
 	 * pruebas (para borrar justo sus filas).
 	 */
 	public static function claves( string $accion, ?string $email ): array {
+		return array_column( self::claves_por_tipo( $accion, $email ), 1, 0 );
+	}
+
+	/** Tipo de regla => [huella, [intentos, segundos]], en el orden de REGLAS. */
+	private static function claves_por_tipo( string $accion, ?string $email ): array {
 		$ip     = self::grupo( self::ip() );
 		$quien  = null === $email || '' === trim( $email ) ? '' : self::quien( $email );
 		$claves = array();
@@ -154,7 +163,7 @@ class ZN_Limite {
 					$valor = $ip;
 			}
 			if ( '' !== $valor ) {
-				$claves[ self::huella( $accion, $tipo, $valor ) ] = $regla;
+				$claves[ $tipo ] = array( self::huella( $accion, $tipo, $valor ), $regla );
 			}
 		}
 		return $claves;
@@ -201,6 +210,16 @@ class ZN_Limite {
 		return array(
 			'intentos' => $fila ? (int) $fila->intentos : 1,
 			'desde'    => $fila ? (int) strtotime( $fila->desde . ' UTC' ) : $ahora,
+		);
+	}
+
+	/** Intentos y comienzo de la ventana de una clave, sin sumar (una fila que no existe: cero). */
+	private static function leer( string $clave ): array {
+		global $wpdb;
+		$fila = $wpdb->get_row( $wpdb->prepare( 'SELECT intentos, desde FROM ' . self::tabla() . ' WHERE clave = %s', $clave ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		return array(
+			'intentos' => $fila ? (int) $fila->intentos : 0,
+			'desde'    => $fila ? (int) strtotime( $fila->desde . ' UTC' ) : time(),
 		);
 	}
 

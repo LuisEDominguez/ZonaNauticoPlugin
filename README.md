@@ -105,7 +105,7 @@ obligatorio, 422); `""` → 422.
 
 **Límite de intentos (R59).** `ZN_Limite::intentar( 'login', $email )`, llamada **antes** de mirar la
 contraseña, cuenta por cuenta + IP (el límite estricto: así nadie bloquea a otra persona), por cuenta sola (más
-alto) y por IP (las IPv6 por su `/64`). La cuenta va por su número si existe. Guarda huellas HMAC con la clave
+alto; un intento ya frenado por cuenta + IP o por IP no suma aquí, R84) y por IP (las IPv6 por su `/64`). La cuenta va por su número si existe. Guarda huellas HMAC con la clave
 secreta del sitio en la tabla `{prefijo}zn_limites` y borra las caducadas en cada llamada. Devuelve los
 segundos de espera si se pasa;
 `ZN_Limite::demasiados( $espera )` da el 429 `{"message":"Too Many Attempts."}` con `Retry-After`. Los
@@ -121,12 +121,14 @@ activos por cuenta (`ZN_Tokens::MAX_ACTIVOS`): uno nuevo anula los más antiguos
 `{email, password}` en el cuerpo JSON (lo que llegue en la dirección se ignora): responde como el Laravel,
 `{status: "success", token, id, role}`; con credenciales malas, `401 {status: "error", message: "Unauthorized"}`
 (igual si la cuenta no existe o es de wp-admin, y con una comprobación de contraseña en todos los casos para
-que el tiempo no lo delate); sin verificar el correo (`zn_verificado`), `401 {status: "email-not-verified"}`,
+que el tiempo no lo delate; sin cuenta, contra una huella de relleno guardada en la opción `zn_huella_relleno`
+con el coste de este servidor, R85); sin verificar el correo (`zn_verificado`), `401 {status: "email-not-verified"}`,
 solo con la contraseña buena. Primero valida el formato (422, sin contar el intento), luego el límite de
 intentos (429) y luego la contraseña con `wp_check_password()` (nunca `wp_authenticate()`, que rechaza las
 cuentas de la app). No abre sesión de WordPress ni pone cookies, y cierra las que tuviera la cuenta.
-`POST /refresh` (con un token que vale) da uno nuevo con la misma respuesta y anula el anterior; con uno
-caducado hay que entrar de nuevo. `POST /logout` anula el token de la petición. Sin token, los dos dan
+`POST /refresh` (con un token que vale) da uno nuevo con la misma respuesta y anula el anterior (solo una
+vez: dos a la vez con el mismo token no dan dos, R87); con uno caducado, o pasados 14 días desde el login
+(`ZN_Tokens::MAX_RENOVAR`, R86), hay que entrar de nuevo. `POST /logout` anula el token de la petición. Sin token, los dos dan
 `401 «Unauthenticated.»`. Las respuestas con token llevan `Cache-Control: no-store`.
 
 **Dueños de novedades y sorteos.** Campo `user_id`, elegido en su ficha («Dueño») entre las cuentas de

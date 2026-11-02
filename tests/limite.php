@@ -60,6 +60,14 @@ try {
 	$ok( "R75: con IPs distintas, una cuenta se para pasado el tope por cuenta ($max_cuenta)", $parado );
 	$ok( 'R75: …pero ese tope es mucho más alto que el de cuenta + IP', $max_cuenta >= 5 * $max_cuenta_ip );
 
+	// R84: desde una sola IP, aunque se insista mucho, no se llega al tope por cuenta (solo cuentan los intentos no frenados).
+	$acosada = 'acosada-temporal@ejemplo.invalid';
+	for ( $i = 0; $i < $max_cuenta + 5; $i++ ) {
+		$intentar( 'login', $acosada, '192.0.2.13' );
+	}
+	$ok( "R84: con {$max_cuenta} intentos o más desde una sola IP, esa IP sigue parada…", null !== $intentar( 'login', $acosada, '192.0.2.13' ) );
+	$ok( 'R84: …pero la dueña entra desde otra IP (no se bloquea la cuenta)', null === $intentar( 'login', $acosada, '198.51.100.21' ) );
+
 	// Una IP probando muchas cuentas.
 	list( $max_ip ) = ZN_Limite::REGLAS['login']['ip'];
 	$parado         = false;

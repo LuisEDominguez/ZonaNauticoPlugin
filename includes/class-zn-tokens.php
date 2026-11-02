@@ -7,6 +7,7 @@
  * - En la base de datos solo se guarda su huella SHA-256 (tabla `{prefijo}zn_tokens`), nunca el token.
  * - Caduca a los 60 minutos, como en la app (src/auth/sesion.ts) y en el Laravel.
  * - Como mucho MAX_ACTIVOS tokens activos por cuenta (R59): uno nuevo anula los más antiguos.
+ * - Cada token guarda la fecha del login del que viene (`origen`): /refresh no renueva pasados MAX_RENOVAR (R86).
  * - Se anula al cerrar sesión, y todos los de una cuenta al cambiar su rol o al borrarla; al cambiar su
  *   contraseña o su correo, todos menos el que está haciendo el cambio (R52, R56).
  * - Solo vale en /zonanautico/v1 (R39, R46): se ignora en admin-ajax, wp-cron, XML-RPC, wp-admin, wp-login
@@ -24,7 +25,9 @@ class ZN_Tokens {
 	const DURACION = HOUR_IN_SECONDS;
 	// Sesiones abiertas a la vez por cuenta (R59): al pasar, se anulan las más antiguas.
 	const MAX_ACTIVOS = 10;
-	const VERSION_TABLA = '2';
+	// Desde el login original, /refresh renueva como mucho durante este tiempo (R86; el refresh_ttl por defecto de jwt-auth).
+	const MAX_RENOVAR   = 14 * DAY_IN_SECONDS;
+	const VERSION_TABLA = '3';
 
 	/** ¿La cuenta de esta petición salió de un token? (para la segunda barrera de R46). */
 	private static bool $desde_token = false;
@@ -76,6 +79,7 @@ class ZN_Tokens {
 				user_id bigint(20) unsigned NOT NULL,
 				creado datetime NOT NULL,
 				caduca datetime NOT NULL,
+				origen datetime DEFAULT NULL,
 				anulado datetime DEFAULT NULL,
 				PRIMARY KEY  (id),
 				UNIQUE KEY hash (hash),
@@ -86,8 +90,11 @@ class ZN_Tokens {
 		update_option( 'zn_tokens_tabla', self::VERSION_TABLA );
 	}
 
-	/** Nuevo token para una cuenta de la app; null si no es cuenta de la app. Devuelve el token en claro (solo esta vez). */
-	public static function emitir( int $usuario ): ?string {
+	/**
+	 * Nuevo token para una cuenta de la app; null si no es cuenta de la app. Devuelve el token en claro (solo esta
+	 * vez). $origen: momento del login del que viene (al renovar); si no se da, es un login nuevo.
+	 */
+	public static function emitir( int $usuario, ?int $origen = null ): ?string {
 		$cuenta = get_userdata( $usuario );
 		if ( ! $cuenta || ! ZN_Roles::rol_app( $cuenta ) ) {
 			return null;
@@ -102,8 +109,9 @@ class ZN_Tokens {
 				'user_id' => $usuario,
 				'creado'  => gmdate( 'Y-m-d H:i:s', $ahora ),
 				'caduca'  => gmdate( 'Y-m-d H:i:s', $ahora + self::DURACION ),
+				'origen'  => gmdate( 'Y-m-d H:i:s', $origen ?? $ahora ),
 			),
-			array( '%s', '%d', '%s', '%s' )
+			array( '%s', '%d', '%s', '%s', '%s' )
 		);
 		// Tope de tokens activos por cuenta (R59): se quedan los MAX_ACTIVOS más nuevos.
 		$wpdb->query(
@@ -137,9 +145,17 @@ class ZN_Tokens {
 		return $cuenta && ZN_Roles::rol_app( $cuenta ) ? (int) $cuenta->ID : 0;
 	}
 
-	public static function anular( string $token ): void {
+	/** Anula el token; true si lo ha anulado esta llamada (false si no existía o ya estaba anulado, R87). */
+	public static function anular( string $token ): bool {
 		global $wpdb;
-		$wpdb->query( $wpdb->prepare( 'UPDATE ' . self::tabla() . ' SET anulado = %s WHERE hash = %s AND anulado IS NULL', gmdate( 'Y-m-d H:i:s' ), self::huella( $token ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		return 1 === (int) $wpdb->query( $wpdb->prepare( 'UPDATE ' . self::tabla() . ' SET anulado = %s WHERE hash = %s AND anulado IS NULL', gmdate( 'Y-m-d H:i:s' ), self::huella( $token ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+	}
+
+	/** Momento del login del que viene el token (los de antes de R86, su creación); null si no existe. */
+	public static function origen( string $token ): ?int {
+		global $wpdb;
+		$fila = $wpdb->get_row( $wpdb->prepare( 'SELECT creado, origen FROM ' . self::tabla() . ' WHERE hash = %s', self::huella( $token ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		return $fila ? (int) strtotime( ( $fila->origen ?? $fila->creado ) . ' UTC' ) : null;
 	}
 
 	/** Anula todos los tokens de la cuenta, salvo (si se da) el token $menos. */

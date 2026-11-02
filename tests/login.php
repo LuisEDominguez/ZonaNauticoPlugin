@@ -167,6 +167,15 @@ try {
 	list( $estado ) = $entrar( array( 'email' => $email_olvido, 'password' => 'mala' ), '192.0.2.63' );
 	$ok( 'R59: un login bueno pone a cero los fallos de esa cuenta desde esa IP', 401 === $estado );
 
+	// --- R85: la huella de relleno, con el coste de este servidor ---
+	$relleno = get_option( 'zn_huella_relleno' );
+	$ok( 'R85: la huella de relleno se crea con wp_hash_password() y se guarda', is_string( $relleno ) && 0 === strpos( $relleno, '$wp' ) );
+	$ok( 'R85: con el coste actual de este servidor (no hace falta rehacerla)', is_string( $relleno ) && ! wp_password_needs_rehash( $relleno ) );
+	$ok( 'R85: ya no hay huella fija en el código', ! defined( 'ZN_API_Sesion::HUELLA_DE_RELLENO' ) );
+	update_option( 'zn_huella_relleno', '$wp$2y$04$' . str_repeat( 'a', 53 ) );
+	$entrar( array( 'email' => 'nadie-temporal-login@ejemplo.invalid', 'password' => 'x' ) );
+	$ok( 'R85: si cambia el coste (p. ej. con PHP 8.4), se rehace sola', ! wp_password_needs_rehash( (string) get_option( 'zn_huella_relleno' ) ) );
+
 	// --- R39: cerrar las sesiones de WordPress que tuviera la cuenta ---
 	$sesiones = WP_Session_Tokens::get_instance( $usuario );
 	$sesiones->create( time() + HOUR_IN_SECONDS );
@@ -203,6 +212,50 @@ try {
 	$wpdb->update( ZN_Tokens::tabla(), array( 'caduca' => gmdate( 'Y-m-d H:i:s', time() - 60 ) ), array( 'hash' => hash( 'sha256', $caducado ) ) );
 	list( $estado ) = $http( 'POST', '/refresh', null, $caducado );
 	$ok( 'refresh con un token caducado: 401 (hay que entrar de nuevo)', 401 === $estado );
+
+	// --- R86: /refresh tiene un máximo desde el login original ---
+	$ok( 'R86: el máximo para renovar es de 14 días', 14 * DAY_IN_SECONDS === ZN_Tokens::MAX_RENOVAR );
+	$viejo = ZN_Tokens::emitir( $usuario );
+	$wpdb->update( ZN_Tokens::tabla(), array( 'origen' => gmdate( 'Y-m-d H:i:s', time() - 13 * DAY_IN_SECONDS ) ), array( 'hash' => hash( 'sha256', $viejo ) ) );
+	list( $estado, $cuerpo ) = $http( 'POST', '/refresh', null, $viejo );
+	$renovado = (string) ( $cuerpo['token'] ?? '' );
+	$ok( 'R86: con un login de hace 13 días, se renueva', 200 === $estado && $usuario === ZN_Tokens::validar( $renovado ) );
+	$origen = $wpdb->get_var( $wpdb->prepare( 'SELECT origen FROM ' . ZN_Tokens::tabla() . ' WHERE hash = %s', hash( 'sha256', $renovado ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+	$ok( 'R86: el token renovado conserva la fecha del login original', $origen && abs( strtotime( $origen . ' UTC' ) - ( time() - 13 * DAY_IN_SECONDS ) ) < 120 );
+	$wpdb->update( ZN_Tokens::tabla(), array( 'origen' => gmdate( 'Y-m-d H:i:s', time() - 15 * DAY_IN_SECONDS ) ), array( 'hash' => hash( 'sha256', $renovado ) ) );
+	list( $estado, $cuerpo ) = $http( 'POST', '/refresh', null, $renovado );
+	$ok( 'R86: con un login de hace 15 días, 401 «Unauthenticated.» (hay que entrar de nuevo)', 401 === $estado && $no_autenticado === $cuerpo );
+	$ok( 'R86: …y ese token sigue valiendo hasta que caduque (no se anula)', $usuario === ZN_Tokens::validar( $renovado ) );
+	$fila = $wpdb->get_row( $wpdb->prepare( 'SELECT creado, origen FROM ' . ZN_Tokens::tabla() . ' WHERE hash = %s', hash( 'sha256', $token ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+	$ok( 'R86: un login nuevo empieza su cuenta (origen = creado)', $fila && $fila->origen === $fila->creado );
+
+	// --- R87: el token viejo solo se puede cambiar una vez ---
+	$dos = ZN_Tokens::emitir( $usuario );
+	$ok( 'R87: anular() dice si ha anulado algo: la primera vez sí…', true === ZN_Tokens::anular( $dos ) );
+	$ok( 'R87: …la segunda no (otra petición ya lo cambió)', false === ZN_Tokens::anular( $dos ) );
+	$tres = ZN_Tokens::emitir( $usuario );
+	// Otra petición se adelanta: justo antes de que /refresh anule el token, alguien lo anula (por la base de datos).
+	$hecho       = false;
+	$adelantarse = static function ( $consulta ) use ( $wpdb, $tres, &$hecho ) {
+		if ( ! $hecho && 0 === strpos( $consulta, 'UPDATE ' . ZN_Tokens::tabla() . ' SET anulado' ) && false !== strpos( $consulta, hash( 'sha256', $tres ) ) ) {
+			$hecho = true;
+			$wpdb->update( ZN_Tokens::tabla(), array( 'anulado' => gmdate( 'Y-m-d H:i:s' ) ), array( 'hash' => hash( 'sha256', $tres ) ) );
+		}
+		return $consulta;
+	};
+	add_filter( 'query', $adelantarse );
+	$antes = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . ZN_Tokens::tabla() . ' WHERE user_id = %d', $usuario ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+	$_SERVER['REQUEST_URI'] = '/wp-json/' . ZN_NAMESPACE . '/refresh';
+	$_SERVER['SCRIPT_NAME'] = '/index.php';
+	$_SERVER['HTTP_AUTHORIZATION'] = "Bearer $tres";
+	wp_set_current_user( $usuario );
+	$respuesta = ZN_API_Sesion::renovar();
+	wp_set_current_user( 0 );
+	remove_filter( 'query', $adelantarse );
+	$_SERVER = $servidor;
+	$despues = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . ZN_Tokens::tabla() . ' WHERE user_id = %d', $usuario ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+	$ok( 'R87: si otra petición anula el token mientras tanto, 401 y ningún token nuevo', 401 === $respuesta->get_status() && ! isset( $respuesta->get_data()['token'] ) && $antes === $despues );
+	$ok( 'R87: (la prueba llegó al momento de anular: la sesión venía del token)', $hecho );
 
 	// --- POST /logout ---
 	$otro_movil = ZN_Tokens::emitir( $usuario );

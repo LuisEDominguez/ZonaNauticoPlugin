@@ -10,12 +10,14 @@
  * - Orden: primero se valida el formato (422, sin contar el intento); después ZN_Limite::intentar() (429 sin
  *   mirar nada más, R59/R75); después la contraseña. Que la cuenta no exista, no sea de la app (R38) o la
  *   contraseña sea mala da la misma respuesta, y siempre se comprueba una contraseña, para que el tiempo
- *   tampoco lo delate (con una huella de relleno si no hay cuenta). «Sin verificar» solo se dice con la
+ *   tampoco lo delate (con una huella de relleno si no hay cuenta, hecha con el coste de este servidor, R85). «Sin verificar» solo se dice con la
  *   contraseña buena.
  * - Sin wp_authenticate() ni wp_signon(): las cuentas de la app no pueden entrar por wp-login.php (R22, R38).
  *   Tampoco se abre sesión de WordPress ni se ponen cookies; al entrar se cierran las que tuviera la cuenta (R39).
  * - POST /refresh: con un token que vale, uno nuevo (misma respuesta que el login) y el anterior anulado. Con
- *   un token caducado hay que entrar de nuevo. POST /logout: anula el token de la petición (los de otros
+ *   un token caducado hay que entrar de nuevo, y también pasados ZN_Tokens::MAX_RENOVAR desde el login (R86).
+ *   Primero se anula el viejo y solo si lo ha anulado esta petición se da el nuevo: dos /refresh a la vez con el
+ *   mismo token no dan dos tokens (R87). POST /logout: anula el token de la petición (los de otros
  *   móviles de la misma cuenta siguen). Los dos, solo con el token: sin él, 401 «Unauthenticated.».
  * - Respuestas con token: Cache-Control no-store (R49).
  */
@@ -23,9 +25,6 @@
 defined( 'ABSPATH' ) || exit;
 
 class ZN_API_Sesion {
-
-	// Huella de una contraseña al azar que nadie conoce: se compara con ella cuando no hay cuenta, para tardar lo mismo.
-	const HUELLA_DE_RELLENO = '$wp$2y$10$B2wJ6YFi6IbosLiCG0.yP.vpPbakYN.1PcAGODTKqo/No0ByWWbfi';
 
 	public static function registrar_rutas(): void {
 		register_rest_route(
@@ -79,7 +78,7 @@ class ZN_API_Sesion {
 		$cuenta = get_user_by( 'email', $email );
 		$de_app = $cuenta && ZN_Roles::rol_app( $cuenta );
 		// Una sola comprobación en todos los casos (R38).
-		$vale = wp_check_password( $clave, $de_app ? $cuenta->user_pass : self::HUELLA_DE_RELLENO, $de_app ? $cuenta->ID : 0 );
+		$vale = wp_check_password( $clave, $de_app ? $cuenta->user_pass : self::huella_de_relleno(), $de_app ? $cuenta->ID : 0 );
 		if ( ! $de_app || ! $vale ) {
 			return self::sin_cache( new WP_REST_Response( array( 'status' => 'error', 'message' => 'Unauthorized' ), 401 ) );
 		}
@@ -97,12 +96,11 @@ class ZN_API_Sesion {
 		if ( null === $token ) {
 			return ZN_Errores::no_autenticado();
 		}
-		$cuenta    = wp_get_current_user();
-		$respuesta = self::con_token( $cuenta );
-		if ( 200 === $respuesta->get_status() ) {
-			ZN_Tokens::anular( $token );
+		$origen = ZN_Tokens::origen( $token );
+		if ( null === $origen || $origen + ZN_Tokens::MAX_RENOVAR < time() || ! ZN_Tokens::anular( $token ) ) {
+			return ZN_Errores::no_autenticado();
 		}
-		return $respuesta;
+		return self::con_token( wp_get_current_user(), $origen );
 	}
 
 	public static function salir(): WP_REST_Response {
@@ -121,8 +119,8 @@ class ZN_API_Sesion {
 	}
 
 	/** 200 {status, token, id, role} con un token nuevo para la cuenta. */
-	private static function con_token( WP_User $cuenta ): WP_REST_Response {
-		$token = ZN_Tokens::emitir( $cuenta->ID );
+	private static function con_token( WP_User $cuenta, ?int $origen = null ): WP_REST_Response {
+		$token = ZN_Tokens::emitir( $cuenta->ID, $origen );
 		if ( null === $token ) {
 			return ZN_Errores::no_autenticado();
 		}
@@ -136,6 +134,19 @@ class ZN_API_Sesion {
 				)
 			)
 		);
+	}
+
+	/**
+	 * Huella de una contraseña al azar que nadie conoce, para comparar cuando no hay cuenta y tardar lo mismo. Se
+	 * hace con wp_hash_password() la primera vez y se rehace si cambia el coste del servidor (p. ej. PHP 8.4, R85).
+	 */
+	private static function huella_de_relleno(): string {
+		$huella = (string) get_option( 'zn_huella_relleno', '' );
+		if ( '' === $huella || wp_password_needs_rehash( $huella ) ) {
+			$huella = wp_hash_password( wp_generate_password( 32, true, true ) );
+			update_option( 'zn_huella_relleno', $huella, false );
+		}
+		return $huella;
 	}
 
 	private static function sin_cache( WP_REST_Response $respuesta ): WP_REST_Response {
