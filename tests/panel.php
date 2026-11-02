@@ -198,10 +198,20 @@ try {
 	$sor = $ids( ZN_Panel::entradas( $yo, ZN_Sorteos::TIPO ) );
 	$ok( 'R40: asociación: sorteos suyos y de su comercio, no ajenos ni de su federación', array( $sor_asoc, $sor_hijo ) == array_values( array_intersect( array( $sor_asoc, $sor_hijo ), $sor ) ) && 2 === count( $sor ) ); // phpcs:ignore Universal.Operators.StrictComparisons
 	$fed = get_userdata( $federacion );
-	$ok( 'R40: federación: su cuenta es la asociación (no el comercio de la asociación)', array( $asociacion ) === $ids( ZN_Panel::cuentas( $fed ) ) );
+	// Luis (02-11): la federación VE dos niveles (sus asociaciones y los comercios de estas), solo para leer.
+	$ok( 'R40: federación: ve su asociación y el comercio de esta, no el usuario de la asociación', array( $asociacion, $comercio ) === $ids( ZN_Panel::cuentas( $fed ) ) );
 	$sor = $ids( ZN_Panel::entradas( $fed, ZN_Sorteos::TIPO ) );
-	$ok( 'R40: federación: sorteos suyos y de su asociación, no los del comercio', in_array( $sor_federac, $sor, true ) && in_array( $sor_asoc, $sor, true ) && ! in_array( $sor_hijo, $sor, true ) && 2 === count( $sor ) );
-	$ok( 'R40: federación: ningún negocio (no tiene)', array() === ZN_Panel::entradas( $fed, ZN_Negocios::TIPO ) );
+	$ok( 'R40: federación: sorteos suyos, de su asociación y del comercio de esta, no ajenos', array( $sor_asoc, $sor_hijo, $sor_federac ) == array_values( array_intersect( array( $sor_asoc, $sor_hijo, $sor_federac ), $sor ) ) && 3 === count( $sor ) ); // phpcs:ignore Universal.Operators.StrictComparisons
+	$neg = $ids( ZN_Panel::entradas( $fed, ZN_Negocios::TIPO ) );
+	$ok( 'R40: federación: negocios del comercio de su asociación, sin papelera ni ajenos', 2 === count( $neg ) && ! array_diff( array( $neg_hijo, $neg_borr ), $neg ) );
+	$otra_fed  = $cuenta( 'zn_federacion' );
+	$asoc_otra = $cuenta( 'zn_asociacion', $otra_fed );
+	$ok( 'R40: otra federación no ve nada de esta rama', array( $asoc_otra ) === $ids( ZN_Panel::cuentas( get_userdata( $otra_fed ) ) ) && ! array_intersect( array( $sor_hijo, $sor_asoc ), $ids( ZN_Panel::entradas( get_userdata( $otra_fed ), ZN_Sorteos::TIPO ) ) ) );
+	$nieto = $cuenta( 'zn_comercio', $comercio );
+	$ok( 'R40: federación: tres niveles abajo, no', ! in_array( $nieto, $ids( ZN_Panel::cuentas( $fed ) ), true ) );
+	$ok( 'R40: asociación: sigue viendo un solo nivel', ! in_array( $nieto, $ids( ZN_Panel::cuentas( $yo ) ), true ) );
+	$html_fed = $pintar( $federacion );
+	$ok( 'R40: federación: la página dice de quién depende cada comercio', false !== strpos( $html_fed, 'Comercio hijo temporal' ) && false !== strpos( $html_fed, 'Asociación temporal' ) && false === strpos( $html_fed, 'Usuario hijo temporal' ) );
 	$ok( 'R40: un comercio no tiene panel (nada)', array() === ZN_Panel::cuentas( get_userdata( $comercio ) ) && array() === ZN_Panel::entradas( get_userdata( $comercio ), ZN_Sorteos::TIPO ) );
 	$ok( 'R40: otra asociación no ve nada de esta rama', ! array_intersect( array( $neg_hijo, $neg_borr ), $ids( ZN_Panel::entradas( get_userdata( $otra_asoc ), ZN_Negocios::TIPO ) ) ) && array() === ZN_Panel::cuentas( get_userdata( $otra_asoc ) ) );
 

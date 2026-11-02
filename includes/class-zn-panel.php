@@ -8,7 +8,8 @@
  * - Solo ven una página, «Mi zona»: el resto de wp-admin (escritorio, perfil, admin-post y admin-ajax salvo el
  *   latido) los devuelve a ella. Si la cuenta deja de poder entrar (otro rol, sin verificar), se cierra su sesión.
  * - «Lo suyo» = él y las cuentas que cuelgan directamente de él y puede leer (user:read_<rol>, un nivel, como
- *   los permisos de la app): esas cuentas, y los negocios, novedades y sorteos de los que alguno es dueño.
+ *   los permisos de la app) y, para la federación, también los comercios de sus asociaciones (solo ver):
+ *   esas cuentas, y los negocios, novedades y sorteos de los que alguno es dueño.
  * - Nada se edita: ni enlaces ni formularios; tampoco su propio perfil de WordPress (edit_user denegado a todas
  *   las cuentas de la app). Los cambios, desde la app. La cookie del panel no vale en /zonanautico/v1 (ZN_Tokens).
  * - Entrar en la app no cierra su sesión del panel (R98, decisión de Luis); a las demás cuentas, sí (R39).
@@ -60,21 +61,35 @@ class ZN_Panel {
 		return false;
 	}
 
-	/** Cuentas que cuelgan directamente de él y puede leer (user:read_<rol>). */
+	/**
+	 * Cuentas que cuelgan directamente de él y puede leer (user:read_<rol>). La federación ve además los
+	 * comercios de sus asociaciones (decisión de Luis, 02-11: ver dos niveles; editar, en la parte 2, uno solo).
+	 */
 	public static function cuentas( WP_User $yo ): array {
 		if ( ! self::puede_entrar( $yo ) ) {
 			return array();
 		}
-		$hijas = get_users(
+		$hijas = array_values( array_filter( self::hijas( array( $yo->ID ), array_keys( ZN_Roles::ROLES_APP ) ), static fn( WP_User $hija ) => ZN_Roles::puede( 'user:read', $hija, $yo->ID ) ) );
+		if ( 'federation' !== ZN_Roles::rol_app( $yo ) || ! $hijas ) {
+			return $hijas;
+		}
+		$asociaciones = array_filter( $hijas, static fn( WP_User $hija ) => 'association' === ZN_Roles::rol_app( $hija ) );
+		$nietas       = $asociaciones ? self::hijas( array_map( static fn( $a ) => (int) $a->ID, $asociaciones ), array( 'zn_comercio' ) ) : array();
+		return array_slice( array_merge( $hijas, array_values( array_filter( $nietas, static fn( WP_User $c ) => 'commerce' === ZN_Roles::rol_app( $c ) ) ) ), 0, self::MAXIMO );
+	}
+
+	/** Cuentas con alguno de esos roles que cuelgan de alguna de esas cuentas. */
+	private static function hijas( array $padres, array $roles ): array {
+		return get_users(
 			array(
-				'role__in'   => array_keys( ZN_Roles::ROLES_APP ),
-				'meta_key'   => 'zn_parent_id', // phpcs:ignore WordPress.DB.SlowDBQuery
-				'meta_value' => (string) $yo->ID, // phpcs:ignore WordPress.DB.SlowDBQuery
-				'orderby'    => 'ID',
-				'number'     => self::MAXIMO,
+				'role__in'     => $roles,
+				'meta_key'     => 'zn_parent_id', // phpcs:ignore WordPress.DB.SlowDBQuery
+				'meta_value'   => array_map( 'strval', $padres ), // phpcs:ignore WordPress.DB.SlowDBQuery
+				'meta_compare' => 'IN',
+				'orderby'      => 'ID',
+				'number'       => self::MAXIMO,
 			)
 		);
-		return array_values( array_filter( $hijas, static fn( WP_User $hija ) => ZN_Roles::puede( 'user:read', $hija, $yo->ID ) ) );
 	}
 
 	/** Negocios, novedades o sorteos (no en la papelera) de él o de sus cuentas. */
@@ -187,9 +202,9 @@ class ZN_Panel {
 			<?php
 			self::tabla(
 				'Cuentas que dependen de ti',
-				array( 'Nombre', 'Correo', 'Tipo', 'Correo verificado' ),
+				array( 'Nombre', 'Correo', 'Tipo', 'Depende de', 'Correo verificado' ),
 				array_map(
-					static fn( WP_User $c ) => array( $nombre( $c ), $c->user_email, ZN_Roles::NOMBRES[ $c->roles[0] ] ?? '', '1' === (string) get_user_meta( $c->ID, 'zn_verificado', true ) ? 'Sí' : 'No' ),
+					static fn( WP_User $c ) => array( $nombre( $c ), $c->user_email, ZN_Roles::NOMBRES[ $c->roles[0] ] ?? '', $nombres[ ZN_Roles::padre( $c->ID ) ] ?? '', '1' === (string) get_user_meta( $c->ID, 'zn_verificado', true ) ? 'Sí' : 'No' ),
 					$cuentas
 				)
 			);
