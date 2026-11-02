@@ -167,7 +167,7 @@ intentos (429). Los errores de cuentas de WordPress sin estado (`existing_user_e
 **Panel de asociación y federación (R40, parte 1: solo ver).** Asociación y federación entran a wp-admin
 por `wp-login.php` con su misma cuenta de la app (correo verificado, un solo rol; mismo límite de intentos
 que `POST /login`). Solo ven «Mi zona»: las cuentas que cuelgan de ellas (un nivel, las que pueden leer; la federación, también
-los comercios de sus asociaciones) y los
+los comercios de sus asociaciones, sin su correo) y los
 negocios, novedades y sorteos suyos o de esas cuentas, sin enlaces ni formularios. Cualquier otra página de
 wp-admin las devuelve ahí; no editan ni su perfil. Comercios, usuarios y la administración de la app siguen
 sin wp-admin. En `/zonanautico/v1` la cookie del panel no vale: solo el token; por eso entrar en la app no cierra la

@@ -8,7 +8,8 @@
  * - Solo ven una página, «Mi zona»: el resto de wp-admin (escritorio, perfil, admin-post y admin-ajax salvo el
  *   latido) los devuelve a ella. Si la cuenta deja de poder entrar (otro rol, sin verificar), se cierra su sesión.
  * - «Lo suyo» = él y las cuentas que cuelgan directamente de él y puede leer (user:read_<rol>, un nivel, como
- *   los permisos de la app) y, para la federación, también los comercios de sus asociaciones (solo ver):
+ *   los permisos de la app) y, para la federación, también los comercios de sus asociaciones (solo ver, sin su
+ *   correo):
  *   esas cuentas, y los negocios, novedades y sorteos de los que alguno es dueño.
  * - Nada se edita: ni enlaces ni formularios; tampoco su propio perfil de WordPress (edit_user denegado a todas
  *   las cuentas de la app). Los cambios, desde la app. La cookie del panel no vale en /zonanautico/v1 (ZN_Tokens).
@@ -204,7 +205,9 @@ class ZN_Panel {
 				'Cuentas que dependen de ti',
 				array( 'Nombre', 'Correo', 'Tipo', 'Depende de', 'Correo verificado' ),
 				array_map(
-					static fn( WP_User $c ) => array( $nombre( $c ), $c->user_email, ZN_Roles::NOMBRES[ $c->roles[0] ] ?? '', $nombres[ ZN_Roles::padre( $c->ID ) ] ?? '', '1' === (string) get_user_meta( $c->ID, 'zn_verificado', true ) ? 'Sí' : 'No' ),
+					// El correo, solo si los permisos de la app le dejan leer esa cuenta: la federación no ve el de los
+					// comercios de sus asociaciones (decisión de Luis, ronda 24); ahí sale «—».
+					static fn( WP_User $c ) => array( $nombre( $c ), ZN_Roles::puede( 'user:read', $c, $yo->ID ) ? $c->user_email : '', ZN_Roles::NOMBRES[ $c->roles[0] ] ?? '', $nombres[ ZN_Roles::padre( $c->ID ) ] ?? '', '1' === (string) get_user_meta( $c->ID, 'zn_verificado', true ) ? 'Sí' : 'No' ),
 					$cuentas
 				)
 			);
