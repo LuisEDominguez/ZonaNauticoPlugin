@@ -38,6 +38,7 @@ class ZN_Puertas {
 		add_filter( 'wp_is_application_passwords_available', '__return_false' );
 
 		// Las cuentas de la app solo entran por la app: ni wp-login.php ni su «¿Has olvidado tu contraseña?» (R22).
+		// Salvo asociación y federación, que entran a su panel (R40, ver ZN_Panel); recuperar, también por la app.
 		add_filter( 'wp_authenticate_user', array( __CLASS__, 'sin_panel_para_la_app' ) );
 		add_filter( 'allow_password_reset', array( __CLASS__, 'sin_recuperar_en_el_panel' ), 10, 2 );
 		// Y el formulario de wp-login.php no dice si una cuenta existe: el mismo aviso para todo.
@@ -64,9 +65,17 @@ class ZN_Puertas {
 
 	const AVISO_ACCESO = '<strong>Error:</strong> los datos de acceso no son correctos.';
 
-	/** @param WP_User|WP_Error $usuario */
+	/**
+	 * Va antes de comprobar la contraseña. Una cuenta de la app solo pasa si puede entrar al panel (R40), y con
+	 * el mismo límite de intentos que POST /login (cuentan juntos); si no, el aviso de siempre.
+	 *
+	 * @param WP_User|WP_Error $usuario
+	 */
 	public static function sin_panel_para_la_app( $usuario ) {
-		if ( $usuario instanceof WP_User && ZN_Roles::tiene_rol_de_la_app( $usuario ) ) {
+		if ( ! $usuario instanceof WP_User || ! ZN_Roles::tiene_rol_de_la_app( $usuario ) ) {
+			return $usuario;
+		}
+		if ( ! ZN_Panel::puede_entrar( $usuario ) || null !== ZN_Limite::intentar( 'login', $usuario->user_email ) ) {
 			return new WP_Error( 'zn_solo_app', self::AVISO_ACCESO );
 		}
 		return $usuario;

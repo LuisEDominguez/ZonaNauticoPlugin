@@ -5,6 +5,8 @@
  * - Cuentas de la app: un rol de WordPress por cada rol del Laravel (ROLES_APP). Sus permisos son los
  *   del Laravel tal cual (Anexo A del traspaso), como capacidades `zn:<permiso>` (p. ej. `zn:business:save_own`).
  *   No tienen ningún permiso de WordPress (ni `read`): no pueden entrar a wp-admin ni por wp-login.php.
+ *   Salvo asociación y federación (R40), que tienen además `read` y `zn_panel_ver` para ver su panel de solo
+ *   lectura (ver ZN_Panel); nada más de WordPress.
  * - Una cuenta de la app tiene exactamente un rol y ninguno más (R37); si no, no cuenta como cuenta de la
  *   app y no tiene ningún permiso `zn:`.
  * - «¿Puede hacer esto con este elemento?» se pregunta con ZN_Roles::puede(), que saca ella misma el dueño
@@ -37,6 +39,10 @@ class ZN_Roles {
 		'zn_usuario'       => 'Usuario (app)',
 	);
 
+	// Roles que entran a wp-admin a su panel (R40) y los permisos de WordPress que reciben (solo esos).
+	const ROLES_PANEL    = array( 'zn_asociacion', 'zn_federacion' );
+	const PERMISOS_PANEL = array( 'read', 'zn_panel_ver' );
+
 	// Permisos de cada rol, copiados del Anexo A del traspaso (tabla `roles` del Laravel).
 	const PERMISOS = array(
 		'administrator' => 'business:delete, business:delete_own, business:read, business:save, business:save_own, draw:delete, draw:delete_own, draw:read, draw:save, draw:save_own, draw_participation:delete, draw_participation:delete_own, draw_participation:export, draw_participation:export_own, draw_participation:read, draw_participation:save, draw_participation:save_own, event:delete, event:delete_own, event:read, event:save, event:save_own, faq:delete, faq:delete_own, faq:read, faq:save, faq:save_own, review:delete, review:delete_own, review:read, review:reply, review:reply_own, review:save, review:save_own, user:delete, user:delete_association, user:delete_commerce, user:delete_user, user:read, user:read_association, user:read_commerce, user:read_user, user:register-admin, user:register-association, user:register-commerce, user:register-federation, user:save, user:save_association, user:save_commerce, user:save_own, user:save_user',
@@ -60,7 +66,7 @@ class ZN_Roles {
 		// devolvería a «subscriber» el rol por defecto de WordPress si era este (R35).
 		foreach ( self::ROLES_APP as $rol_wp => $rol_app ) {
 			$rol   = get_role( $rol_wp ) ?? add_role( $rol_wp, self::NOMBRES[ $rol_wp ], array() );
-			$deben = self::permisos( $rol_app );
+			$deben = array_merge( self::permisos( $rol_app ), in_array( $rol_wp, self::ROLES_PANEL, true ) ? self::PERMISOS_PANEL : array() );
 			foreach ( array_diff( array_keys( $rol->capabilities ), $deben ) as $sobra ) {
 				$rol->remove_cap( $sobra );
 			}

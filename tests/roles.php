@@ -46,8 +46,10 @@ try {
 	foreach ( ZN_Roles::ROLES_APP as $rol_wp => $rol_app ) {
 		$rol  = get_role( $rol_wp );
 		$caps = array_keys( array_filter( $rol ? $rol->capabilities : array() ) );
-		$ok( "$rol_wp: los {$esperados[ $rol_app ]} permisos de «{$rol_app}» del Laravel", count( $caps ) === $esperados[ $rol_app ] && ! array_diff( $caps, ZN_Roles::permisos( $rol_app ) ) );
-		$ok( "$rol_wp: ningún permiso de WordPress (ni read)", ! array_filter( $caps, static fn( $c ) => 0 !== strpos( $c, 'zn:' ) ) );
+		$app  = array_values( array_filter( $caps, static fn( $c ) => 0 === strpos( $c, 'zn:' ) ) );
+		$ok( "$rol_wp: los {$esperados[ $rol_app ]} permisos de «{$rol_app}» del Laravel", count( $app ) === $esperados[ $rol_app ] && ! array_diff( $app, ZN_Roles::permisos( $rol_app ) ) );
+		// De WordPress, nada; asociación y federación, solo lo justo para ver su panel (R40, ver tests/panel.php).
+		$ok( "$rol_wp: de WordPress, nada o solo lo del panel (R40)", array_values( array_diff( $caps, $app ) ) === ( in_array( $rol_wp, ZN_Roles::ROLES_PANEL, true ) ? ZN_Roles::PERMISOS_PANEL : array() ) );
 	}
 
 	// --- R35: poner al día los roles no los borra; R60: el rol por defecto nunca es de la app ---

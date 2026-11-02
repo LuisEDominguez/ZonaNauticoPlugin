@@ -54,7 +54,7 @@ el administrador.
 **Roles de la app (R22).** Un rol de WordPress por cada rol del Laravel: «Administración (app)»,
 «Federación (app)», «Asociación (app)», «Comercio (app)» y «Usuario (app)» (`zn_administrador`…
 `zn_usuario`), con los permisos del Laravel tal cual como capacidades `zn:<permiso>` y ninguno de
-WordPress: no entran a wp-admin ni por `wp-login.php`. Cada cuenta de la app tiene un solo rol; si tiene
+WordPress: no entran a wp-admin ni por `wp-login.php` (salvo asociación y federación, a su panel; ver abajo). Cada cuenta de la app tiene un solo rol; si tiene
 más, no cuenta como cuenta de la app. Para las rutas de la app: `ZN_Roles::puede( 'business:save', $elemento )`
 saca el dueño del propio elemento guardado y vale con el `_own` si es suyo (el permiso general, sobre un
 elemento, solo para la administración de la app y las lecturas públicas); para crear,
@@ -164,6 +164,13 @@ sesiones de la cuenta y deja el correo verificado; un código que no vale da `40
 delatarla, y nunca piden un Bearer compartido. Todas validan primero el formato (422), luego el límite de
 intentos (429). Los errores de cuentas de WordPress sin estado (`existing_user_email`…) salen como 422, no 500.
 
+**Panel de asociación y federación (R40, parte 1: solo ver).** Asociación y federación entran a wp-admin
+por `wp-login.php` con su misma cuenta de la app (correo verificado, un solo rol; mismo límite de intentos
+que `POST /login`). Solo ven «Mi zona»: las cuentas que cuelgan de ellas (un nivel, las que pueden leer) y los
+negocios, novedades y sorteos suyos o de esas cuentas, sin enlaces ni formularios. Cualquier otra página de
+wp-admin las devuelve ahí; no editan ni su perfil. Comercios, usuarios y la administración de la app siguen
+sin wp-admin. En `/zonanautico/v1` la cookie del panel no vale: solo el token. Editar será la parte 2.
+
 **Dueños de novedades y sorteos.** Campo `user_id`, elegido en su ficha («Dueño») entre las cuentas de
 comercio, asociación, federación o administración de la app; sale como `user` con `includesUser`.
 
@@ -203,5 +210,6 @@ un enlace de carpeta en `wp-content/plugins/zona-nautico`.
 - Reseñas y preguntas desde la app (crea y borra cuentas, negocios y comentarios; también por HTTP): `wp eval-file tests/opiniones.php`
 - Novedades y sorteos desde la app (crea y borra cuentas, negocios, novedades y sorteos; también por HTTP): `wp eval-file tests/novedades-sorteos.php`
 - Datos personales: borrar cuenta, exportar y borrar (crea y borra cuentas, negocios y comentarios): `wp eval-file tests/privacidad.php`
+- Panel de asociación y federación (crea y borra cuentas, entradas y sus intentos): `wp eval-file tests/panel.php`
 - Formato de los errores: `node tests/contrato-errores.mjs` y `wp eval-file tests/errores.php` (los dos solo leen)
 - Recalcular todas las puntuaciones (al final de una migración): `wp zona-nautico recalcular-puntuaciones`

@@ -172,13 +172,21 @@ class ZN_Tokens {
 
 	/**
 	 * Filtro determine_current_user: si la petición va a /zonanautico/v1 y trae un token que vale, esa es
-	 * la cuenta. Si ya hay cuenta (cookie de wp-admin), o el token no vale, no se toca: sin sesión.
+	 * la cuenta. Si ya hay cuenta por la cookie de wp-admin, se queda, salvo que sea una cuenta de la app (el
+	 * panel de R40): en nuestra API las cuentas de la app solo valen con su token, nunca con la cookie.
 	 *
 	 * @param int|false $usuario
 	 */
 	public static function usuario_del_token( $usuario ) {
-		if ( $usuario || ! self::es_peticion_nuestra() ) {
+		if ( ! self::es_peticion_nuestra() ) {
 			return $usuario;
+		}
+		if ( $usuario ) {
+			$cuenta = get_userdata( (int) $usuario );
+			if ( ! $cuenta || ! ZN_Roles::tiene_rol_de_la_app( $cuenta ) ) {
+				return $usuario;
+			}
+			$usuario = false;
 		}
 		$token = self::token_de_la_peticion();
 		$id    = null === $token ? 0 : self::validar( $token );
