@@ -132,11 +132,12 @@ vez: dos a la vez con el mismo token no dan dos, R87); con uno caducado, o pasad
 `401 «Unauthenticated.»`. Las respuestas con token llevan `Cache-Control: no-store`.
 
 **Alta, verificación y recuperación (R30, R53, R62).** `includes/class-zn-api-cuenta.php`, con las respuestas
-del Laravel que espera la app. `POST /register` (nombre, email, contraseña y, si quiere, teléfono y ubicación):
+del Laravel que espera la app. `POST /register` (nombre, email, contraseña y, si quiere, teléfono; la ubicación no se guarda, R91):
 `201 {status: "success"}`, siempre con el rol «user»; el nombre entero en `first_name`; email repetido →
 `422` «The email has already been taken.». Manda un correo con el enlace `GET /verify?id=…&token=…` (token al azar,
-solo su huella guardada, 48 horas, una sola vez), que abre una página «Cuenta verificada» (o, con
-`&format=json`, JSON). `GET /send-email?email=` lo reenvía. `POST /reset-password-code` manda un código de 6
+solo su huella guardada, 48 horas, una sola vez), que abre una página con el botón «Confirmar mi correo»: abrir
+el enlace no verifica (los filtros de correo lo abren solos, R88); lo hace el botón (`POST /verify`). Con
+`&format=json`, JSON. `GET /send-email?email=` lo reenvía. `POST /reset-password-code` manda un código de 6
 cifras (15 minutos, 5 intentos) y `POST /reset-password` (email, código y contraseña nueva) la cambia, cierra las
 sesiones de la cuenta y deja el correo verificado; un código que no vale da `400 {status: "error", message:
 "Invalid code"}`. Reenvío y código responden siempre `200 {status: "success"}`, exista o no la cuenta, para no

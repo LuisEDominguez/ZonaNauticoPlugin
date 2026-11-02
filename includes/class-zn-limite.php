@@ -35,7 +35,8 @@ class ZN_Limite {
 		'recuperar' => array( 'cuenta_ip' => array( 3, HOUR_IN_SECONDS ), 'cuenta' => array( 10, HOUR_IN_SECONDS ), 'ip' => array( 20, HOUR_IN_SECONDS ) ),
 		'reenviar'  => array( 'cuenta_ip' => array( 3, HOUR_IN_SECONDS ), 'cuenta' => array( 10, HOUR_IN_SECONDS ), 'ip' => array( 20, HOUR_IN_SECONDS ) ),
 		// POST /reset-password: además, 5 intentos por código (R62, con el código).
-		'codigo'    => array( 'cuenta_ip' => array( 5, 900 ), 'cuenta' => array( 20, HOUR_IN_SECONDS ), 'ip' => array( 50, 900 ) ),
+		// Por cuenta, 10 por hora (R89): también frena los fallos que lleguen a la vez sobre un mismo código.
+		'codigo'    => array( 'cuenta_ip' => array( 5, 900 ), 'cuenta' => array( 10, HOUR_IN_SECONDS ), 'ip' => array( 50, 900 ) ),
 		'registro'  => array( 'ip' => array( 10, HOUR_IN_SECONDS ) ),
 	);
 

@@ -3,13 +3,17 @@
  * Alta, verificación del correo y recuperación de la contraseña (R30, R53, R62; H16, H17, H24). Las respuestas
  * son las del Laravel que espera la app (Zona-Nautico/src/api/auth.ts y errores.ts), montadas a mano.
  *
- * - POST /register {name, email, password, phone?, latitude?, longitude?}: 201 {status: "success"}. Siempre con el
+ * - POST /register {name, email, password, phone?}: 201 {status: "success"}. Siempre con el
  *   rol «user» (el que mande la app se ignora; dar de alta otros roles, con token, va con las escrituras). Valida
  *   con el esquema `cuenta` (email repetido → 422 «The email has already been taken.», que la app reconoce). El
- *   nombre entero va en first_name y los apellidos vacíos (R53). Manda el correo de verificación.
+ *   nombre entero va en first_name y los apellidos vacíos (R53). La ubicación no se guarda: la app no la manda y
+ *   está sin decidir (RGPD, R91). Manda el correo de verificación.
  * - GET /verify?id=&token=: el enlace del correo. Token al azar (32 bytes), del que solo se guarda la huella, que
- *   caduca a las VERIFICAR_HORAS y vale una vez (H16: nada de sha1 del correo). Responde con una página sencilla;
- *   con &format=json, 200 {status: "success"} o 400 {status: "error"}.
+ *   caduca a las VERIFICAR_HORAS y vale una vez (H16: nada de sha1 del correo). Abrirlo NO verifica (R88): los
+ *   filtros de correo (Safe Links…) abren los enlaces solos y verificarían la cuenta que otro creó con ese correo.
+ *   Pinta una página con el botón «Confirmar mi correo», que hace POST /verify con el id y el token: ese sí
+ *   verifica. Con &format=json: GET → 200 {status: "pending"}, POST → 200 {status: "success"}; si el token no
+ *   vale, 400 {status: "error"}.
  * - GET /send-email?email=: reenvía el correo de verificación. Siempre 200 {status: "success"}, exista o no la
  *   cuenta o esté ya verificada, para no delatar cuentas (H17; la app acepta 200 y 400).
  * - POST /reset-password-code {email}: siempre 200 {status: "success"}; si la cuenta es de la app, le llega por
@@ -18,7 +22,10 @@
  *   gastado, caducado o de una cuenta que no existe) → 400 {status: "error", message: "Invalid code"}, no 422 (R30).
  *   Cambia la contraseña con wp_set_password() (que cierra las sesiones de la cuenta, R32) y deja el correo
  *   verificado: quien tiene el código lo ha recibido en él.
- * - Todas: primero el formato (422, sin contar el intento), luego ZN_Limite (429) y luego lo demás.
+ * - Reenvío y recuperación: primero el formato (422, sin contar el intento), luego ZN_Limite (429) y luego lo
+ *   demás. El registro mira primero el límite (por IP): así nadie prueba sin freno qué correos ya tienen cuenta (R92).
+ * - Que una cuenta existe se puede saber por el tiempo de respuesta de send-email y reset-password-code (mandar un
+ *   correo tarda): aceptado por Luis (R90), porque el registro ya lo dice con su 422 y la app lo necesita.
  * - Los correos salen con wp_mail(): fuera de producción, solo a @ejemplo.invalid (R57).
  */
 
@@ -38,7 +45,7 @@ class ZN_API_Cuenta {
 	public static function registrar_rutas(): void {
 		$rutas = array(
 			'/register'            => array( WP_REST_Server::CREATABLE, 'registrar' ),
-			'/verify'              => array( WP_REST_Server::READABLE, 'verificar' ),
+			'/verify'              => array( 'GET, POST', 'verificar' ),
 			'/send-email'          => array( WP_REST_Server::READABLE, 'reenviar' ),
 			'/reset-password-code' => array( WP_REST_Server::CREATABLE, 'pedir_codigo' ),
 			'/reset-password'      => array( WP_REST_Server::CREATABLE, 'cambiar_contrasena' ),
@@ -62,8 +69,8 @@ class ZN_API_Cuenta {
 			return ZN_Limite::demasiados( $espera );
 		}
 		$cuerpo = self::cuerpo( $peticion );
-		// El código solo es de la recuperación; el rol no lo elige la app.
-		unset( $cuerpo['code'] );
+		// El código solo es de la recuperación; el rol no lo elige la app; la ubicación, sin decidir (R91).
+		unset( $cuerpo['code'], $cuerpo['latitude'], $cuerpo['longitude'] );
 		$validado = ZN_Esquema::validar( 'cuenta', $cuerpo );
 		if ( $validado['errores'] ) {
 			return ZN_Errores::no_valido( $validado['errores'] );
@@ -86,10 +93,8 @@ class ZN_API_Cuenta {
 			// Lo traduce ZN_Errores (p. ej. un email repetido entre la comprobación y el alta → 422).
 			return $id;
 		}
-		foreach ( array( 'phone', 'latitude', 'longitude' ) as $campo ) {
-			if ( isset( $valores[ $campo ] ) ) {
-				update_user_meta( $id, $campo, $valores[ $campo ] );
-			}
+		if ( isset( $valores['phone'] ) ) {
+			update_user_meta( $id, 'phone', $valores['phone'] );
 		}
 		self::mandar_verificacion( get_userdata( $id ) );
 		return new WP_REST_Response( array( 'status' => 'success' ), 201 );
@@ -100,6 +105,10 @@ class ZN_API_Cuenta {
 		$token = (string) $peticion->get_param( 'token' );
 		if ( ! self::token_de_verificacion_vale( $id, $token ) ) {
 			return new WP_REST_Response( array( 'status' => 'error', 'message' => 'Invalid token' ), 400 );
+		}
+		// Abrir el enlace no verifica (R88): solo el botón de la página.
+		if ( 'POST' !== $peticion->get_method() ) {
+			return new WP_REST_Response( array( 'status' => 'pending' ) );
 		}
 		update_user_meta( $id, 'zn_verificado', '1' );
 		delete_user_meta( $id, 'zn_verificar' );
@@ -193,15 +202,29 @@ class ZN_API_Cuenta {
 		if ( $servida || ! $peticion instanceof WP_REST_Request || '/' . ZN_NAMESPACE . '/verify' !== strtolower( $peticion->get_route() ) || 'json' === $peticion->get_param( 'format' ) ) {
 			return $servida;
 		}
-		$bien = $resultado instanceof WP_HTTP_Response && 200 === $resultado->get_status();
+		$datos  = $resultado instanceof WP_HTTP_Response ? $resultado->get_data() : array();
+		$estado = is_array( $datos ) ? ( $datos['status'] ?? 'error' ) : 'error';
 		header( 'Content-Type: text/html; charset=utf-8' );
 		header( 'Cache-Control: no-store, private' );
-		$titulo = $bien ? 'Cuenta verificada' : 'Este enlace no vale';
-		$texto  = $bien ? 'Ya puedes entrar en la app Zona Náutico con tu correo y tu contraseña.' : 'El enlace no vale o ha caducado. Desde la app puedes pedir que te mandemos otro.';
+		$boton = '';
+		if ( 'pending' === $estado ) {
+			$titulo = 'Confirma tu correo';
+			$texto  = 'Pulsa el botón para terminar de crear tu cuenta en la app Zona Náutico.';
+			$boton  = '<form method="post" action="' . esc_url( rest_url( ZN_NAMESPACE . '/verify' ) ) . '">'
+				. '<input type="hidden" name="id" value="' . esc_attr( (string) (int) $peticion->get_param( 'id' ) ) . '">'
+				. '<input type="hidden" name="token" value="' . esc_attr( (string) $peticion->get_param( 'token' ) ) . '">'
+				. '<button type="submit">Confirmar mi correo</button></form>';
+		} elseif ( 'success' === $estado ) {
+			$titulo = 'Cuenta verificada';
+			$texto  = 'Ya puedes entrar en la app Zona Náutico con tu correo y tu contraseña.';
+		} else {
+			$titulo = 'Este enlace no vale';
+			$texto  = 'El enlace no vale o ha caducado. Desde la app puedes pedir que te mandemos otro.';
+		}
 		echo '<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">'
 			. '<title>' . esc_html( $titulo ) . '</title>'
-			. '<style>body{margin:0;font-family:system-ui,sans-serif;background:#f0f4f8;color:#12263a;display:flex;min-height:100vh;align-items:center;justify-content:center}main{background:#fff;border-radius:12px;padding:32px 24px;max-width:420px;margin:16px;text-align:center}h1{color:#00457c;font-size:1.4rem}</style>'
-			. '</head><body><main><h1>' . esc_html( $titulo ) . '</h1><p>' . esc_html( $texto ) . '</p></main></body></html>'; // phpcs:ignore WordPress.Security.EscapeOutput
+			. '<style>body{margin:0;font-family:system-ui,sans-serif;background:#f0f4f8;color:#12263a;display:flex;min-height:100vh;align-items:center;justify-content:center}main{background:#fff;border-radius:12px;padding:32px 24px;max-width:420px;margin:16px;text-align:center}h1{color:#00457c;font-size:1.4rem}button{background:#00457c;color:#fff;border:0;border-radius:24px;padding:12px 28px;font-size:1rem;cursor:pointer}</style>'
+			. '</head><body><main><h1>' . esc_html( $titulo ) . '</h1><p>' . esc_html( $texto ) . '</p>' . $boton . '</main></body></html>'; // phpcs:ignore WordPress.Security.EscapeOutput
 		return true;
 	}
 

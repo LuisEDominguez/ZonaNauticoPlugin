@@ -65,10 +65,10 @@ $llamar = static function ( string $metodo, string $ruta, array $datos = array()
 	$respuesta = apply_filters( 'rest_post_dispatch', rest_ensure_response( rest_do_request( $peticion ) ), rest_get_server(), $peticion );
 	return array( $respuesta->get_status(), $respuesta->get_data(), $respuesta->get_headers() );
 };
-$http = static function ( string $url ) {
+$http = static function ( string $url, ?array $formulario = null ) {
 	for ( $intento = 0; $intento < 3; $intento++ ) {
 		usleep( 400000 );
-		$respuesta = wp_remote_get( $url, array( 'timeout' => 60 ) );
+		$respuesta = null === $formulario ? wp_remote_get( $url, array( 'timeout' => 60 ) ) : wp_remote_post( $url, array( 'timeout' => 60, 'body' => $formulario ) );
 		if ( ! is_wp_error( $respuesta ) && 502 !== wp_remote_retrieve_response_code( $respuesta ) ) {
 			break;
 		}
@@ -102,7 +102,7 @@ $exito = array( 'status' => 'success' );
 try {
 	// --- Las rutas ---
 	$rutas = rest_get_server()->get_routes( ZN_NAMESPACE );
-	foreach ( array( 'register' => 'POST', 'send-email' => 'GET', 'verify' => 'GET', 'reset-password-code' => 'POST', 'reset-password' => 'POST' ) as $ruta => $metodo ) {
+	foreach ( array( 'register' => 'POST', 'send-email' => 'GET', 'verify' => 'POST', 'reset-password-code' => 'POST', 'reset-password' => 'POST' ) as $ruta => $metodo ) {
 		$metodos = array_keys( $rutas[ '/' . ZN_NAMESPACE . "/$ruta" ][0]['methods'] ?? array() );
 		$ok( "existe $metodo /$ruta", in_array( $metodo, $metodos, true ) );
 	}
@@ -111,12 +111,13 @@ try {
 	$email                   = $correo_nuevo();
 	$clave                   = wp_generate_password( 16 );
 	$correos                 = array();
-	list( $estado, $cuerpo ) = $registrar( array( 'name' => '  Ana María López  ', 'email' => $email, 'password' => $clave, 'phone' => '+34 600 000 000', 'role' => 'administrator', 'roleId' => 1 ) );
+	list( $estado, $cuerpo ) = $registrar( array( 'name' => '  Ana María López  ', 'email' => $email, 'password' => $clave, 'phone' => '+34 600 000 000', 'role' => 'administrator', 'roleId' => 1, 'latitude' => 42.2, 'longitude' => -8.7 ) );
 	$ok( 'registro: 201 {status: «success»}', 201 === $estado && $exito === $cuerpo );
 	$cuenta = get_user_by( 'email', $email );
 	$ok( 'registro: la cuenta existe con el rol «user» y ninguno más (el rol que mande la app se ignora)', $cuenta && array( 'zn_usuario' ) === array_values( $cuenta->roles ) );
 	$ok( 'R53: el nombre entero va en first_name y los apellidos vacíos', $cuenta && 'Ana María López' === $cuenta->first_name && '' === $cuenta->last_name );
 	$ok( 'registro: guarda el teléfono', $cuenta && '+34 600 000 000' === get_user_meta( $cuenta->ID, 'phone', true ) );
+	$ok( 'R91: no guarda la ubicación (está sin decidir, RGPD)', $cuenta && '' === get_user_meta( $cuenta->ID, 'latitude', true ) && '' === get_user_meta( $cuenta->ID, 'longitude', true ) );
 	$ok( 'registro: la contraseña buena vale', $cuenta && wp_check_password( $clave, $cuenta->user_pass, $cuenta->ID ) );
 	$ok( 'registro: el nombre de acceso no lleva ni el correo ni el nombre', $cuenta && false === stripos( $cuenta->user_login, 'temporal' ) && false === stripos( $cuenta->user_login, 'ana' ) );
 	$ok( 'registro: sin verificar', $cuenta && '1' !== get_user_meta( $cuenta->ID, 'zn_verificado', true ) );
@@ -154,19 +155,24 @@ try {
 	list( $estado, $cuerpo ) = $registrar( array( 'name' => 'Muchas', 'email' => $correo_nuevo(), 'password' => wp_generate_password( 12 ) ), '192.0.2.71' );
 	$ok( "registro: pasadas $max_registro altas por hora desde una IP, 429", 429 === $estado && array( 'message' => 'Too Many Attempts.' ) === $cuerpo );
 
-	// --- GET /verify (R62) ---
-	list( $estado, $cuerpo ) = $llamar( 'GET', '/verify', array( 'id' => $id_enlace, 'token' => strrev( $token ), 'format' => 'json' ) );
+	// --- /verify (R62, R88): abrir el enlace (GET) no verifica; lo hace el botón (POST) ---
+	list( $estado, $cuerpo ) = $llamar( 'GET', '/verify', array( 'id' => $id_enlace, 'token' => $token, 'format' => 'json' ) );
+	$ok( 'R88: abrir el enlace (GET) con un token bueno: 200 {status: «pending»}', 200 === $estado && array( 'status' => 'pending' ) === $cuerpo );
+	$ok( 'R88: …y la cuenta NO queda verificada (un escáner de enlaces no la verifica)', '1' !== get_user_meta( $cuenta->ID, 'zn_verificado', true ) );
+	list( $estado ) = $llamar( 'GET', '/verify', array( 'id' => $id_enlace, 'token' => strrev( $token ), 'format' => 'json' ) );
+	$ok( 'R88: abrir el enlace con un token que no es: 400', 400 === $estado );
+	list( $estado, $cuerpo ) = $llamar( 'POST', '/verify', array( 'id' => $id_enlace, 'token' => strrev( $token ), 'format' => 'json' ) );
 	$ok( 'verify con un token que no es: 400', 400 === $estado && 'error' === ( $cuerpo['status'] ?? null ) );
 	list( $otro_id ) = array( (int) get_users( array( 'role' => 'administrator', 'number' => 1, 'fields' => 'ids' ) )[0] );
-	list( $estado ) = $llamar( 'GET', '/verify', array( 'id' => $otro_id, 'token' => $token, 'format' => 'json' ) );
+	list( $estado ) = $llamar( 'POST', '/verify', array( 'id' => $otro_id, 'token' => $token, 'format' => 'json' ) );
 	$ok( 'verify con el token de otra cuenta: 400', 400 === $estado );
-	list( $estado ) = $llamar( 'GET', '/verify', array( 'format' => 'json' ) );
+	list( $estado ) = $llamar( 'POST', '/verify', array( 'format' => 'json' ) );
 	$ok( 'verify sin datos: 400', 400 === $estado );
 	$ok( '(sin verificar todavía)', '1' !== get_user_meta( $cuenta->ID, 'zn_verificado', true ) );
-	list( $estado, $cuerpo ) = $llamar( 'GET', '/verify', array( 'id' => $id_enlace, 'token' => $token, 'format' => 'json' ) );
-	$ok( 'verify bueno (format=json): 200 {status: «success»}', 200 === $estado && $exito === $cuerpo );
+	list( $estado, $cuerpo ) = $llamar( 'POST', '/verify', array( 'id' => $id_enlace, 'token' => $token, 'format' => 'json' ) );
+	$ok( 'verify bueno (POST, format=json): 200 {status: «success»}', 200 === $estado && $exito === $cuerpo );
 	$ok( 'verify: la cuenta queda verificada', '1' === get_user_meta( $cuenta->ID, 'zn_verificado', true ) );
-	list( $estado ) = $llamar( 'GET', '/verify', array( 'id' => $id_enlace, 'token' => $token, 'format' => 'json' ) );
+	list( $estado ) = $llamar( 'POST', '/verify', array( 'id' => $id_enlace, 'token' => $token, 'format' => 'json' ) );
 	$ok( 'verify: el enlace solo vale una vez', 400 === $estado );
 	list( $estado, $cuerpo ) = $llamar( 'POST', '/login', array( 'email' => $email, 'password' => $clave ) );
 	$ok( 'ya verificada, el login entra', 200 === $estado && $cuenta->ID === ( $cuerpo['id'] ?? null ) );
@@ -176,21 +182,32 @@ try {
 	$registrar( array( 'name' => 'Página', 'email' => $email_pagina, 'password' => wp_generate_password( 12 ) ) );
 	list( , , $url_pagina ) = $enlace( $email_pagina );
 	$_SERVER                = $servidor;
-	list( $estado, $html, $tipo ) = $http( $url_pagina );
-	$ok( 'HTTP: el enlace del correo abre una página (text/html) que dice que la cuenta está verificada', 200 === $estado && 0 === strpos( $tipo, 'text/html' ) && false !== stripos( $html, 'verificad' ) );
-	$ok( 'HTTP: la página no es JSON ni deja ver datos de la cuenta', null === json_decode( $html ) && false === stripos( $html, $email_pagina ) );
-	list( $estado, $html, $tipo ) = $http( $url_pagina );
-	$ok( 'HTTP: abierta otra vez, 400 y página que dice que el enlace no vale', 400 === $estado && 0 === strpos( $tipo, 'text/html' ) && false !== stripos( $html, 'no vale' ) );
 	$id_pagina = get_user_by( 'email', $email_pagina )->ID;
-	wp_cache_delete( $id_pagina, 'user_meta' ); // La verificó otra petición (el sitio), no este proceso.
+	list( $estado, $html, $tipo ) = $http( $url_pagina );
+	$ok( 'HTTP: el enlace del correo abre una página (text/html) con el botón «Confirmar mi correo» (POST)', 200 === $estado && 0 === strpos( $tipo, 'text/html' ) && false !== strpos( $html, 'Confirmar mi correo' ) && 1 === preg_match( '/<form[^>]+method="post"/i', $html ) );
+	$ok( 'HTTP: la página no es JSON ni deja ver datos de la cuenta', null === json_decode( $html ) && false === stripos( $html, $email_pagina ) );
+	$ok( 'R88 HTTP: abrirlo otra vez también pinta el botón…', 200 === $http( $url_pagina )[0] );
+	wp_cache_delete( $id_pagina, 'user_meta' ); // Lo cambia otra petición (el sitio), no este proceso.
+	$ok( 'R88 HTTP: …y abrir el enlace no verifica', '1' !== get_user_meta( $id_pagina, 'zn_verificado', true ) );
+	preg_match( '/<form[^>]+action="([^"]+)"/i', $html, $accion );
+	preg_match_all( '/<input[^>]+name="(id|token)"[^>]+value="([^"]*)"/i', $html, $campos, PREG_SET_ORDER );
+	$formulario = array();
+	foreach ( $campos as $campo ) {
+		$formulario[ $campo[1] ] = html_entity_decode( $campo[2] );
+	}
+	list( $estado, $html, $tipo ) = $http( html_entity_decode( $accion[1] ?? '' ), $formulario );
+	$ok( 'HTTP: al pulsar el botón (POST del formulario), página «Cuenta verificada»', 200 === $estado && 0 === strpos( $tipo, 'text/html' ) && false !== stripos( $html, 'verificada' ) );
+	wp_cache_delete( $id_pagina, 'user_meta' );
 	$ok( 'HTTP: verificada', '1' === get_user_meta( $id_pagina, 'zn_verificado', true ) );
+	list( $estado, $html, $tipo ) = $http( html_entity_decode( $accion[1] ?? '' ), $formulario );
+	$ok( 'HTTP: pulsado otra vez, 400 y página que dice que el enlace no vale', 400 === $estado && 0 === strpos( $tipo, 'text/html' ) && false !== stripos( $html, 'no vale' ) );
 
 	// Enlace caducado.
 	$email_viejo = $correo_nuevo();
 	$registrar( array( 'name' => 'Vieja', 'email' => $email_viejo, 'password' => wp_generate_password( 12 ) ) );
 	list( $id_viejo, $token_viejo ) = $enlace( $email_viejo );
 	update_user_meta( $id_viejo, 'zn_verificar_caduca', time() - 60 );
-	list( $estado ) = $llamar( 'GET', '/verify', array( 'id' => $id_viejo, 'token' => $token_viejo, 'format' => 'json' ) );
+	list( $estado ) = $llamar( 'POST', '/verify', array( 'id' => $id_viejo, 'token' => $token_viejo, 'format' => 'json' ) );
 	$ok( 'R62: un enlace caducado no vale (400)', 400 === $estado && '1' !== get_user_meta( $id_viejo, 'zn_verificado', true ) );
 
 	// --- GET /send-email (H17) ---
@@ -294,6 +311,7 @@ try {
 	// Límite de intentos con código: antes de mirarlo.
 	$email_limite = $correo_nuevo();
 	$registrar( array( 'name' => 'Límite', 'email' => $email_limite, 'password' => wp_generate_password( 12 ) ), '192.0.2.75' );
+	$ok( 'R89: con código, como mucho 10 intentos por hora por cuenta', array( 10, HOUR_IN_SECONDS ) === ZN_Limite::REGLAS['codigo']['cuenta'] );
 	list( $max_codigo ) = ZN_Limite::REGLAS['codigo']['cuenta_ip'];
 	for ( $i = 0; $i < $max_codigo; $i++ ) {
 		$llamar( 'POST', '/reset-password', array( 'email' => $email_limite, 'code' => '12345', 'password' => wp_generate_password( 14 ) ), '192.0.2.76' );
