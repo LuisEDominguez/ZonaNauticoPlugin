@@ -13,7 +13,7 @@ el sí de Luis.
 |---|---|
 | Todas a la vez (hilo que desarrolla) | `node tests/todas.mjs` |
 | Revisores (solo lectura, todas las que necesiten) | `node tests/contrato-negocios.mjs`, `contrato-eventos.mjs`, `contrato-sorteos.mjs`, `contrato-resenas.mjs`, `contrato-preguntas.mjs`, `contrato-muestras.mjs`, `contrato-errores.mjs`, `wp eval-file tests/admin-fichas.php`, `tests/esquema.php` y `tests/errores.php` (no guardan nada; `errores.php` registra rutas de prueba solo en memoria), además de peticiones GET y lectura de código |
-| Hilo que desarrolla (pasa el resultado a los revisores) | `wp eval-file tests/seguridad.php`, `tests/comentarios.php`, `tests/roles.php`, `tests/tokens.php`, `tests/limite.php`, `tests/escrituras.php`, `tests/login.php` y `tests/registro.php` (crean datos, cuentas o filas temporales y los borran) y `node tests/puertas.mjs` (no guarda nada, pero envía una petición a XML-RPC) |
+| Hilo que desarrolla (pasa el resultado a los revisores) | `wp eval-file tests/seguridad.php`, `tests/comentarios.php`, `tests/roles.php`, `tests/tokens.php`, `tests/limite.php`, `tests/escrituras.php`, `tests/login.php`, `tests/registro.php`, `tests/opiniones.php` y `tests/privacidad.php` (crean datos, cuentas o filas temporales y los borran) y `node tests/puertas.mjs` (no guarda nada, pero envía una petición a XML-RPC) |
 
 Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** · **espera decisión** ·
 **se propone descartar**.
@@ -42,8 +42,36 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Login A-bis | 02-11-2026 | `524ab78` (v0.14.0) | `a7fd98e` (v0.14.1) | R84, R85, R86 (14 días) y R87 |
 | Login B | 02-11-2026 | `a7fd98e` (v0.14.1) | `f1722fd` (v0.15.0) | Registro, verificación y recuperación (R30, R53, R62) |
 | Login B-bis | 02-11-2026 | `f1722fd` (v0.15.0) | `daa57ab` (v0.15.1) | R88, R89, R91, R92; R90 aceptado |
+| Escrituras y RGPD | 02-11-2026 | `daa57ab` (v0.15.1) | `3e598f5` (v0.16.0) | Reseñas y preguntas desde la app, R65 y el 405 de `/verify` |
 
 ---
+
+## Escrituras de reseñas y preguntas, y RGPD (R65)
+
+Luis dio el sí a este bloque (02-11, 10:24). Diff de la ronda: `git diff 3e7b762 3e598f5`. Pruebas escritas antes que el código (`tests/opiniones.php` y `tests/privacidad.php` fallaban antes).
+**Un solo revisor, solo el diff.**
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **`POST /review`** | hecho | `ZN_API_Resenas::crear()`. Valida con `ZN_Esquema` (negocio publicado, nota 1–5, texto y título); `response`, `userId` y `datetime` se quitan antes (la respuesta solo por `/review/reply`; el autor es la cuenta del token, H21; la fecha, del servidor). `puede_crear( 'review:save', autor )`. **H13 (Luis, 02-11: A): una reseña por persona y negocio**, también si la suya está oculta → 422 «The business id has already been taken.»; tras borrarla puede escribir otra. Publicada al momento (decisión c). `201 {data: reseña}` (el formato de la respuesta del Laravel no está en los documentos; la app no la lee). |
+| **`DELETE /review/{id}`** | hecho | `puede( 'review:delete', reseña )`: la autora (`_own`) o la administración de la app; ni el dueño del negocio ni la asociación (como el Laravel). Vale también para una reseña oculta desde wp-admin. Borrado definitivo; la nota se recalcula sola. `200 {status: "success"}`. |
+| **`PATCH /review/reply/{id}`** | hecho | `puede( 'review:reply', reseña )`: el dueño del negocio (sin herencia por el padre, como el Laravel) o la administración de la app. Solo `response` (campo nuevo del esquema de reseñas, máx. 2000); `null` la borra y `""` → 422 (regla del PATCH; el Laravel no dejaba borrarla). `200 {data}`. |
+| **`POST /faq`** | hecho | `ZN_API_Preguntas::crear()`. Solo `userId` y `question` (lo demás se ignora). Si `userId` no es un comercio o no tiene ningún negocio publicado → 422 en `userId` (el Laravel daba 401 si no era comercio; propuesta del revisor). Cuelga del primer negocio publicado del comercio (sale en todos, decisión d). Quien pregunta = la cuenta del token; sin publicar y sin respuesta. `201 {data}`. |
+| **`PATCH /faq/{id}`** | hecho | `campos_editables_de_pregunta()` (R41): comercio, su asociación y la administración de la app cambian `question`, `answer` y `published`; quien preguntó, solo `question`, y vuelve a no publicada. El resto (también `userId`, H15) se ignora. `published` `"true"` (texto) → 422, como el Laravel. |
+| **R65** IP y navegador | hecho | `includes/class-zn-privacidad.php`: en `wp_insert_comment` (acción, porque esa función no tiene filtro previo) y en `wp_update_comment_data` se vacían `comment_author_IP`, `comment_agent` y `comment_author_email` de reseñas y preguntas, vengan de donde vengan. Los demás comentarios no se tocan. |
+| **R65** Borrar la cuenta | hecho | `delete_user` (y `wpmu_delete_user`): borra del todo sus reseñas y preguntas (cualquier estado) y las preguntas dirigidas a ella si es un comercio (cascada del Laravel). Las puntuaciones se recalculan solas al borrar cada reseña. Las reseñas de los negocios de un comercio siguen mientras el negocio exista. Participaciones y favoritos, cuando existan. |
+| **R65** Herramientas de privacidad | hecho | Exportador y borrador «App Zona Náutico». Exporta la cuenta (nombre, correo, teléfono, ubicación, rol, verificado), sus reseñas y sus preguntas (nada de huellas, tokens ni códigos). Borrar quita sus reseñas y preguntas (de 100 en 100), el teléfono y la ubicación, y avisa de que la cuenta sigue (se borra en Usuarios). |
+| **405 en `/verify`** | hecho | `pagina_de_verificacion()` solo pinta la página con GET y POST; con `PUT`, el 405 sale en JSON como en las demás rutas. Prueba por HTTP en `tests/registro.php`. |
+| Pieza común | hecho | `ZN_API::cuerpo()` (cuerpo JSON o formulario; la dirección no cuenta), que usa también `ZN_API_Cuenta`. |
+
+**Apuntado (no se ha hecho):**
+- `DELETE /faq/{id}` no estaba en el bloque.
+- Límite de escrituras por cuenta (avalancha de reseñas o preguntas): no está en el Laravel; con su sí.
+- La app solo usa hoy `POST /review` y `POST /faq`; borrar y responder desde la app son pantallas de Luis y Alejandro.
+
+### Resultado de las pruebas (escrituras y RGPD, 02-11)
+
+`node tests/todas.mjs`: **750 comprobaciones bien en 21 juegos** (`opiniones` 73 y `privacidad` 25 nuevas; `registro` 77). `contrato-resenas` y `contrato-preguntas` comprobaban «POST da 405» (solo lectura): ahora comprueban «POST sin token → 401 Unauthenticated.» y «PUT → 405»; esas dos se repitieron solas tras corregirlas (12 y 10 bien).
 
 ## Login B-bis (R88–R92)
 
