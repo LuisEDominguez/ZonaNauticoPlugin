@@ -41,8 +41,27 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Login A | 02-11-2026 | `bdca3f1` (v0.13.2) | `524ab78` (v0.14.0) | `POST /login`, `/refresh`, `/logout` (R30, R38, R39) y línea de R78 en el README |
 | Login A-bis | 02-11-2026 | `524ab78` (v0.14.0) | `a7fd98e` (v0.14.1) | R84, R85, R86 (14 días) y R87 |
 | Login B | 02-11-2026 | `a7fd98e` (v0.14.1) | `f1722fd` (v0.15.0) | Registro, verificación y recuperación (R30, R53, R62) |
+| Login B-bis | 02-11-2026 | `f1722fd` (v0.15.0) | `daa57ab` (v0.15.1) | R88, R89, R91, R92; R90 aceptado |
 
 ---
+
+## Login B-bis (R88–R92)
+
+El revisor dio por bueno el login B y las dos decisiones (send-email siempre 200; verificar al cambiar la
+contraseña con el código). Luis dio el sí a R88, R89, R91 y R92, y a aceptar R90 por escrito (02-11, 10:08).
+Diff de la ronda: `git diff f1722fd daa57ab`.
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **R88** Escáner de enlaces | hecho | `/verify` admite GET y POST. **GET no verifica**: con un token que vale pinta la página «Confirma tu correo» con el botón «Confirmar mi correo» (formulario POST a `/verify` con `id` y `token` ocultos, escapados); con `&format=json`, `200 {status: "pending"}`. **POST** verifica (página «Cuenta verificada» o `{status: "success"}`). Token que no vale, en los dos, 400. Pruebas por dentro y por HTTP: abrir el enlace dos veces no verifica; el POST del formulario sí; repetirlo, 400. |
+| **R89** Fallos a la vez | hecho | `ZN_Limite::REGLAS['codigo']['cuenta']` = 10 por hora (antes 20). Prueba en `tests/registro.php`. |
+| **R90** El tiempo delata la cuenta | aceptado (Luis) | Escrito en la cabecera de `class-zn-api-cuenta.php`: el registro ya lo dice con su 422, que la app necesita. |
+| **R91** Ubicación en el alta | hecho | `/register` quita `latitude` y `longitude` antes de validar y no las guarda. Prueba: se mandan y no quedan. |
+| **R92** Comentario | hecho | La cabecera dice ahora que el registro mira primero el límite y por qué. |
+
+### Resultado de las pruebas (login B-bis, 02-11)
+
+`node tests/todas.mjs`: **649 comprobaciones bien en 19 juegos, todo bien** (`registro` 76).
 
 ## Login, parte B (registro, verificación y recuperación)
 
