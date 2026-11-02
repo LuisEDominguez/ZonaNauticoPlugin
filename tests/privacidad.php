@@ -116,7 +116,9 @@ try {
 	$r_a_comercio = $resena( $tienda, $ana, 3 );
 	wp_delete_user( $comercio );
 	$ok( 'al borrar un comercio se borran las preguntas que le hicieron (como el Laravel)', ! $existe( $p_a_comercio ) );
-	$ok( 'las reseñas de sus negocios siguen mientras el negocio exista (el negocio se borra aparte)', $existe( $r_a_comercio ) );
+	$ok( 'R95 (Luis: A): sus negocios pasan a borrador y se quedan sin dueño', 'draft' === get_post_status( $tienda ) && '' === get_post_meta( $tienda, 'user_id', true ) );
+	$ok( 'R95: los negocios de otros comercios no se tocan', 'publish' === get_post_status( $ajena ) && (string) $otro_com === get_post_meta( $ajena, 'user_id', true ) );
+	$ok( 'R95: las reseñas de sus negocios se guardan (no se pierde nada; la administración decide)', $existe( $r_a_comercio ) );
 } finally {
 	foreach ( $entradas as $entrada ) {
 		if ( is_int( $entrada ) ) {

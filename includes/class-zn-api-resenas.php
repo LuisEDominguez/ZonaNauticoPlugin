@@ -18,6 +18,7 @@
  *   padre, como el Laravel) o la administración de la app. Solo cambia la respuesta; null la borra y "" es 422
  *   (regla del PATCH; el Laravel no dejaba borrarla). 200 {data: reseña}.
  * La puntuación del negocio se recalcula sola (ZN_Comentarios). Sin permiso, 401 «This action is unauthorized.».
+ * Crear y responder cuentan para el límite de escrituras por cuenta (R94; 429). Borrar, no.
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -100,6 +101,10 @@ class ZN_API_Resenas {
 	}
 
 	public static function crear( WP_REST_Request $peticion ): WP_REST_Response {
+		$espera = ZN_API::limite_de_escritura();
+		if ( null !== $espera ) {
+			return ZN_Limite::demasiados( $espera );
+		}
 		$cuerpo = ZN_API::cuerpo( $peticion );
 		// La respuesta es del negocio (PATCH /review/reply); userId y datetime los pone el servidor.
 		unset( $cuerpo['response'], $cuerpo['userId'], $cuerpo['datetime'] );
@@ -112,13 +117,20 @@ class ZN_API_Resenas {
 			return ZN_Errores::sin_permiso();
 		}
 		// H13 (decisión de Luis: A): una reseña por persona y negocio, también si la suya está oculta.
-		$tiene = get_comments( array( 'type' => ZN_Comentarios::RESENA, 'post_id' => (int) $validado['valores']['comment_post_ID'], 'user_id' => $autor, 'status' => 'any', 'count' => true ) );
-		if ( $tiene ) {
-			return ZN_Errores::no_valido( array( 'businessId' => ZN_Esquema::mensaje( 'unique', 'businessId' ) ) );
+		$negocio  = (int) $validado['valores']['comment_post_ID'];
+		$repetida = static fn() => ZN_Errores::no_valido( array( 'businessId' => ZN_Esquema::mensaje( 'unique', 'businessId' ) ) );
+		if ( self::suyas( $autor, $negocio, true ) ) {
+			return $repetida();
 		}
 		$id = ZN_Esquema::guardar( ZN_Comentarios::RESENA, null, $validado['valores'], array( 'user_id' => $autor, 'comment_approved' => 1 ) );
 		if ( is_wp_error( $id ) ) {
 			return new WP_REST_Response( array( 'message' => 'Server Error' ), 500 );
+		}
+		// R93: dos POST a la vez (un doble toque) pasan los dos la comprobación de arriba. Después de guardar se
+		// vuelve a mirar: si no es la primera de esa persona en ese negocio, se borra y es una repetida.
+		if ( self::suyas( $autor, $negocio )[0] !== $id ) {
+			wp_delete_comment( $id, true );
+			return $repetida();
 		}
 		return new WP_REST_Response( array( 'data' => self::formatear( get_comment( $id ) ) ), 201 );
 	}
@@ -145,6 +157,10 @@ class ZN_API_Resenas {
 		if ( ! ZN_Roles::puede( 'review:reply', $resena ) ) {
 			return ZN_Errores::sin_permiso();
 		}
+		$espera = ZN_API::limite_de_escritura();
+		if ( null !== $espera ) {
+			return ZN_Limite::demasiados( $espera );
+		}
 		$validado = ZN_Esquema::validar( ZN_Comentarios::RESENA, array_intersect_key( ZN_API::cuerpo( $peticion ), array( 'response' => true ) ), array() );
 		if ( $validado['errores'] ) {
 			return ZN_Errores::no_valido( $validado['errores'] );
@@ -156,6 +172,15 @@ class ZN_API_Resenas {
 			}
 		}
 		return new WP_REST_Response( array( 'data' => self::formatear( get_comment( (int) $resena->comment_ID ) ) ) );
+	}
+
+	/** Ids (de menor a mayor) de las reseñas de una persona en un negocio, en cualquier estado; o cuántas hay. */
+	private static function suyas( int $autor, int $negocio, bool $contar = false ) {
+		$consulta = array( 'type' => ZN_Comentarios::RESENA, 'post_id' => $negocio, 'user_id' => $autor, 'status' => 'any' );
+		if ( $contar ) {
+			return (int) get_comments( $consulta + array( 'count' => true ) );
+		}
+		return array_map( 'intval', get_comments( $consulta + array( 'fields' => 'ids', 'orderby' => 'comment_ID', 'order' => 'ASC' ) ) );
 	}
 
 	/** Reseña en cualquier estado (también una oculta desde wp-admin: su autora puede borrarla); o null. */

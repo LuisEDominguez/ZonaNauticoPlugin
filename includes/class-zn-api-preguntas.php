@@ -16,6 +16,7 @@
  *   ZN_Roles::campos_editables_de_pregunta() (R41): el comercio, su asociación y la administración de la app,
  *   todo; quien preguntó, solo el texto, y la pregunta vuelve a quedar sin publicar. Lo demás se ignora (también
  *   userId: el destinatario no cambia, H15). Regla del PATCH: null borra y "" es 422. 200 {data}.
+ * Las dos cuentan para el límite de escrituras por cuenta (R94; 429).
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -79,6 +80,10 @@ class ZN_API_Preguntas {
 	}
 
 	public static function crear( WP_REST_Request $peticion ): WP_REST_Response {
+		$espera = ZN_API::limite_de_escritura();
+		if ( null !== $espera ) {
+			return ZN_Limite::demasiados( $espera );
+		}
 		$cuerpo   = array_intersect_key( ZN_API::cuerpo( $peticion ), array_flip( array( 'userId', 'question' ) ) );
 		$validado = ZN_Esquema::validar( ZN_Comentarios::PREGUNTA, $cuerpo );
 		$comercio = (int) ( $validado['valores']['user_id'] ?? 0 );
@@ -117,6 +122,10 @@ class ZN_API_Preguntas {
 		$campos = ZN_Roles::campos_editables_de_pregunta( $pregunta );
 		if ( ! $campos ) {
 			return ZN_Errores::sin_permiso();
+		}
+		$espera = ZN_API::limite_de_escritura();
+		if ( null !== $espera ) {
+			return ZN_Limite::demasiados( $espera );
 		}
 		$validado = ZN_Esquema::validar( ZN_Comentarios::PREGUNTA, array_intersect_key( ZN_API::cuerpo( $peticion ), array_flip( $campos ) ), array() );
 		if ( $validado['errores'] ) {

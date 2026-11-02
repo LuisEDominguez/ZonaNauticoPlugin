@@ -5,7 +5,8 @@
  *   editarlas, vengan de la API, de wp-admin o de otro plugin. Los comentarios que no son de la app no se tocan.
  * - Al borrar una cuenta (decisión e de Luis, como la cascada del Laravel) se borran del todo las reseñas y
  *   preguntas que escribió y las preguntas que le hicieron si es un comercio; las puntuaciones se recalculan
- *   solas (ZN_Comentarios, al borrar cada reseña). Las reseñas de sus negocios se van con el negocio.
+ *   solas (ZN_Comentarios, al borrar cada reseña). Sus negocios no se borran (R95, decisión A de Luis): pasan a
+ *   borrador y se quedan sin dueño, con sus reseñas, y la administración decide qué hacer con ellos.
  * - Herramientas › Exportar / Borrar datos personales de WordPress incluyen los datos de la app: la cuenta
  *   (nombre, correo, teléfono, ubicación, rol), sus reseñas y sus preguntas. Borrar quita sus reseñas y
  *   preguntas, el teléfono y la ubicación; la cuenta (nombre y correo) sigue y se borra en Usuarios.
@@ -66,6 +67,29 @@ class ZN_Privacidad {
 		foreach ( array_merge( self::escritos_por( $id ), self::preguntas_a( $id ) ) as $comentario ) {
 			wp_delete_comment( $comentario, true );
 		}
+		foreach ( self::negocios_de( $id ) as $negocio ) {
+			wp_update_post( array( 'ID' => $negocio, 'post_status' => 'draft' ) );
+			delete_post_meta( $negocio, 'user_id' );
+		}
+	}
+
+	/** Ids de los negocios cuyo dueño (campo user_id) es la cuenta, en cualquier estado. */
+	private static function negocios_de( int $id ): array {
+		if ( $id <= 0 ) {
+			return array();
+		}
+		return array_map(
+			'intval',
+			get_posts(
+				array(
+					'post_type'      => ZN_Negocios::TIPO,
+					'post_status'    => 'any',
+					'meta_query'     => array( array( 'key' => 'user_id', 'value' => $id, 'type' => 'NUMERIC' ) ),
+					'posts_per_page' => -1,
+					'fields'         => 'ids',
+				)
+			)
+		);
 	}
 
 	/** Ids de las reseñas y preguntas que escribió la cuenta, en cualquier estado. */

@@ -142,6 +142,37 @@ try {
 	list( $estado, $cuerpo ) = $llamar( 'POST', '/review', array( 'businessId' => $tienda, 'score' => 3 ), 1 );
 	$ok( 'una cuenta de wp-admin no escribe reseñas por la API (401)', 401 === $estado && $sin_permiso === $cuerpo );
 
+	// R93: dos POST /review a la vez. Se simula que la otra petición guarda la suya justo después de que esta haya
+	// comprobado «no tiene ninguna» (la consulta de esa comprobación devuelve 0 y, en ese momento, entra la otra).
+	$carrera   = $cuenta( 'zn_usuario' );
+	$la_otra   = 0;
+	$simular   = static function ( $resultado, $consulta ) use ( $carrera, $tienda, &$la_otra ) {
+		if ( $la_otra || ! $consulta->query_vars['count'] || (int) $consulta->query_vars['user_id'] !== $carrera ) {
+			return $resultado;
+		}
+		$la_otra = ZN_Esquema::guardar( ZN_Comentarios::RESENA, null, array( 'comment_post_ID' => $tienda, 'score' => '2' ), array( 'user_id' => $carrera, 'comment_approved' => 1 ) );
+		return 0;
+	};
+	add_filter( 'comments_pre_query', $simular, 10, 2 );
+	list( $estado, $cuerpo ) = $llamar( 'POST', '/review', array( 'businessId' => $tienda, 'score' => 5 ), $carrera );
+	remove_filter( 'comments_pre_query', $simular, 10 );
+	$suyas = get_comments( array( 'type' => ZN_Comentarios::RESENA, 'post_id' => $tienda, 'user_id' => $carrera, 'status' => 'any', 'fields' => 'ids' ) );
+	$ok( 'R93: la otra petición guardó la suya en medio (la simulación funciona)', is_int( $la_otra ) && $la_otra > 0 );
+	$ok( 'R93: esta responde 422 en businessId y solo queda una reseña (la primera)', 422 === $estado && isset( $cuerpo['errors']['businessId'] ) && array( $la_otra ) === array_map( 'intval', $suyas ) );
+	wp_delete_comment( $la_otra, true );
+
+	// R94: como mucho 20 escrituras por hora y cuenta (también cuentan las que no valen).
+	$prisas = $cuenta( 'zn_usuario' );
+	$vistos = array();
+	for ( $i = 1; $i <= 20; $i++ ) {
+		$vistos[] = $llamar( 'POST', '/review', array( 'businessId' => $tienda, 'score' => 9 ), $prisas )[0];
+	}
+	list( $estado, $cuerpo ) = $llamar( 'POST', '/faq', array( 'userId' => $comercio, 'question' => '¿Hola? (prueba)' ), $prisas );
+	$ok( 'R94: 20 escrituras seguidas pasan (aquí, 422 por la nota)', array_fill( 0, 20, 422 ) === $vistos );
+	$ok( 'R94: la 21.ª (también de otro tipo) → 429 «Too Many Attempts.» y no guarda nada', 429 === $estado && array( 'message' => 'Too Many Attempts.' ) === $cuerpo && 0 === (int) get_comments( array( 'user_id' => $prisas, 'status' => 'any', 'count' => true ) ) );
+	list( $estado ) = $llamar( 'POST', '/review', array( 'businessId' => $tienda, 'score' => 9 ), $usuario2 );
+	$ok( 'R94: a otra cuenta no le afecta', 422 === $estado );
+
 	// --- PATCH /review/reply/{id} ---
 	list( $estado, $cuerpo ) = $llamar( 'PATCH', "/review/reply/$id_resena", array( 'response' => 'Gracias <3' ) );
 	$ok( 'responder sin sesión: 401 «Unauthenticated.»', 401 === $estado && $no_autenticado === $cuerpo );
@@ -237,6 +268,14 @@ try {
 	ZN_Tokens::anular( $token );
 } finally {
 	wp_set_current_user( 0 );
+	// Filas de intentos de escritura de las cuentas temporales (R94).
+	global $wpdb;
+	foreach ( $cuentas as $id ) {
+		$u = get_userdata( $id );
+		foreach ( $u ? array_keys( ZN_Limite::claves( 'escritura', $u->user_email ) ) : array() as $clave ) {
+			$wpdb->delete( ZN_Limite::tabla(), array( 'clave' => $clave ) );
+		}
+	}
 	foreach ( $entradas as $entrada ) {
 		if ( is_int( $entrada ) ) {
 			wp_delete_post( $entrada, true );

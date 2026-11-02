@@ -1,7 +1,7 @@
 <?php
 /**
  * Límite de intentos común (R59): para el login, la recuperación de contraseña, el reenvío del correo de
- * verificación y el registro (R30, R62). Cada acción tiene varias reglas; basta con que una se pase.
+ * verificación, el registro (R30, R62) y las escrituras de reseñas y preguntas (R94). Cada acción tiene varias reglas; basta con que una se pase.
  *
  * - Para que nadie pueda bloquear a otra persona (R75), la regla estricta es por cuenta + IP: quien falla
  *   desde su IP se para, pero el dueño de la cuenta sigue entrando desde la suya. Por cuenta sola hay un tope
@@ -38,6 +38,8 @@ class ZN_Limite {
 		// Por cuenta, 10 por hora (R89): también frena los fallos que lleguen a la vez sobre un mismo código.
 		'codigo'    => array( 'cuenta_ip' => array( 5, 900 ), 'cuenta' => array( 10, HOUR_IN_SECONDS ), 'ip' => array( 50, 900 ) ),
 		'registro'  => array( 'ip' => array( 10, HOUR_IN_SECONDS ) ),
+		// Escrituras desde la app (reseñas, respuestas y preguntas; R94): por cuenta, ya con sesión.
+		'escritura' => array( 'cuenta' => array( 20, HOUR_IN_SECONDS ) ),
 	);
 
 	public static function iniciar(): void {

@@ -193,6 +193,15 @@ class ZN_API {
 		return is_array( $cuerpo ) ? $cuerpo : array();
 	}
 
+	/**
+	 * Límite de escrituras de la cuenta de la sesión (R94): null si puede seguir, o los segundos que tiene que esperar.
+	 * Cuenta también las que luego no valen (422), como un intento.
+	 */
+	public static function limite_de_escritura(): ?int {
+		$cuenta = wp_get_current_user();
+		return $cuenta->exists() ? ZN_Limite::intentar( 'escritura', $cuenta->user_email ) : null;
+	}
+
 	public static function no_encontrado(): WP_REST_Response {
 		return new WP_REST_Response( array( 'message' => 'Not found.' ), 404 );
 	}

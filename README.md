@@ -86,9 +86,12 @@ destinatario se guarda en la propia pregunta (`user_id`), como en el Laravel. La
 del negocio se recalcula sola con la media de sus reseñas aprobadas. Los comentarios nativos de
 WordPress están cerrados (sin formulario, sin `/wp/v2/comments` y fuera de feeds y widgets).
 
+**Límite de escrituras (R94).** Crear reseñas, responderlas y hacer o modificar preguntas: 20 por hora y cuenta
+(cuentan también las que no valen); al pasarse, `429 «Too Many Attempts.»`.
+
 **Datos personales (R65).** Reseñas y preguntas no guardan la IP, el navegador ni el correo de quien escribe.
 Al borrar una cuenta se borran sus reseñas y preguntas (y las que le hicieron, si es un comercio) y se recalculan
-las puntuaciones. En Herramientas › Exportar / Borrar datos personales aparece «App Zona Náutico»: exporta la
+las puntuaciones; sus negocios pasan a borrador y se quedan sin dueño (R95). En Herramientas › Exportar / Borrar datos personales aparece «App Zona Náutico»: exporta la
 cuenta, sus reseñas y sus preguntas; borrar quita sus reseñas y preguntas, el teléfono y la ubicación (la cuenta se
 borra en Usuarios). `includes/class-zn-privacidad.php`.
 
