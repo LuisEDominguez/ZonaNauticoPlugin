@@ -49,8 +49,27 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Panel R40, parte 1-bis | 02-11-2026 | `20959b2` (v0.18.0) | `b11dd54` (v0.18.1) | R97, R98 = A y nombres de pila en «Mi zona» |
 | Panel R40, parte 1-ter | 02-11-2026 | `b11dd54` (v0.18.1) | `2cece16` (v0.18.2) | La federación ve dos niveles (decisión de Luis) |
 | Panel R40, nota ronda 24 | 02-11-2026 | `2cece16` (v0.18.2) | `b7f2297` (v0.18.3) | La federación no ve el correo de los comercios de sus asociaciones |
+| Panel R40, parte 2a | 02-11-2026 | `b7f2297` (v0.18.3) | `9eb02bc` (v0.19.0) | Editar negocios, novedades y sorteos desde «Mi zona» |
 
 ---
+
+## Panel R40, parte 2a: editar el contenido desde «Mi zona»
+
+Luis (02-11, 12:56): sí a la parte 2 por trozos; este es el **2a, contenido**. Después irán 2b (cuentas) y 2c
+(fotos), cada uno con su sí. Diff: `git diff 00b7732 9eb02bc`. Pruebas escritas antes (fallaban).
+**Como escribe desde wp-admin: revisor principal + uno de seguridad, solo el diff.**
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **Quién edita qué** | hecho | `ZN_Panel::editable( yo, id, 'save'\|'delete' )`: solo negocio, novedad o sorteo, no en la papelera ni `auto-draft`, y `ZN_Roles::puede( '<recurso>:<acción>', entrada, yo )`, es decir, exactamente lo que la app le deja (un nivel; en sorteos sin herencia). Lo del segundo nivel de la federación se ve pero no se edita. Comercios y demás, nada (`puede_entrar`). |
+| **Formulario** | hecho | `admin.php?page=zn-panel&editar=<id>`; se envía por POST a la misma dirección con `zn_hacer` (guardar\|borrar), nunca `action` (R97). Se procesa en `load-toplevel_page_zn-panel` con `check_admin_referer( 'zn_panel_<id>' )` y vuelve con GET (avisos por transient de 60 s). Todo escapado (`esc_attr`, `esc_textarea`, `esc_html`, `esc_url`). |
+| **Campos** | hecho | Solo los de `ZN_Panel::CAMPOS` (textos, categoría, descripción/horario, fechas, ganadores, bases). Sin dueño (aunque se mande, no se lee), fotos, vídeos, coordenadas ni negocio de la novedad. Cada valor con `ZN_Esquema::comprobar()` y aviso en español (`aviso()`); vacío = borrar si no es obligatorio. Web y bases sin protocolo → `https://`. Fechas del calendario a `Y-m-d H:i:s`; si el fin queda antes del inicio (con lo guardado), no cambia ninguna fecha. Guarda con `ZN_Esquema::guardar()` (R80; `post_author` sigue en 0). |
+| **Estado** | hecho | Solo «Publicado» o «Borrador» (otro valor: aviso). Si estaba en otro estado (pendiente, privado), sale «(sin cambiar)». **Para Luis:** así una asociación puede publicar un borrador de su comercio; si un borrador significa «pendiente de aprobar por la administración», habría que quitarlo. |
+| **Borrar** | hecho | `ZN_Roles::puede( '<recurso>:delete' )`; borrado definitivo como `DELETE` de la app; botón con confirmación. |
+| **Límite** | hecho | `ZN_Limite::intentar( 'escritura', correo )` antes de mirar los datos: las 20 por hora y cuenta de la app (R94), compartidas con la app. Borrar no cuenta (como en la app). |
+
+`node tests/todas.mjs`: **938 comprobaciones bien en 23 juegos** (`panel` 119). Por HTTP, una vez, con la cuenta
+de prueba: el formulario sale con su sello; guardar → 302 y «Cambios guardados»; sin sello → 403.
 
 ## Panel R40: nota de la ronda 24 (correo del segundo nivel)
 
