@@ -331,10 +331,142 @@ try {
 	$ok( '2a: el formulario de algo ajeno no sale', false === strpos( $form, '<form' ) && false === strpos( $form, 'Negocio ajeno temporal' ) );
 	unset( $_GET['editar'] );
 
-	// Límite de escrituras por cuenta (el de la app, R94): 20 por hora.
 	foreach ( array( $federacion, $asociacion, $comercio ) as $id ) {
 		$claves = array_merge( $claves, array_keys( ZN_Limite::claves( 'escritura', get_userdata( $id )->user_email ) ) );
 	}
+
+	// --- Parte 2b (Luis, 02-11): cuentas. Alta con correo, renombrar y baja desactivando; solo lo que deja la app ---
+	// Contador de escrituras a cero para esta parte (las de 2a cuentan para el límite).
+	$wpdb->query( 'DELETE FROM ' . ZN_Limite::tabla() . " WHERE clave IN ('" . implode( "','", array_map( 'esc_sql', array_unique( $claves ) ) ) . "')" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+	$correos = array();
+	$coger   = static function ( $nulo, $correo ) use ( &$correos ) {
+		$correos[] = $correo;
+		return true; // No sale (ni a Mailpit).
+	};
+	add_filter( 'pre_wp_mail', $coger, 1, 2 );
+	$alta = static function ( int $quien, string $nombre, string $correo ) use ( &$creados ) {
+		wp_set_current_user( $quien );
+		$r = ZN_Panel::dar_de_alta( get_userdata( $quien ), array( 'name' => $nombre, 'email' => $correo ) );
+		wp_set_current_user( 0 );
+		if ( ! empty( $r['id'] ) ) {
+			$creados['usuarios'][] = $r['id'];
+		}
+		return $r;
+	};
+	$cuantas = static fn() => (int) ( new WP_User_Query( array( 'search' => '*-temporal-panel@*', 'search_columns' => array( 'user_email' ), 'count_total' => true, 'fields' => 'ID' ) ) )->get_total();
+
+	// Alta.
+	$r     = $alta( $asociacion, 'Comercio nuevo (temporal)', 'nuevo-comercio-temporal-panel@ejemplo.invalid' );
+	$nuevo = get_userdata( (int) ( $r['id'] ?? 0 ) );
+	$ok( '2b: la asociación da de alta un comercio que cuelga de ella', $r['ok'] && $nuevo && 'commerce' === ZN_Roles::rol_app( $nuevo ) && $asociacion === ZN_Roles::padre( $nuevo->ID ) );
+	$ok( '2b: con su nombre (first_name) y un nombre interno al azar, como /register', 'Comercio nuevo (temporal)' === $nuevo->first_name && 0 === strpos( $nuevo->user_login, 'zn' ) && $nuevo->user_login === $nuevo->display_name );
+	$ok( '2b: sin verificar (lo verifica al poner su contraseña con el código)', '1' !== (string) get_user_meta( $nuevo->ID, 'zn_verificado', true ) );
+	$aviso = end( $correos );
+	$ok( '2b: le llega un correo que explica cómo entrar, sin contraseña', $aviso && 'nuevo-comercio-temporal-panel@ejemplo.invalid' === $aviso['to'] && false !== strpos( $aviso['message'], 'Olvidé la contraseña' ) && false === stripos( $aviso['message'], 'contraseña:' ) );
+	$ok( '2b: su contraseña es al azar y nadie la conoce (no es vacía)', ! wp_check_password( '', $nuevo->user_pass, $nuevo->ID ) );
+	$antes = $cuantas();
+	$ok( '2b: correo repetido: aviso y no se crea', ! $alta( $asociacion, 'Otro', 'nuevo-comercio-temporal-panel@ejemplo.invalid' )['ok'] );
+	$ok( '2b: correo mal escrito: aviso en español', false !== strpos( implode( ' ', $alta( $asociacion, 'Otro', 'no-es-un-correo' )['avisos'] ), 'El email' ) );
+	$ok( '2b: sin nombre: aviso', ! $alta( $asociacion, '', 'sin-nombre-temporal-panel@ejemplo.invalid' )['ok'] );
+	$ok( '2b: …y ninguna de esas se ha creado', $antes === $cuantas() );
+	$r          = $alta( $federacion, 'Asociación nueva (temporal)', 'nueva-asociacion-temporal-panel@ejemplo.invalid' );
+	$nueva_asoc = get_userdata( (int) ( $r['id'] ?? 0 ) );
+	$ok( '2b: la federación da de alta una asociación suya', $r['ok'] && $nueva_asoc && 'association' === ZN_Roles::rol_app( $nueva_asoc ) && $federacion === ZN_Roles::padre( $nueva_asoc->ID ) );
+	$antes = $cuantas();
+	$ok( '2b: un comercio no da de alta nada (no tiene panel)', ! $alta( $comercio, 'X', 'de-comercio-temporal-panel@ejemplo.invalid' )['ok'] && $antes === $cuantas() );
+
+	// Renombrar.
+	$renombra = static function ( int $quien, int $id, string $nombre ) {
+		wp_set_current_user( $quien );
+		$r = ZN_Panel::renombrar( get_userdata( $quien ), $id, $nombre );
+		wp_set_current_user( 0 );
+		clean_user_cache( $id );
+		return $r;
+	};
+	$ok( '2b: la asociación cambia el nombre de su comercio', $renombra( $asociacion, $comercio, 'Comercio renombrado (temporal)' )['ok'] && 'Comercio renombrado (temporal)' === get_userdata( $comercio )->first_name );
+	$ok( '2b: un nombre vacío no se guarda', ! $renombra( $asociacion, $comercio, '' )['ok'] && 'Comercio renombrado (temporal)' === get_userdata( $comercio )->first_name );
+	$ok( '2b: la federación cambia el de su asociación', $renombra( $federacion, $asociacion, 'Asociación renombrada (temporal)' )['ok'] && 'Asociación renombrada (temporal)' === get_userdata( $asociacion )->first_name );
+	$no = array(
+		'la asociación, un comercio ajeno'           => array( $asociacion, $ajeno ),
+		'la asociación, su usuario (no es comercio)' => array( $asociacion, $usuario ),
+		'la asociación, a sí misma'                  => array( $asociacion, $asociacion ),
+		'la asociación, a su federación'             => array( $asociacion, $federacion ),
+		'la federación, el comercio del 2.º nivel'   => array( $federacion, $comercio ),
+		'otra asociación, el comercio de esta'       => array( $otra_asoc, $comercio ),
+	);
+	foreach ( $no as $caso => $quien_que ) {
+		$ok( "2b: no renombra: $caso", ! $renombra( $quien_que[0], $quien_que[1], 'Cambiado sin permiso' )['ok'] && 'Cambiado sin permiso' !== get_userdata( $quien_que[1] )->first_name );
+	}
+
+	// Baja = desactivar.
+	$desactiva = static function ( int $quien, int $id ) {
+		wp_set_current_user( $quien );
+		$r = ZN_Panel::desactivar( get_userdata( $quien ), $id );
+		wp_set_current_user( 0 );
+		return $r;
+	};
+	$neg_baja = $entrada( ZN_Negocios::TIPO, $comercio, 'Negocio de la baja (temporal)' );
+	$nov_baja = $entrada( ZN_Eventos::TIPO, $comercio, 'Novedad de la baja (temporal)' );
+	$sor_baja = $entrada( ZN_Sorteos::TIPO, $comercio, 'Sorteo de la baja (temporal)' );
+	$token    = ZN_Tokens::emitir( $comercio );
+	$ok( '2b: no da de baja: la asociación, un comercio ajeno', ! $desactiva( $asociacion, $ajeno ) && ! ZN_Panel::desactivada( $ajeno ) );
+	$ok( '2b: no da de baja: la federación, el comercio del 2.º nivel', ! $desactiva( $federacion, $comercio ) && ! ZN_Panel::desactivada( $comercio ) );
+	$ok( '2b: la asociación da de baja su comercio (desactivada)', $desactiva( $asociacion, $comercio ) && ZN_Panel::desactivada( $comercio ) );
+	$ok( '2b: no se borra nada: la cuenta sigue y sus cosas también', false !== get_userdata( $comercio ) && null !== get_post( $neg_baja ) && null !== get_post( $nov_baja ) && null !== get_post( $sor_baja ) );
+	$ok( '2b: sus negocios, novedades y sorteos pasan a borrador', 'draft' === get_post_status( $neg_baja ) && 'draft' === get_post_status( $nov_baja ) && 'draft' === get_post_status( $sor_baja ) );
+	$ok( '2b: sus sesiones de la app se cierran', 0 === ZN_Tokens::validar( (string) $token ) );
+	$peticion = new WP_REST_Request( 'POST', '/' . ZN_NAMESPACE . '/login' );
+	$peticion->set_header( 'Content-Type', 'application/json' );
+	$peticion->set_body( wp_json_encode( array( 'email' => get_userdata( $comercio )->user_email, 'password' => $clave ) ) );
+	$respuesta = rest_do_request( $peticion );
+	$ok( '2b: no puede entrar en la app (la misma respuesta que una contraseña mala)', 401 === $respuesta->get_status() && 'error' === ( $respuesta->get_data()['status'] ?? null ) );
+	$ok( '2b: desactivada ya no se edita ni se vuelve a dar de baja', ! $renombra( $asociacion, $comercio, 'Otra vez' )['ok'] && ! $desactiva( $asociacion, $comercio ) );
+	$ok( '2b: sus cosas ya no se editan desde el panel de su asociación', ! $edita( $asociacion, $neg_hijo, array( 'city' => 'Bueu' ) )['ok'] );
+	$ok( '2b: la federación da de baja su asociación…', $desactiva( $federacion, $nueva_asoc->ID ) && ZN_Panel::desactivada( $nueva_asoc->ID ) );
+	update_user_meta( $nueva_asoc->ID, 'zn_verificado', '1' );
+	$ok( '2b: …y esa asociación ya no entra al panel', ! ZN_Panel::puede_entrar( get_userdata( $nueva_asoc->ID ) ) );
+
+	// La administración la reactiva desde Usuarios.
+	wp_set_current_user( $wp_admin );
+	$acciones = apply_filters( 'user_row_actions', array(), get_userdata( $comercio ) );
+	$ok( '2b: un administrador ve «Reactivar» en la lista de usuarios', isset( $acciones['zn_reactivar'] ) && false !== strpos( $acciones['zn_reactivar'], '_wpnonce=' ) );
+	$ok( '2b: no en una cuenta activa', ! isset( apply_filters( 'user_row_actions', array(), get_userdata( $ajeno ) )['zn_reactivar'] ) );
+	wp_set_current_user( $asociacion );
+	$ok( '2b: una cuenta del panel no lo ve', ! isset( apply_filters( 'user_row_actions', array(), get_userdata( $comercio ) )['zn_reactivar'] ) );
+	wp_set_current_user( 0 );
+	$ok( '2b: reactivar la deja entrar otra vez; sus cosas siguen en borrador (las publica la administración)', ZN_Panel::reactivar( $comercio ) && ! ZN_Panel::desactivada( $comercio ) && 200 === rest_do_request( $peticion )->get_status() && 'draft' === get_post_status( $neg_baja ) );
+
+	// La página.
+	$html = $pintar( $asociacion );
+	$ok( '2b: la asociación tiene «Dar de alta un comercio» y «Editar» en su comercio', false !== strpos( $html, 'cuenta=nueva' ) && false !== strpos( $html, 'Dar de alta un comercio' ) && false !== strpos( $html, 'cuenta=' . $comercio . '"' ) );
+	$ok( '2b: no en su usuario ni en cuentas ajenas', false === strpos( $html, 'cuenta=' . $usuario . '"' ) );
+	$html_fed = $pintar( $federacion );
+	$ok( '2b: la federación: «Dar de alta una asociación», «Editar» en su asociación y no en el comercio', false !== strpos( $html_fed, 'Dar de alta una asociación' ) && false !== strpos( $html_fed, 'cuenta=' . $asociacion . '"' ) && false === strpos( $html_fed, 'cuenta=' . $comercio . '"' ) );
+	$ok( '2b: la desactivada sale como tal', false !== strpos( $html_fed, 'Desactivada' ) );
+	$_GET['cuenta'] = 'nueva';
+	$form           = $pintar( $asociacion );
+	$ok( '2b: el alta pide nombre y correo, con sello y sin contraseña', false !== strpos( $form, 'name="zn_cuenta[name]"' ) && false !== strpos( $form, 'name="zn_cuenta[email]"' ) && false !== strpos( $form, 'name="_wpnonce"' ) && false === stripos( $form, 'password' ) && false === strpos( $form, 'name="action"' ) );
+	$_GET['cuenta'] = (string) $comercio;
+	$form           = $pintar( $asociacion );
+	$ok( '2b: editar un comercio: nombre y «Dar de baja»; el correo no se cambia', false !== strpos( $form, 'name="zn_cuenta[name]"' ) && false === strpos( $form, 'name="zn_cuenta[email]"' ) && false !== strpos( $form, 'value="baja"' ) );
+	$_GET['cuenta'] = (string) $ajeno;
+	$ok( '2b: el de un comercio ajeno no sale', false === strpos( $pintar( $asociacion ), '<form' ) );
+	unset( $_GET['cuenta'] );
+	$ok( '2b: la página de cuentas está permitida (sin «action»)', ZN_Panel::pagina_permitida( 'admin.php', array( 'page' => ZN_Panel::PAGINA, 'cuenta' => 'nueva' ), array( 'zn_hacer' => 'alta' ) ) );
+
+	// Las altas cuentan para el límite de escrituras de la app.
+	for ( $i = 0; $i < 25; $i++ ) {
+		$r = $alta( $otra_asoc, "Comercio $i (temporal)", "limite-$i-temporal-panel@ejemplo.invalid" );
+	}
+	$ok( '2b: pasado el límite de escrituras, no da más altas', ! $r['ok'] && false === email_exists( 'limite-24-temporal-panel@ejemplo.invalid' ) );
+	$claves = array_merge( $claves, array_keys( ZN_Limite::claves( 'escritura', get_userdata( $otra_asoc )->user_email ) ) );
+	remove_filter( 'pre_wp_mail', $coger, 1 );
+	foreach ( array( $federacion, $asociacion, $comercio ) as $id ) {
+		$claves = array_merge( $claves, array_keys( ZN_Limite::claves( 'escritura', get_userdata( $id )->user_email ) ) );
+	}
+	$wpdb->query( 'DELETE FROM ' . ZN_Limite::tabla() . " WHERE clave IN ('" . implode( "','", array_map( 'esc_sql', array_unique( $claves ) ) ) . "')" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+
+	// Límite de escrituras por cuenta (el de la app, R94): 20 por hora.
 	for ( $i = 0; $i < 20; $i++ ) {
 		$edita( $federacion, $sor_federac, array( 'winners' => (string) ( $i + 1 ) ) );
 	}

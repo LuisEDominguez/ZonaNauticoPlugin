@@ -77,7 +77,8 @@ class ZN_API_Sesion {
 		}
 
 		$cuenta = get_user_by( 'email', $email );
-		$de_app = $cuenta && ZN_Roles::rol_app( $cuenta );
+		// Una cuenta dada de baja en el panel (2b) responde igual que una contraseña mala.
+		$de_app = $cuenta && ZN_Roles::rol_app( $cuenta ) && ! ZN_Panel::desactivada( $cuenta->ID );
 		// Una sola comprobación en todos los casos (R38).
 		$vale = wp_check_password( $clave, $de_app ? $cuenta->user_pass : self::huella_de_relleno(), $de_app ? $cuenta->ID : 0 );
 		if ( ! $de_app || ! $vale ) {

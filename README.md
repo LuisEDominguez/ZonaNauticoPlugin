@@ -176,7 +176,12 @@ que la app les deja guardar (`ZN_Roles::puede`, un nivel): textos, categoría, f
 pasar a borrador pero no publicar (eso, la administración); y borrar, a la papelera, si la app les deja borrar
 (las novedades de un negocio borrado pasan a borrador). Al restaurar el negocio desde la papelera, sus novedades
 siguen en borrador: hay que publicarlas a mano. En el servidor, **nunca** `EMPTY_TRASH_DAYS` a 0 en wp-config.php:
-con 0, WordPress no usa la papelera y borrar desde el panel sería para siempre. Con sello, el esquema común y el límite de escrituras
+con 0, WordPress no usa la papelera y borrar desde el panel sería para siempre.
+**Cuentas (parte 2b).** La asociación da de alta, renombra y da de baja sus comercios; la federación, sus
+asociaciones (con los permisos de la app). Alta: nombre y correo; la cuenta se crea sin verificar y con una
+contraseña al azar que nadie conoce, y le llega un correo para ponerla con «Olvidé la contraseña» en la app.
+Baja = desactivar: no entra en la app ni en el panel, se cierran sus sesiones y sus cosas pasan a borrador; no se
+borra nada. La administración la reactiva en Usuarios («Reactivar»); sus cosas las vuelve a publicar ella. Con sello, el esquema común y el límite de escrituras
 de la app. Sin dueño, fotos, vídeos ni coordenadas.
 
 **Dueños de novedades y sorteos.** Campo `user_id`, elegido en su ficha («Dueño») entre las cuentas de
