@@ -40,6 +40,8 @@ class ZN_Limite {
 		'registro'  => array( 'ip' => array( 10, HOUR_IN_SECONDS ) ),
 		// PATCH /user: la contraseña actual al cambiar el correo o la contraseña (R69), ya con sesión.
 		'datos'     => array( 'cuenta_ip' => array( 5, 900 ), 'cuenta' => array( 20, HOUR_IN_SECONDS ) ),
+		// PATCH /user con un correo nuevo: cada uno manda un correo a esa dirección (R105).
+		'correo'    => array( 'cuenta' => array( 3, DAY_IN_SECONDS ) ),
 		// Escrituras desde la app (reseñas, respuestas y preguntas; R94): por cuenta, ya con sesión.
 		'escritura' => array( 'cuenta' => array( 20, HOUR_IN_SECONDS ) ),
 	);

@@ -73,6 +73,12 @@ $llamar = static function ( string $metodo, string $ruta, array $datos = array()
 	return array( $respuesta->get_status(), $respuesta->get_data(), $respuesta->get_headers() );
 };
 $patch = static fn( int $id, array $datos, int $quien = -1, string $ip = '192.0.2.80' ) => $llamar( 'PATCH', "/user/$id", $datos, -1 === $quien ? $id : $quien, $ip );
+// Pone a cero el tope de cambios de correo de la cuenta (R105), para seguir probando con ella.
+$sin_tope = static function ( int $id ) use ( $wpdb ) {
+	foreach ( array_keys( ZN_Limite::claves( 'correo', get_userdata( $id )->user_email ) ) as $clave_tope ) {
+		$wpdb->delete( ZN_Limite::tabla(), array( 'clave' => $clave_tope ) );
+	}
+};
 $base  = rest_url( ZN_NAMESPACE );
 // El Local de Windows reinicia su PHP tras muchas peticiones seguidas (502 unos segundos): se espera y se repite.
 $http = static function ( string $metodo, string $ruta, ?array $cuerpo = null, ?string $token = null, bool $formulario = false ) use ( $base ) {
@@ -199,6 +205,7 @@ try {
 	$al_nuevo = $ultimo_a( $nuevo );
 	$datos    = $enlace( $al_nuevo );
 	$ok( 'al correo nuevo le llega el enlace /verify-email con id y token', $datos && $marta === $datos['id'] && false !== strpos( $al_nuevo['message'], '/verify-email' ) );
+	$ok( 'R105: el correo nuevo dice que, sin cuenta, se ignore y no se pulse nada', $al_nuevo && false !== strpos( $al_nuevo['message'], 'Si no tienes cuenta en Zona Náutico' ) );
 	$al_viejo = $ultimo_a( $viejo );
 	$ok( 'al correo viejo le llega un aviso, sin el enlace', $al_viejo && ! $enlace( $al_viejo ) && false === strpos( $al_viejo['message'], 'token=' ) );
 	$ok( 'solo se guarda la huella del token', ! in_array( $datos['token'] ?? '', get_user_meta( $marta ), true ) && false === strpos( wp_json_encode( get_user_meta( $marta ) ), $datos['token'] ?? 'x' ) );
@@ -214,7 +221,9 @@ try {
 	ZN_Tokens::emitir( $marta );
 	list( $estado, $cuerpo ) = $llamar( 'POST', '/verify-email', $datos );
 	$ok( 'POST con el token bueno: 200 success y el correo cambia', 200 === $estado && array( 'status' => 'success' ) === $cuerpo && $nuevo === get_userdata( $marta )->user_email );
-	$ok( 'el pendiente se borra y la cuenta sigue verificada', '' === get_user_meta( $marta, 'zn_email_nuevo', true ) && '1' === get_user_meta( $marta, 'zn_verificado', true ) );
+	$confirmado = $ultimo_a( $viejo );
+	$ok( 'R107: al confirmar, al correo viejo le llega otro aviso de que ya ha cambiado', $confirmado && $confirmado !== $al_viejo && false !== stripos( $confirmado['subject'], 'ha cambiado' ) );
+	$ok( 'el pendiente se borra y la cuenta sigue verificada','' === get_user_meta( $marta, 'zn_email_nuevo', true ) && '1' === get_user_meta( $marta, 'zn_verificado', true ) );
 	$ok( 'al cambiar el correo se anulan todos sus tokens', 0 === (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . ZN_Tokens::tabla() . ' WHERE user_id = %d AND anulado IS NULL', $marta ) ) && 0 === $tokens_antes ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 	list( $estado ) = $llamar( 'POST', '/verify-email', $datos );
 	$ok( 'el enlace vale una sola vez', 400 === $estado );
@@ -242,6 +251,7 @@ try {
 	$patch( $luis, array( 'password' => 'Nueva-misdatos-4', 'currentPassword' => $clave ) );
 	list( $estado ) = $llamar( 'POST', '/verify-email', $datos );
 	$ok( 'cambiar la contraseña anula el cambio de correo pendiente', 400 === $estado && '' === get_user_meta( $luis, 'zn_email_nuevo', true ) );
+	$sin_tope( $luis );
 	$patch( $luis, array( 'email' => $otro, 'currentPassword' => 'Nueva-misdatos-4' ) );
 	$datos = $enlace( $ultimo_a( $otro ) );
 	update_user_meta( $luis, 'zn_desactivada', '1' );
@@ -255,6 +265,51 @@ try {
 	$usados[] = $mas;
 	list( $estado ) = $patch( $sara, array( 'email' => $mas, 'password' => 'Nueva-misdatos-5', 'currentPassword' => $clave ) );
 	$ok( 'contraseña y correo a la vez: la contraseña cambia y el correo queda pendiente', 200 === $estado && wp_check_password( 'Nueva-misdatos-5', get_userdata( $sara )->user_pass, $sara ) && $mas === get_user_meta( $sara, 'zn_email_nuevo', true ) );
+
+	// R106: volver a mandar su correo de siempre cancela el cambio pendiente (sin pedir la contraseña).
+	$correos = array();
+	list( $estado ) = $patch( $sara, array( 'email' => get_userdata( $sara )->user_email ) );
+	$ok( 'R106: mandar su correo actual cancela el cambio pendiente', 200 === $estado && '' === get_user_meta( $sara, 'zn_email_nuevo', true ) && '' === get_user_meta( $sara, 'zn_email_nuevo_token', true ) && ! $correos );
+
+	// R105: como mucho 3 cambios de correo pedidos al día por cuenta.
+	$teo = $cuenta( 'zn_usuario', 'Teo' );
+	for ( $i = 1; $i <= 3; $i++ ) {
+		$direccion = "teo$i-" . wp_rand( 1000, 9999 ) . '-temporal-misdatos@ejemplo.invalid';
+		$usados[]  = $direccion;
+		list( $estado ) = $patch( $teo, array( 'email' => $direccion, 'currentPassword' => $clave ) );
+	}
+	$ok( 'R105: el 3.er cambio de correo del día vale', 200 === $estado && $direccion === get_user_meta( $teo, 'zn_email_nuevo', true ) );
+	$correos   = array();
+	$cuarta    = 'teo4-' . wp_rand( 1000, 9999 ) . '-temporal-misdatos@ejemplo.invalid';
+	$usados[]  = $cuarta;
+	list( $estado, $cuerpo ) = $patch( $teo, array( 'email' => $cuarta, 'currentPassword' => $clave ) );
+	$ok( 'R105: el 4.º, 429 sin mandar correo ni cambiar el pendiente', 429 === $estado && 'Too Many Attempts.' === ( $cuerpo['message'] ?? null ) && ! $correos && $direccion === get_user_meta( $teo, 'zn_email_nuevo', true ) );
+	list( $estado ) = $patch( $teo, array( 'name' => 'Teo (prueba)' ) );
+	$ok( 'R105: el nombre se sigue pudiendo cambiar', 200 === $estado );
+
+	// R108: si al guardar resulta que otra cuenta tiene el mismo correo (dos peticiones a la vez), se deshace.
+	$uxia     = $cuenta( 'zn_usuario', 'Uxía' );
+	$antiguo  = get_userdata( $uxia )->user_email;
+	$carrera  = 'uxia-' . wp_rand( 1000, 9999 ) . '-temporal-misdatos@ejemplo.invalid';
+	$usados[] = $carrera;
+	$patch( $uxia, array( 'email' => $carrera, 'currentPassword' => $clave ) );
+	$datos  = $enlace( $ultimo_a( $carrera ) );
+	$doble  = 0;
+	$colar  = static function ( $id ) use ( $uxia, $carrera, &$doble, $wpdb ) {
+		if ( $uxia === (int) $id && ! $doble ) {
+			// La otra petición, justo a la vez: escribe otra cuenta con el mismo correo sin pasar por WordPress.
+			$wpdb->insert( $wpdb->users, array( 'user_login' => 'doble-' . wp_rand( 1000, 9999 ) . '-temporal-misdatos', 'user_pass' => 'x', 'user_email' => $carrera, 'user_registered' => gmdate( 'Y-m-d H:i:s' ) ) );
+			$doble = (int) $wpdb->insert_id;
+		}
+	};
+	add_action( 'profile_update', $colar, 1 );
+	list( $estado, $cuerpo ) = $llamar( 'POST', '/verify-email', $datos );
+	remove_action( 'profile_update', $colar, 1 );
+	clean_user_cache( $uxia );
+	$ok( 'R108: correo repetido al guardar: 400 y vuelve el correo de antes', $doble && 400 === $estado && 'error' === ( $cuerpo['status'] ?? null ) && $antiguo === get_userdata( $uxia )->user_email );
+	if ( $doble ) {
+		$wpdb->delete( $wpdb->users, array( 'ID' => $doble ) );
+	}
 
 	// --- Límite de intentos de la contraseña actual ---
 	$eva = $cuenta( 'zn_usuario', 'Eva' );

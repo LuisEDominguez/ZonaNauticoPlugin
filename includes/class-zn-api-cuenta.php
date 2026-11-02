@@ -30,7 +30,9 @@
  *   /verify-email?id=&token=, igual que el de /verify (token al azar del que solo se guarda la huella, VERIFICAR_HORAS,
  *   una vez; abrirlo pinta el botón y el POST confirma). Al viejo le llega un aviso sin el enlace. Al confirmar se
  *   cambia user_email (si nadie se lo ha quedado entre medias y la cuenta no está de baja) y se anulan todos sus
- *   tokens: se vuelve a entrar con el correo nuevo. Cambiar la contraseña anula el cambio pendiente.
+ *   tokens: se vuelve a entrar con el correo nuevo; al viejo le llega otro aviso (R107). Si tras guardar resulta que
+ *   otra cuenta tiene el mismo correo (dos peticiones a la vez), se deshace (R108). Cambiar la contraseña anula el
+ *   cambio pendiente.
  * - Los correos salen con wp_mail(): fuera de producción, solo a @ejemplo.invalid (R57).
  */
 
@@ -154,7 +156,7 @@ class ZN_API_Cuenta {
 		wp_mail(
 			$email,
 			'Zona Náutico: confirma tu correo nuevo',
-			"Hola:\n\nPara usar este correo en tu cuenta de la app Zona Náutico, abre este enlace:\n\n$enlace\n\nCaduca en " . self::VERIFICAR_HORAS . " horas. Si no lo has pedido tú, no hagas nada.\n"
+			"Hola:\n\nPara usar este correo en tu cuenta de la app Zona Náutico, abre este enlace:\n\n$enlace\n\nCaduca en " . self::VERIFICAR_HORAS . " horas.\n\nSi no tienes cuenta en Zona Náutico o no lo has pedido tú, ignora este correo y no pulses nada.\n"
 		);
 		wp_mail(
 			$cuenta->user_email,
@@ -185,14 +187,29 @@ class ZN_API_Cuenta {
 			return new WP_REST_Response( array( 'status' => 'error', 'message' => 'The email has already been taken.' ), 400 );
 		}
 		self::anular_cambio_de_correo( $id );
-		// Sin el aviso propio de WordPress: el nuestro ya llegó al correo viejo al pedirlo.
+		$viejo = $cuenta->user_email;
+		// Sin el aviso propio de WordPress: mandamos el nuestro (R107).
 		add_filter( 'send_email_change_email', '__return_false', PHP_INT_MAX );
 		// profile_update anula todos sus tokens (aquí no hay ninguno en uso).
 		$resultado = wp_update_user( array( 'ID' => $id, 'user_email' => $email ) );
+		// WordPress no tiene user_email único: si otra petición a la vez se ha quedado el mismo correo, se deshace (R108).
+		global $wpdb;
+		$repetido = ! is_wp_error( $resultado ) && 1 < (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->users} WHERE user_email = %s", $email ) );
+		if ( $repetido ) {
+			wp_update_user( array( 'ID' => $id, 'user_email' => $viejo ) );
+		}
 		remove_filter( 'send_email_change_email', '__return_false', PHP_INT_MAX );
+		if ( $repetido ) {
+			return new WP_REST_Response( array( 'status' => 'error', 'message' => 'The email has already been taken.' ), 400 );
+		}
 		if ( is_wp_error( $resultado ) ) {
 			return new WP_REST_Response( array( 'status' => 'error', 'message' => 'Invalid token' ), 400 );
 		}
+		wp_mail(
+			$viejo,
+			'Zona Náutico: el correo de tu cuenta ha cambiado',
+			"Hola:\n\nEl correo de tu cuenta en la app Zona Náutico ya no es este: se ha confirmado el cambio a otro correo. Desde ahora, los avisos y los códigos irán al nuevo.\n\nSi no has sido tú, avisa a Zona Náutico.\n"
+		);
 		ZN_Tokens::anular_todos( $id );
 		update_user_meta( $id, 'zn_verificado', '1' );
 		foreach ( array( 'zn_codigo', 'zn_codigo_caduca', 'zn_codigo_fallos' ) as $clave_meta ) {

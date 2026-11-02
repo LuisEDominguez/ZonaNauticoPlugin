@@ -23,7 +23,8 @@
  * - La contraseña cambia al momento con wp_set_password(): se anulan los demás tokens de la cuenta (no el de quien
  *   la cambia, R56), el código de recuperación y el cambio de correo pendiente, y se avisa por correo.
  * - El correo nuevo no vale hasta confirmarlo con el enlace que le llega (ZN_API_Cuenta::pedir_cambio_de_correo);
- *   al viejo le llega un aviso. Hasta entonces se entra con el viejo y la respuesta lo sigue dando.
+ *   al viejo le llega un aviso. Hasta entonces se entra con el viejo y la respuesta lo sigue dando. Como mucho 3
+ *   correos nuevos pedidos al día por cuenta (R105, 429). Mandar su correo de siempre cancela el pendiente (R106).
  * - Cuenta también en el límite de escrituras de la cuenta (R94). Responde 200 con {data} como GET /user/{id}.
  */
 
@@ -70,12 +71,16 @@ class ZN_API_Usuarios {
 		$valores  = $validado['valores'];
 		$errores  = $validado['errores'];
 		$email    = null;
+		$cancelar = false;
 		if ( array_key_exists( 'email', $cuerpo ) ) {
 			$resultado = ZN_Esquema::comprobar( ZN_Esquema::campos( 'cuenta' )['email'], $cuerpo['email'], 'email' );
 			if ( isset( $resultado['errores'] ) ) {
 				$errores += $resultado['errores'];
 			} elseif ( 0 !== strcasecmp( (string) $resultado['valores']['user_email'], $cuenta->user_email ) ) {
 				$email = (string) $resultado['valores']['user_email'];
+			} else {
+				// Su correo de siempre: cancela el cambio pendiente, si lo hay (R106).
+				$cancelar = true;
 			}
 		}
 		$pide   = isset( $valores['user_pass'] ) || null !== $email || isset( $errores['password'] ) || isset( $errores['email'] );
@@ -102,6 +107,11 @@ class ZN_API_Usuarios {
 			if ( $otra && (int) $otra !== (int) $cuenta->ID ) {
 				return ZN_Errores::no_valido( array( 'email' => ZN_Esquema::mensaje( 'unique', 'email' ) ) );
 			}
+			// Cada correo nuevo pedido manda un correo a esa dirección: pocos al día (R105).
+			$espera = null === $email ? null : ZN_Limite::intentar( 'correo', $cuenta->user_email );
+			if ( null !== $espera ) {
+				return ZN_Limite::demasiados( $espera );
+			}
 		}
 
 		if ( isset( $valores['first_name'] ) ) {
@@ -127,6 +137,8 @@ class ZN_API_Usuarios {
 		}
 		if ( null !== $email ) {
 			ZN_API_Cuenta::pedir_cambio_de_correo( get_userdata( $cuenta->ID ), $email );
+		} elseif ( $cancelar ) {
+			ZN_API_Cuenta::anular_cambio_de_correo( $cuenta->ID );
 		}
 
 		clean_user_cache( $cuenta->ID );

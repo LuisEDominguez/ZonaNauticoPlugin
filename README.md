@@ -174,7 +174,9 @@ incorrect.». Primero el formato (422), luego el límite de intentos `datos` (5 
 contraseña nueva anula los demás tokens (no el de la app que la cambia), el código de recuperación y el cambio
 de correo pendiente, y avisa por correo. El correo nuevo queda pendiente (`zn_email_nuevo`) hasta que se pulsa
 el botón del enlace `GET /verify-email?id=…&token=…` que le llega (48 horas, una vez); al viejo le llega un
-aviso. Al confirmar se anulan todos los tokens de la cuenta y se entra con el correo nuevo.
+aviso. Como mucho 3 correos nuevos pedidos al día por cuenta (R105, 429); mandar su correo de siempre cancela el
+cambio pendiente (R106). Al confirmar se anulan todos los tokens de la cuenta, se entra con el correo nuevo y al
+viejo le llega otro aviso (R107); si otra cuenta se ha quedado el mismo correo a la vez, se deshace (R108).
 
 **Panel de asociación y federación (R40).** Asociación y federación entran a wp-admin
 por `wp-login.php` con su misma cuenta de la app (correo verificado, un solo rol; mismo límite de intentos

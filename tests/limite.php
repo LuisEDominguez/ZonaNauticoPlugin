@@ -111,7 +111,7 @@ try {
 	$ok( 'R77: la huella no es el SHA-256 sin clave (no se puede sacar probando)', ! in_array( hash( 'sha256', 'login|ip|192.0.2.12' ), array_keys( ZN_Limite::claves( 'login', null ) ), true ) );
 	$todo = wp_json_encode( $wpdb->get_results( "SELECT * FROM $tabla" ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 	$ok( 'en la tabla solo hay huellas: ni la IP ni el correo', false === strpos( $todo, '192.0.2.10' ) && false === strpos( $todo, 'victima-temporal' ) );
-	$wpdb->insert( $tabla, array( 'clave' => str_repeat( 'f', 64 ), 'intentos' => 1, 'desde' => gmdate( 'Y-m-d H:i:s', time() - 2 * HOUR_IN_SECONDS ) ) );
+	$wpdb->insert( $tabla, array( 'clave' => str_repeat( 'f', 64 ), 'intentos' => 1, 'desde' => gmdate( 'Y-m-d H:i:s', time() - max( array_merge( ...array_map( static fn( $r ) => array_column( $r, 1 ), array_values( ZN_Limite::REGLAS ) ) ) ) - HOUR_IN_SECONDS ) ) );
 	$mias[] = str_repeat( 'f', 64 );
 	$intentar( 'login', null, '192.0.2.40' );
 	$ok( 'R77: una fila caducada desaparece en la siguiente llamada', 0 === $filas( array( str_repeat( 'f', 64 ) ) ) );
