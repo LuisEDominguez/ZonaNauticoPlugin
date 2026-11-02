@@ -187,6 +187,12 @@ class ZN_API {
 		return is_user_logged_in() && null !== ZN_Roles::rol_app( wp_get_current_user() );
 	}
 
+	/** Lo que manda la app en el cuerpo (JSON o formulario); lo de la dirección no cuenta en las escrituras. */
+	public static function cuerpo( WP_REST_Request $peticion ): array {
+		$cuerpo = $peticion->get_json_params() ?: $peticion->get_body_params();
+		return is_array( $cuerpo ) ? $cuerpo : array();
+	}
+
 	public static function no_encontrado(): WP_REST_Response {
 		return new WP_REST_Response( array( 'message' => 'Not found.' ), 404 );
 	}

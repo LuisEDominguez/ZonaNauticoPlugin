@@ -83,8 +83,13 @@ const pruebas = {
     assert.equal((await pedir(`/faq/${resenas.data[0]._id}`)).estado, 404);
     // La ficha de una no publicada se comprueba en tests/comentarios.php (aquí no sabemos su id).
   },
-  'solo lectura: POST da 405, como el Laravel': async () => {
-    assert.equal((await pedir('/faq', 'POST')).estado, 405);
+  'escribir pide sesión: POST sin token da 401 «Unauthenticated.»': async () => {
+    const r = await pedir('/faq', 'POST');
+    assert.equal(r.estado, 401);
+    assert.deepEqual(r.cuerpo, { message: 'Unauthenticated.' });
+  },
+  'PUT da 405, como el Laravel': async () => {
+    assert.equal((await pedir('/faq', 'PUT')).estado, 405);
   },
 };
 

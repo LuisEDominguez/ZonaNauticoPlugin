@@ -201,6 +201,13 @@ try {
 	$ok( 'HTTP: verificada', '1' === get_user_meta( $id_pagina, 'zn_verificado', true ) );
 	list( $estado, $html, $tipo ) = $http( html_entity_decode( $accion[1] ?? '' ), $formulario );
 	$ok( 'HTTP: pulsado otra vez, 400 y página que dice que el enlace no vale', 400 === $estado && 0 === strpos( $tipo, 'text/html' ) && false !== stripos( $html, 'no vale' ) );
+	// Con otro método (PUT) es un 405 de la API: JSON, no la página.
+	usleep( 400000 );
+	$put = wp_remote_request( $url_pagina, array( 'method' => 'PUT', 'timeout' => 60 ) );
+	$ok(
+		'HTTP: PUT /verify → 405 en JSON (no la página «Este enlace no vale»)',
+		! is_wp_error( $put ) && 405 === wp_remote_retrieve_response_code( $put ) && 0 === strpos( (string) wp_remote_retrieve_header( $put, 'content-type' ), 'application/json' ) && false !== strpos( (string) ( json_decode( wp_remote_retrieve_body( $put ), true )['message'] ?? '' ), 'not supported' )
+	);
 
 	// Enlace caducado.
 	$email_viejo = $correo_nuevo();

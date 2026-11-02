@@ -154,6 +154,8 @@ class ZN_Esquema {
 					'score'       => array( 'guardado' => 'score', 'tipo' => 'numero', 'entre' => array( 1, 5 ), 'obligatorio' => true, 'etiqueta' => 'La puntuación' ),
 					'title'       => array( 'guardado' => 'title', 'tipo' => 'escrito', 'max' => 50, 'etiqueta' => 'El título' ),
 					'description' => array( 'guardado' => 'comment_content', 'tipo' => 'escrito', 'max' => 2000, 'etiqueta' => 'El texto' ),
+					// Solo por PATCH /review/reply (el dueño del negocio); POST /review la quita antes de validar.
+					'response'    => array( 'guardado' => 'response', 'tipo' => 'escrito', 'max' => 2000, 'etiqueta' => 'La respuesta' ),
 				);
 
 			case ZN_Comentarios::PREGUNTA:

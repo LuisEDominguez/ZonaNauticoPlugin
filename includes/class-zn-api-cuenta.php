@@ -202,6 +202,10 @@ class ZN_API_Cuenta {
 		if ( $servida || ! $peticion instanceof WP_REST_Request || '/' . ZN_NAMESPACE . '/verify' !== strtolower( $peticion->get_route() ) || 'json' === $peticion->get_param( 'format' ) ) {
 			return $servida;
 		}
+		// Solo el enlace (GET) y el botón (POST); con otro método, el 405 de la API sale en JSON como en las demás rutas.
+		if ( ! in_array( $peticion->get_method(), array( 'GET', 'POST' ), true ) ) {
+			return $servida;
+		}
 		$datos  = $resultado instanceof WP_HTTP_Response ? $resultado->get_data() : array();
 		$estado = is_array( $datos ) ? ( $datos['status'] ?? 'error' ) : 'error';
 		header( 'Content-Type: text/html; charset=utf-8' );
@@ -286,7 +290,6 @@ class ZN_API_Cuenta {
 
 	/** Solo el cuerpo (JSON o formulario): lo que venga en la dirección se ignora (H8). */
 	private static function cuerpo( WP_REST_Request $peticion ): array {
-		$cuerpo = $peticion->get_json_params() ?: $peticion->get_body_params();
-		return is_array( $cuerpo ) ? $cuerpo : array();
+		return ZN_API::cuerpo( $peticion );
 	}
 }

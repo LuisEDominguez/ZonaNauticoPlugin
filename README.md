@@ -20,6 +20,11 @@ Base de la API: `<sitio>/wp-json/zonanautico/v1`
 | `GET /review/{id}` | público | mismas inclusiones |
 | `GET /faq` | público | `page`, `perPage` (máx. 50), `user` (el comercio), `published`, `order`, `includesUser` (`user` y `publisher`). Las no publicadas no salen nunca (H20) |
 | `GET /faq/{id}` | público | `includesUser` |
+| `POST /review` | **con token** | `businessId`, `score` (1 a 5), `description`, `title`. El autor es la cuenta del token (el `userId` de la app se ignora); una por persona y negocio (si no, 422); se publica al momento. `201 {data}` |
+| `DELETE /review/{id}` | **con token** | Quien la escribió o la administración de la app. Borrado definitivo. `200 {status: "success"}` |
+| `PATCH /review/reply/{id}` | **con token** | `response` (null la borra). El dueño del negocio o la administración de la app. `200 {data}` |
+| `POST /faq` | **con token** | `userId` (el comercio; si no lo es, 422), `question`. Queda sin publicar. `201 {data}` |
+| `PATCH /faq/{id}` | **con token** | `question`, `answer`, `published` (`true`/`false` o `1`/`0`). Comercio, su asociación y administración: todo; quien preguntó: solo el texto (y vuelve a no publicada). `200 {data}` |
 | `GET /user/{id}` | **con token** | La propia cuenta, o la que pueda ver (`user:read`…). Formato del UserResource del Laravel con `id` numérico |
 
 Los negocios se guardan como entradas personalizadas de WordPress (tipo `negocio`, menú «Negocios»
@@ -80,6 +85,12 @@ Las reseñas y las preguntas son comentarios de WordPress sobre el negocio (tipo
 destinatario se guarda en la propia pregunta (`user_id`), como en el Laravel. La puntuación
 del negocio se recalcula sola con la media de sus reseñas aprobadas. Los comentarios nativos de
 WordPress están cerrados (sin formulario, sin `/wp/v2/comments` y fuera de feeds y widgets).
+
+**Datos personales (R65).** Reseñas y preguntas no guardan la IP, el navegador ni el correo de quien escribe.
+Al borrar una cuenta se borran sus reseñas y preguntas (y las que le hicieron, si es un comercio) y se recalculan
+las puntuaciones. En Herramientas › Exportar / Borrar datos personales aparece «App Zona Náutico»: exporta la
+cuenta, sus reseñas y sus preguntas; borrar quita sus reseñas y preguntas, el teléfono y la ubicación (la cuenta se
+borra en Usuarios). `includes/class-zn-privacidad.php`.
 
 **Correo.** A las cuentas de la app WordPress no les manda «tu contraseña/tu correo ha cambiado» (lo
 hará la app). **Por defecto no sale ningún correo a personas reales**: solo a direcciones
@@ -180,5 +191,7 @@ un enlace de carpeta en `wp-content/plugins/zona-nautico`.
 - Login, refresh y logout (crea y borra cuentas, tokens y sus filas de intentos; también por HTTP): `wp eval-file tests/login.php`
 - Registro, verificación y recuperación (crea y borra cuentas; los correos se recogen y no salen): `wp eval-file tests/registro.php`
 - Dueño con permisos y guardado común (crea y borra cuentas, negocios y comentarios): `wp eval-file tests/escrituras.php`
+- Reseñas y preguntas desde la app (crea y borra cuentas, negocios y comentarios; también por HTTP): `wp eval-file tests/opiniones.php`
+- Datos personales: borrar cuenta, exportar y borrar (crea y borra cuentas, negocios y comentarios): `wp eval-file tests/privacidad.php`
 - Formato de los errores: `node tests/contrato-errores.mjs` y `wp eval-file tests/errores.php` (los dos solo leen)
 - Recalcular todas las puntuaciones (al final de una migración): `wp zona-nautico recalcular-puntuaciones`

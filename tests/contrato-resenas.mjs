@@ -84,8 +84,13 @@ const pruebas = {
     const { cuerpo: preguntas } = await pedir('/faq');
     assert.equal((await pedir(`/review/${preguntas.data[0]._id}`)).estado, 404);
   },
-  'solo lectura: POST da 405, como el Laravel': async () => {
-    assert.equal((await pedir('/review', 'POST')).estado, 405);
+  'escribir pide sesión: POST sin token da 401 «Unauthenticated.»': async () => {
+    const r = await pedir('/review', 'POST');
+    assert.equal(r.estado, 401);
+    assert.deepEqual(r.cuerpo, { message: 'Unauthenticated.' });
+  },
+  'PUT da 405, como el Laravel': async () => {
+    assert.equal((await pedir('/review', 'PUT')).estado, 405);
   },
   'la ruta de comentarios de WordPress está cerrada': async () => {
     const r = await fetch(`${BASE.replace(/zonanautico\/v1$/, '')}wp/v2/comments`);
