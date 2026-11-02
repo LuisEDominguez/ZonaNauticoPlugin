@@ -52,8 +52,24 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Panel R40, parte 2a | 02-11-2026 | `b7f2297` (v0.18.3) | `9eb02bc` (v0.19.0) | Editar negocios, novedades y sorteos desde «Mi zona» |
 | Panel R40, parte 2a-bis | 02-11-2026 | `9eb02bc` (v0.19.0) | `fe75dbb` (v0.19.1) | R99 = B, R100 = A, R101 |
 | Panel R40, parte 2b | 02-11-2026 | `a26168e` (v0.19.1) | `1611c4f` (v0.20.0) | Cuentas: alta con correo, renombrar y baja desactivando |
+| Panel R40, parte 2b-bis | 02-11-2026 | `1611c4f` (v0.20.0) | `2864e30` (v0.20.1) | R102 = A, R103 (correo de contacto pendiente), R104 |
 
 ---
+
+## Panel R40, parte 2b-bis (R102, R103, R104)
+
+Ronda 27: 2b sin fallos importantes. Luis (02-11, 14:12): R102 dejarlo así (A), R103 sí con el correo de contacto
+**pendiente**, R104 sí. Diff: `git diff 0886af0 2864e30`. Pruebas escritas antes (fallaban). **Un solo revisor, solo el diff.**
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **R102** Baja de una asociación | hecho (Luis: A) | Sin cambio de comportamiento: sus comercios se quedan sin gestor en el panel hasta que la administración los reasigne. El `confirm()` de la federación lo dice (texto con `esc_js`). README. |
+| **R103** Correo de alta | hecho, correo pendiente | `ZN_Panel::linea_contacto()`: «Si no conoces a quien te ha dado de alta… escribe a <ZN_CORREO_CONTACTO>»; sin la constante (o si no es un correo), «avisa a Zona Náutico» sin dirección. `nombre_para_correo()`: sin etiquetas, sin nada con `://`, `www.` ni forma de dominio, una sola línea, 100 caracteres como mucho. |
+| **R104** Códigos a cuentas dadas de baja | hecho | `ZN_API_Cuenta::cuenta_de_la_app()` ignora las cuentas con `zn_desactivada`: no reciben código ni reenvío de verificación; la respuesta sigue siendo la de siempre (200). |
+
+`node tests/todas.mjs`: todas las de PHP bien (`panel` 177); `contrato-negocios`, `contrato-eventos` y
+`contrato-sorteos` fallaron en bloque por HTTP (el PHP de Local reiniciándose) y, repetidas una a una, **las tres
+«Todo bien»**. 20 juegos limpios a la primera y 3 repetidos bien.
 
 ## Panel R40, parte 2b: cuentas (alta, renombrar, baja)
 
