@@ -37,6 +37,26 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Global-bis | 30-10-2026 | `df0b1b5` (v0.12.0) | `7bf450f` (v0.12.1) | R57-bis, R70, R71. Decisión R69: A |
 | Segundo bloque | 02-11-2026 | `7bf450f` (v0.12.1) | `100e42b` (v0.13.0) | R58 (esquema y validación comunes) y R59 (límite de intentos, tope de tokens). Decisión R40 de Luis |
 | Segundo bloque-bis | 02-11-2026 | `100e42b` (v0.13.0) | `494dfd9` (v0.13.1) | R75, R76, R77 (límite), R79, R80, R81 (esquema) y robustez de las pruebas. R78, al subir |
+| Segundo bloque-ter | 02-11-2026 | `494dfd9` (v0.13.1) | `f054082` (v0.13.2) | R82 (editar comentarios sin kses), R83 (IPv4 escritas como IPv6), borrador por defecto |
+
+---
+
+## Segundo bloque-ter (R82, R83)
+
+El revisor dio por buenos R75, R77, R79, R80 y R81; R76 parcial por R83. Luis dio el sí a R82, R83 y las dos
+mejoras (02-11).
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **R82** Editar un comentario pasaba por kses | hecho | Quitar los filtros de `pre_comment_content` no basta: `wp_update_comment()` vuelve a poner `wp_filter_kses` él mismo si quien escribió no tiene `unfiltered_html` (`comment.php`, al principio de la función). Por eso `ZN_Esquema::texto_tal_cual()` repone el texto ya validado en `wp_update_comment_data` (prioridad máxima, datos ya sin barras), solo durante esa llamada; el resto de `wp_update_comment()` (ganchos `edit_comment`, cachés, puntuación) no cambia. Pruebas en `tests/escrituras.php`: editar a «me encantó <3 volveré; menores <12 gratis y >65» sale entero, el filtro no queda puesto y una edición por fuera de `ZN_Esquema` sigue pasando por kses. |
+| **R83** IPv4 escritas como IPv6 | hecho | `ip_valida()` pasa `::ffff:a.b.c.d` a `a.b.c.d` (10 bytes a cero y `ffff`); `grupo()` y `ip()` la usan, y `en_lista()` reconoce así un proxy `::ffff:10.1.2.3` en `10.0.0.0/8`. Pruebas en `tests/limite.php`. En el servidor, mirar también la forma de `REMOTE_ADDR` (con R78). |
+| Borrador por defecto | hecho | `guardar()` ya no publica: sin `post_status` en `$extra` la entrada nueva queda en borrador. Prueba en `tests/escrituras.php`. |
+| Login: email válido antes de `intentar()` | apuntado | Requisito del login: validar el email con el esquema antes de contar el intento. |
+
+### Resultado de las pruebas (código del segundo bloque-ter, 02-11)
+
+`node tests/todas.mjs`: **497 comprobaciones bien en 17 juegos, todo bien** (`limite` 33, `escrituras` 26; el
+resto, igual).
 
 ---
 
