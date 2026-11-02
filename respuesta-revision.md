@@ -13,7 +13,7 @@ el sí de Luis.
 |---|---|
 | Todas a la vez (hilo que desarrolla) | `node tests/todas.mjs` |
 | Revisores (solo lectura, todas las que necesiten) | `node tests/contrato-negocios.mjs`, `contrato-eventos.mjs`, `contrato-sorteos.mjs`, `contrato-resenas.mjs`, `contrato-preguntas.mjs`, `contrato-muestras.mjs`, `contrato-errores.mjs`, `wp eval-file tests/admin-fichas.php`, `tests/esquema.php` y `tests/errores.php` (no guardan nada; `errores.php` registra rutas de prueba solo en memoria), además de peticiones GET y lectura de código |
-| Hilo que desarrolla (pasa el resultado a los revisores) | `wp eval-file tests/seguridad.php`, `tests/comentarios.php`, `tests/roles.php`, `tests/tokens.php`, `tests/limite.php` y `tests/escrituras.php` (crean datos, cuentas o filas temporales y los borran) y `node tests/puertas.mjs` (no guarda nada, pero envía una petición a XML-RPC) |
+| Hilo que desarrolla (pasa el resultado a los revisores) | `wp eval-file tests/seguridad.php`, `tests/comentarios.php`, `tests/roles.php`, `tests/tokens.php`, `tests/limite.php`, `tests/escrituras.php` y `tests/login.php` (crean datos, cuentas o filas temporales y los borran) y `node tests/puertas.mjs` (no guarda nada, pero envía una petición a XML-RPC) |
 
 Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** · **espera decisión** ·
 **se propone descartar**.
@@ -38,8 +38,46 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Segundo bloque | 02-11-2026 | `7bf450f` (v0.12.1) | `100e42b` (v0.13.0) | R58 (esquema y validación comunes) y R59 (límite de intentos, tope de tokens). Decisión R40 de Luis |
 | Segundo bloque-bis | 02-11-2026 | `100e42b` (v0.13.0) | `494dfd9` (v0.13.1) | R75, R76, R77 (límite), R79, R80, R81 (esquema) y robustez de las pruebas. R78, al subir |
 | Segundo bloque-ter | 02-11-2026 | `494dfd9` (v0.13.1) | `f054082` (v0.13.2) | R82 (editar comentarios sin kses), R83 (IPv4 escritas como IPv6), borrador por defecto |
+| Login A | 02-11-2026 | `bdca3f1` (v0.13.2) | `524ab78` (v0.14.0) | `POST /login`, `/refresh`, `/logout` (R30, R38, R39) y línea de R78 en el README |
 
 ---
+
+## Login, parte A (entrar, salir y renovar; sin correos)
+
+Luis dio el sí a este bloque (02-11). Registro y recuperación de contraseña, después y con otro sí.
+
+**Para los revisores (decidido por Luis para ahorrar):** un solo revisor por ronda (en login y registro,
+4–5); mirad solo el diff de la ronda, `git diff bdca3f1 524ab78`; y pasad las rondas cerradas de
+`REVISION.md` a otro archivo (p. ej. `REVISION-cerradas.md`) para que lo abierto quede corto. Una sola
+revisión al terminar cada bloque; los arreglos pequeños los compruebo con las pruebas y van a la ronda
+siguiente.
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **`POST /login`** | hecho | `includes/class-zn-api-sesion.php`. `{email, password}` solo del cuerpo (JSON o formulario); lo que llegue en la dirección se ignora (H8). 200 `{status: "success", token, id (número), role}` (`src/api/auth.ts:11-15`). Sin `args` en la ruta: la validación la hace la propia ruta. |
+| **Email válido antes de `intentar()`** | hecho | El email pasa por `ZN_Esquema::comprobar()` con el campo `email` del esquema de cuenta (formato y máximo, sin la regla `unique`); la contraseña, obligatoria y texto (sin mínimo: una cuenta migrada podría tener una más corta). Si algo falla, 422 con los textos del Laravel **y no se cuenta el intento**. |
+| **R59/R75 en el login** | hecho | `ZN_Limite::intentar( 'login', $email )` después de validar y **antes** de buscar la cuenta o mirar la contraseña; con 429 no se comprueba nada (probado: cero comprobaciones de contraseña). Acierto → `olvidar()`. |
+| **R30** Respuestas de la cuenta | hecho | Montadas a mano, sin `WP_Error`: credenciales malas → `401 {status: "error", message: "Unauthorized"}` (el cuerpo del traspaso, línea 124); sin verificar → `401 {status: "email-not-verified", message: "Email not verified"}`. Email que no existe → el mismo 401 (no 500, H28). |
+| **R38** Sin `wp_authenticate` | hecho | `wp_check_password()` directamente; solo cuentas con un único rol `zn_*`. Que la cuenta no exista, sea de wp-admin, tenga un rol de la app y otro de WordPress o la contraseña sea mala da la misma respuesta, y **siempre se comprueba una contraseña** (con una huella de relleno, `HUELLA_DE_RELLENO`, si no hay cuenta), así el tiempo tampoco lo delata. «Sin verificar» solo se dice con la contraseña buena; con la mala, «error». Probado que una cuenta de la app entra por `/login` aunque `wp_authenticate()` la rechace. |
+| **R39** (resto) | hecho | Respuesta del login con su prueba de contrato (también por HTTP). Al entrar, `WP_Session_Tokens::get_instance( $id )->destroy_all()`; no se abre sesión de WordPress ni se ponen cookies (probado por HTTP). La cabecera `Authorization` y `SCRIPT_NAME` en el servidor real siguen en la lista de «al subir». |
+| **`POST /refresh`** | hecho | Solo con un token que vale (la sesión tiene que venir del token, no de una cookie de wp-admin): emite uno nuevo, misma respuesta que el login, y anula el anterior. Con un token caducado, 401: hay que entrar de nuevo (no hay periodo de gracia como el `refresh_ttl` del JWT). Sin token, 401 «Unauthenticated.». |
+| **`POST /logout`** | hecho | Anula solo el token de la petición (los de otros móviles de la misma cuenta siguen) y responde 200 `{"message":"Successfully logged out"}`. Sin token o con uno ya anulado, 401 «Unauthenticated.». |
+| **R49** (parte) | hecho | Las respuestas de login, refresh y logout llevan `Cache-Control: no-store, private`. La caché del servidor sigue en la lista de «al subir». |
+| **R78** | hecho (README) | Línea nueva junto a `ZN_PROXIES`: los rangos IPv4 se escriben en forma normal (`10.0.0.0/8`), nunca como `::ffff:10.0.0.0/104`. Lo demás de R78, al subir. |
+
+**Apuntado (no se ha hecho):**
+- El texto exacto del `message` de «sin verificar» y del logout no está en los documentos; la app solo lee `status`. Si Alejandro tiene el del Laravel, se copia.
+- Las contraseñas migradas (`$2y$10$…`) se comprueban tal cual y no se rehacen al entrar (rehacerlas con `wp_set_password()` anularía los tokens de la cuenta). Se puede hacer al migrar, con su sí.
+- La app no llama a `/logout` ni a `/refresh` (`src/auth/sesion.ts`): es un cambio en la app, lo deciden Luis y Alejandro.
+- R30 «red de seguridad» (`wp_insert_user` → 422) va con el registro.
+- Las cuentas de prueba de Local (como `comercio-prueba`) no tienen `zn_verificado`: no pueden entrar hasta que exista la verificación (bloque B) o se marquen a mano.
+
+### Resultado de las pruebas (código del login A, 02-11)
+
+`node tests/todas.mjs`: **557 comprobaciones bien en 18 juegos, todo bien**. Nueva `tests/login.php`: 60
+(login por dentro desde IPs de documentación y por HTTP de verdad, refresh, logout, límite, sesiones de
+WordPress, limpieza de cuentas, tokens y filas de intentos). El resto, igual que en el segundo bloque-ter
+(`seguridad` 84, `roles` 90, `tokens` 60, `esquema` 65 con las pruebas añadidas entonces).
 
 ## Segundo bloque-ter (R82, R83)
 
