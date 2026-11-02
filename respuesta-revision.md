@@ -51,8 +51,27 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Panel R40, nota ronda 24 | 02-11-2026 | `2cece16` (v0.18.2) | `b7f2297` (v0.18.3) | La federación no ve el correo de los comercios de sus asociaciones |
 | Panel R40, parte 2a | 02-11-2026 | `b7f2297` (v0.18.3) | `9eb02bc` (v0.19.0) | Editar negocios, novedades y sorteos desde «Mi zona» |
 | Panel R40, parte 2a-bis | 02-11-2026 | `9eb02bc` (v0.19.0) | `fe75dbb` (v0.19.1) | R99 = B, R100 = A, R101 |
+| Panel R40, parte 2b | 02-11-2026 | `a26168e` (v0.19.1) | `1611c4f` (v0.20.0) | Cuentas: alta con correo, renombrar y baja desactivando |
 
 ---
+
+## Panel R40, parte 2b: cuentas (alta, renombrar, baja)
+
+Luis (02-11, 13:18 y 13:56): sí al 2b; **alta con correo** y **baja desactivando**. Diff: `git diff a26168e 1611c4f`.
+Pruebas escritas antes (fallaban). **Toca cuentas y datos personales: revisor principal + uno de seguridad, solo el diff.**
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **Quién y a quién** | hecho | `ZN_Panel::ROL_HIJO`: la asociación gestiona solo `zn_comercio`; la federación, solo `zn_asociacion`. `gestionable( yo, id, 'save'\|'delete' )`: un único rol y ese, `zn_parent_id` = él, no desactivada y `ZN_Roles::puede( 'user:<acción>' )` (user:save_/delete_<rol> de la app). Ni usuarios normales, ni a sí mismo, ni el 2.º nivel de la federación. Alta: `puede_dar_de_alta()` = `user:register-<rol>`. |
+| **Alta** | hecho | `dar_de_alta( yo, {name, email} )`: límite de escrituras de la app (R94) antes de nada; nombre y correo con el esquema de cuenta (`comprobar`, avisos en español) y correo no repetido. Como `/register`: `user_login` y `display_name` `zn…` al azar, nombre en `first_name` (R53). **Contraseña al azar de 32 que nadie conoce, sin `zn_verificado`.** `zn_parent_id` = él. Correo «se ha creado tu cuenta… pulsa "Olvidé la contraseña"» (texto real del botón de la app, `acceso.olvido`); el código de `/reset-password` pone la contraseña y verifica el correo. Fuera de producción solo sale a @ejemplo.invalid (R57). |
+| **Renombrar** | hecho | `renombrar()`: solo el nombre (`first_name`; `last_name` vacío). El correo no se cambia en el panel (lo cambia su dueño desde la app, R69). Cuenta para el límite. |
+| **Baja = desactivar** | hecho | `desactivar()`: meta `zn_desactivada`; `ZN_Tokens::anular_todos()` y `destroy_all()` de sus sesiones; sus negocios, novedades y sorteos (publicados, programados, pendientes o privados) a borrador. No se borra nada. `POST /login` la trata como contraseña mala (mismo 401); `puede_entrar()` la deja fuera del panel; sus cosas ya no se editan desde el panel (`editable()`). |
+| **Reactivar** | hecho | Solo la administración: enlace «Reactivar» en Usuarios (`user_row_actions`, `edit_users`), `admin-post.php?action=zn_reactivar` con nonce `zn_reactivar_<id>` y `edit_users`. Sus cosas siguen en borrador (las publica la administración, como R99). |
+| **Formularios** | hecho | `admin.php?page=zn-panel&cuenta=nueva\|<id>`, POST con `zn_hacer` (alta\|guardar\|baja), nonce `zn_panel_cuenta_<nueva\|id>`, vuelta con GET. Sin campo de contraseña; el correo solo en el alta. Tabla de cuentas con columna «Estado» (Activa / Sin verificar / Desactivada) y «Editar» solo en las que gestiona. |
+
+`node tests/todas.mjs`: **991 comprobaciones bien en 23 juegos** (`panel` 172). Por HTTP, una vez, con la cuenta de
+prueba: alta → 302 y «Cuenta creada»; sin sello → 403. Queda en Local la cuenta inventada «Náutica del muelle
+(prueba)» (muelle-prueba@ejemplo.invalid), hija de asociacion-prueba, sin verificar.
 
 ## Panel R40, parte 2a-bis (R99, R100, R101)
 
