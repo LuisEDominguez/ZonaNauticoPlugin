@@ -47,8 +47,24 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Novedades y sorteos | 02-11-2026 | `5f1352e` (v0.16.1) | `077f02a` (v0.17.0) | Escrituras de novedades y sorteos desde la app y R96 |
 | Panel R40, parte 1 | 02-11-2026 | `077f02a` (v0.17.0) | `20959b2` (v0.18.0) | Asociación y federación entran a wp-admin y solo ven lo suyo (sin editar) |
 | Panel R40, parte 1-bis | 02-11-2026 | `20959b2` (v0.18.0) | `b11dd54` (v0.18.1) | R97, R98 = A y nombres de pila en «Mi zona» |
+| Panel R40, parte 1-ter | 02-11-2026 | `b11dd54` (v0.18.1) | `2cece16` (v0.18.2) | La federación ve dos niveles (decisión de Luis) |
 
 ---
+
+## Panel R40, parte 1-ter (la federación ve dos niveles)
+
+Ronda 23: 1-bis OK. Luis (02-11, 12:38) eligió **A**: en el panel la federación VE dos niveles (sus asociaciones
+y los comercios de estas), solo para leer; editar, en la parte 2, un nivel como en la app.
+Diff de la ronda: `git diff c57d68e 2cece16`. Pruebas escritas antes (4 fallaban). **Un solo revisor, solo el diff.**
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **Cuentas** | hecho | `ZN_Panel::cuentas()`: las hijas que puede leer (como antes) y, si es federación, los **comercios** (no los usuarios) que cuelgan de sus asociaciones (`hijas()`, una consulta con `IN`). Tres niveles, no. La asociación sigue con uno. |
+| **Contenido** | hecho | Negocios, novedades y sorteos de él y de todas esas cuentas (sale solo de `cuentas()`). |
+| **Página** | hecho | Columna «Depende de» en las cuentas (nombre de pila de la cuenta padre, o «Tú»). |
+| Permisos | sin cambios | `ZN_Roles::puede()` no cambia: solo es lo que se ve en el panel. |
+
+`node tests/todas.mjs`: **904 comprobaciones bien en 23 juegos** (`panel` 85).
 
 ## Panel R40, parte 1-bis (R97, R98 y nombres)
 
