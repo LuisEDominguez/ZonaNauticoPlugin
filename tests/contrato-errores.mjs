@@ -4,7 +4,7 @@
 // Los 401 (Unauthenticated / sin permiso) se comprueban en tests/errores.php: aún no hay rutas privadas.
 import assert from 'node:assert/strict';
 
-const BASE = (process.argv[2] ?? 'http://localhost:10010/wp-json/zonanautico/v1').replace(/\/+$/, '');
+const BASE = (process.argv[2] ?? (process.env.ZN_URL ?? 'http://localhost:10010').replace(/\/+$/, '') + '/wp-json/zonanautico/v1').replace(/\/+$/, '');
 
 async function pedir(ruta, metodo = 'GET') {
   const r = await fetch(`${BASE}${ruta}`, { method: metodo, headers: { Accept: 'application/json' } });

@@ -4,7 +4,7 @@
 //   node tests/contrato-preguntas.mjs [url-base]
 import assert from 'node:assert/strict';
 
-const BASE = (process.argv[2] ?? 'http://localhost:10010/wp-json/zonanautico/v1').replace(/\/+$/, '');
+const BASE = (process.argv[2] ?? (process.env.ZN_URL ?? 'http://localhost:10010').replace(/\/+$/, '') + '/wp-json/zonanautico/v1').replace(/\/+$/, '');
 
 const CAMPOS = ['_id', 'question', 'answer', 'published'];
 const USUARIO = ['_id', 'name', 'role', 'avatar'];

@@ -157,7 +157,9 @@ try {
 		$ok( 'R46: ?rest_route solo en la portada o /index.php (no en /otra-pagina/)', false === $probar( '/otra-pagina/', array( 'rest_route' => '/zonanautico/v1/' ) ) );
 
 		// R47: WordPress en una subcarpeta (/sitio): el camino tiene que empezar por la subcarpeta de verdad.
-		$subcarpeta = static fn( $url ) => str_replace( '://localhost:10010/', '://localhost:10010/sitio/', $url );
+		// Se mete /sitio detrás de la portada real, sea cual sea el dominio o el puerto de este WordPress.
+		$portada    = untrailingslashit( home_url() );
+		$subcarpeta = static fn( $url ) => 0 === strpos( $url, $portada ) ? $portada . '/sitio' . substr( $url, strlen( $portada ) ) : $url;
 		add_filter( 'home_url', $subcarpeta );
 		$ok( 'R47: en una subcarpeta vale /sitio/wp-json/zonanautico/v1/…', $con === $probar( '/sitio/wp-json/zonanautico/v1/user/1' ) );
 		$ok( 'R47: y no /xxxxxwp-json/zonanautico/v1 (recorte sin comprobar)', false === $probar( '/xxxxxwp-json/zonanautico/v1/user/1' ) );

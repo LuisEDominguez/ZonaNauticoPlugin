@@ -60,8 +60,10 @@ foreach ( $pendientes as $c ) {
 }
 
 // --- Usuario público: nunca el correo ---
-$dueno = ZN_API::usuario_publico( (int) get_post_field( 'post_author', get_posts( array( 'post_type' => ZN_Negocios::TIPO, 'title' => 'Taberna O Peirao (prueba)', 'numberposts' => 1, 'fields' => 'ids' ) )[0] ) );
-$ok( 'usuario público: solo _id, name, role y avatar', array( '_id', 'name', 'role', 'avatar' ) === array_keys( $dueno ) );
+// El dueño es el de la ficha (user_id), no el autor de la entrada, que puede ser 0 según cómo se creó.
+$taberna = get_posts( array( 'post_type' => ZN_Negocios::TIPO, 'title' => 'Taberna O Peirao (prueba)', 'numberposts' => 1, 'fields' => 'ids' ) );
+$dueno   = $taberna ? ZN_API::usuario_publico( ZN_Negocios::dueno( (int) $taberna[0] ) ) : null;
+$ok( 'usuario público: solo _id, name, role y avatar', is_array( $dueno ) && array( '_id', 'name', 'role', 'avatar' ) === array_keys( $dueno ) );
 $ok( 'sin cuenta ni nombre no hay usuario', null === ZN_API::usuario_publico( 0 ) );
 
 echo $fallos ? "\n$fallos fallo(s)\n" : "\nTodo bien\n";
