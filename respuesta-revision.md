@@ -69,7 +69,8 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Ronda 45-bis | 04-11-2026 | `cf983a8` (v0.29.1) | `93f4d0c` (v0.29.2) | R144 (escalar antes de girar); R142 y R143 anotados para «Al subir» |
 | Sorteos, parte 3 | 04-11-2026 | `93f4d0c` (v0.29.2) | `bece42f` (v0.30.0) | Gestionar participantes desde «Mi zona» y wp-admin |
 | Ronda 47 | 04-11-2026 | `bece42f` (v0.30.0) | `3db3ef0` (v0.30.1) | R147 (sello por acción y fila) y R148 (foto del sorteo de la dirección) |
-| Tanda C, parte 2 | 04-11-2026 | `3db3ef0` (v0.30.1) | (este commit, v0.30.2) | R50 y R109: sin permiso, 401 también cuando el id no existe |
+| Tanda C, parte 2 | 04-11-2026 | `3db3ef0` (v0.30.1) | `dff6625` (v0.30.2) | R50 y R109: sin permiso, 401 también cuando el id no existe |
+| Tanda C, parte 3 | 04-11-2026 | `dff6625` (v0.30.2) | (este commit, v0.30.3) | Preparar la subida: paquete (R55), lista «Día de la subida» y prueba de que sin `ZN_CORREO_REAL` no sale correo |
 
 ---
 
@@ -100,6 +101,18 @@ traspaso. Diff: `git diff a6e3ab4 HEAD`. Pruebas escritas antes (`tests/portada.
 | **Quién edita** | hecho | `ZN_Roles::actualizar` da al administrador los permisos de los dos tipos nuevos; `ZN_Instalacion::es_del_plugin` los reconoce para `uninstall.php` (R68). Panel R40 sin cambios. |
 | **Carga inicial** | hecho | `wp zona-nautico portada-inicial <carpeta de la app>`: 60 Novedades ZN (`zn_origen` = id de Adalo, fecha UTC de Adalo) y 6 slides con sus fotos subidas a medios. Repetirla no duplica. **Ejecutada en el Local** (60 y 6). |
 | **Pruebas** | hecho | `tests/portada.php` 36; sin regresiones en `instalacion` 28, `roles` 90, `panel` 177, `seguridad` 84, `esquema` 65, `contrato-negocios`, `contrato-muestras` y `puertas`. |
+
+## Tanda C, parte 3: preparar la subida (sin servidor)
+
+Aprobado por Luis (vía la maestra, 04-11). Diff: `git diff dff6625 HEAD`. Nada se ha subido ni enviado a ningún servidor.
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **R55** Paquete | hecho | `node herramientas/empaquetar.mjs [--salida <carpeta>]` (por defecto, Descargas): `git archive` de `HEAD` a `zona-nautico-<versión>.zip`, con todo dentro de `zona-nautico/`. Se para con cambios sin guardar (el zip saldría de `HEAD`) y si el paquete llevaría algo fuera de la lista permitida (`zona-nautico.php`, `uninstall.php`, `.htaccess`, `includes/*.php`, `assets/`). Prueba escrita antes: `tests/paquete.mjs` (6; no necesita Local; hace el zip de verdad en una carpeta temporal y lo lista con `tar`). |
+| **.gitattributes** | arreglado | La prueba encontró que `tests/ export-ignore` vale para `git archive` (que salta la carpeta) pero no para `git check-attr` (que mira archivo por archivo). Ahora `tests/**` y `herramientas/**`: las dos cosas dicen lo mismo. El zip de antes ya salía sin pruebas. |
+| **Día de la subida** | hecho | Una sola lista en el README que reúne todas las notas «al subir»: paquete (R55); `wp-config.php` (entorno, `ZN_CORREO_REAL` R57, `ZN_CORREO_CONTACTO` R103/R111, `EMPTY_TRASH_DAYS` R100, `DISABLE_WP_CRON`, R34e, `DISALLOW_UNFILTERED_HTML` R67); comprobaciones (R39, R49, R78/R59 proxy, R85); tickets (R131, R142, R143); cron real; cuentas de wp-admin (R67); plugins de correo (R57, R114); migración (R23) y la app (R112). Las menciones sueltas del README apuntan a la lista. |
+| **Correo** | hecho | `tests/correo-sin-salida.php` (20): con direcciones de `example.com` (reservado, de nadie) pasa por alta, reenvío, código, contraseña cambiada, cuenta borrada y `wp_mail` con Cc y Bcc; los 8 o más correos a direcciones de verdad se paran todos, y uno a `@ejemplo.invalid` sí saldría. La regla del interruptor, aparte en `ZN_Puertas::correo_real_activado()` para probarla también para producción (en Local el entorno no se puede cambiar): solo con la constante a `true` (ni `'1'` ni `1`) y entorno `production`. Se recogen y no salen, ni a Mailpit. |
+| **Pruebas** | hecho | `paquete` 6, `correo-sin-salida` 20 y `seguridad` 84; las tres nuevas (con `sin-adivinar`) añadidas a `tests/todas.mjs`. |
 
 ## Tanda C, parte 2 (R50, R109)
 

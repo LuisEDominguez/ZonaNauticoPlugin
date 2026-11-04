@@ -90,7 +90,7 @@ normal y las privadas, 401 «Unauthenticated.»). `ZN_Tokens::emitir()`, `valida
 
 En un servidor Apache, la cabecera `Authorization` tiene que llegar a PHP. El `.htaccess` estándar de
 WordPress ya lo hace con `RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]`; el plugin lee
-también `REDIRECT_HTTP_AUTHORIZATION`. **Comprobarlo en el servidor de verdad** antes de abrir el login.
+también `REDIRECT_HTTP_AUTHORIZATION`. **Comprobarlo en el servidor de verdad** antes de abrir el login (lista «Día de la subida», R39).
 
 **Puertas cerradas.** XML-RPC, páginas de autor (`?author=`) y vista embed, mapa del sitio, oEmbed,
 feeds, `/wp/v2/users`, `/wp/v2/media` y `/wp/v2/comments` (users y media siguen abiertas para quien
@@ -165,7 +165,7 @@ topes están en `ZN_Limite::REGLAS`. La IP es `REMOTE_ADDR`; `X-Forwarded-For` s
 `define( 'ZN_PROXIES', '10.0.0.0/8' );` (IPs o rangos, separados por comas). Los rangos IPv4 se escriben en
 su forma normal (`10.0.0.0/8`), nunca como IPv6 (`::ffff:10.0.0.0/104`): así escritos se ignorarían. Una IP
 que llegue como `::ffff:10.1.2.3` sí se reconoce (R78, R83). **Al subir al servidor,
-averiguar si Dinahosting pone un proxy delante y cuáles son sus IPs.** Además, como mucho 10 tokens
+averiguar si Dinahosting pone un proxy delante y cuáles son sus IPs** (lista «Día de la subida»). Además, como mucho 10 tokens
 activos por cuenta (`ZN_Tokens::MAX_ACTIVOS`): uno nuevo anula los más antiguos.
 
 **Entrar y salir de la app (R30, R38, R39).** `includes/class-zn-api-sesion.php`. `POST /login` con
@@ -226,7 +226,7 @@ sesión del panel (R98). **Editar (parte 2a):** en «Mi zona», «Editar» en lo
 que la app les deja guardar (`ZN_Roles::puede`, un nivel): textos, categoría, fechas, ganadores y bases; pueden
 pasar a borrador pero no publicar (eso, la administración); y borrar, a la papelera, si la app les deja borrar
 (las novedades de un negocio borrado pasan a borrador). Al restaurar el negocio desde la papelera, sus novedades
-siguen en borrador: hay que publicarlas a mano. En el servidor, **nunca** `EMPTY_TRASH_DAYS` a 0 en wp-config.php:
+siguen en borrador: hay que publicarlas a mano. En el servidor, **nunca** `EMPTY_TRASH_DAYS` a 0 en wp-config.php (lista «Día de la subida»):
 con 0, WordPress no usa la papelera y borrar desde el panel sería para siempre.
 **Cuentas (parte 2b).** La asociación da de alta, renombra y da de baja sus comercios; la federación, sus
 asociaciones (con los permisos de la app). Alta: nombre y correo; la cuenta se crea sin verificar y con una
@@ -242,29 +242,75 @@ de la app. Sin dueño, fotos, vídeos ni coordenadas.
 **Dueños de novedades y sorteos.** Campo `user_id`, elegido en su ficha («Dueño») entre las cuentas de
 comercio, asociación, federación o administración de la app; sale como `user` con `includesUser`.
 
-## Subir al servidor
+## Día de la subida
 
-Solo `zona-nautico.php`, `uninstall.php`, `includes/`, `assets/` y `.htaccess` (nada de pruebas ni documentación). El
-paquete se hace con git, que ya excluye lo demás (`.gitattributes`):
+La única lista de lo que hay que hacer y comprobar al subir el plugin a un servidor (primero el de pruebas, luego el
+de producción). Todo lo que en otras partes de este README dice «al subir» está aquí. Nada de esto se hace desde
+Local: son pasos en el servidor, con el visto bueno de Luis.
 
-    git archive --format=zip --prefix=zona-nautico/ -o zona-nautico.zip HEAD
+**1. El paquete (R55).** Siempre con el paquete, nunca copiando la carpeta:
 
-El `.htaccess` (Apache) bloquea además `.md`, `.mjs` y `tests/` por si se copiara la carpeta entera.
-Pendiente de comprobar en el servidor: que llega la cabecera `Authorization`, que `SCRIPT_NAME` es
-`index.php` (R39), que las respuestas con token no se guardan en caché (R49) y si hay un proxy delante
-(entonces, `ZN_PROXIES` con sus IPs, R59). En `wp-config.php`, `define( 'ZN_CORREO_CONTACTO', '…' );` con el
-correo que diga Luis: lo usan el correo de alta del panel (R103) y el de «tu cuenta se ha borrado» (R111); sin él,
-ese correo sale sin la frase «Si no has sido tú, escríbenos a …». **WP-Cron** depende de las visitas: para que el
-borrado de los tickets sea puntual, poner un cron real del servidor que llame cada día a `wp cron event run
---due-now` (y `define( 'DISABLE_WP_CRON', true );`). **Tickets de los sorteos (R131):** hace falta poder crear y
-escribir en `zn-privado-tickets/` **junto a** la carpeta de WordPress, fuera de la web (por ejemplo, si WordPress está
-en `/home/usuario/public_html/`, la carpeta es `/home/usuario/zn-privado-tickets/`). Si el hosting no lo deja, la app
-no deja participar (503) y wp-admin lo avisa: no hay plan B dentro de `uploads`. **Comprobar por HTTP que
-`zn-privado-tickets` no se puede abrir** (R142): si WordPress está en una subcarpeta de la web (`public_html/wp/`, estilo
-Bedrock), la carpeta por defecto quedaría dentro de la raíz web; entonces, poner con el filtro `zn_carpeta_tickets`
-una ruta fuera de ella. Si el camino lleva enlaces simbólicos (algunos hostings montan `/home` o `/var/www` así),
-`carpeta()` da `''` por seguridad (R143): poner con el mismo filtro la ruta real. Comprobar también que la tarea diaria
-(WP-Cron) se ejecuta.
+    node herramientas/empaquetar.mjs
+
+Deja `zona-nautico-<versión>.zip` en Descargas (`--salida <carpeta>` para otra). Sale de lo guardado en git (`HEAD`): con
+cambios sin guardar se para. Lleva solo `zona-nautico.php`, `uninstall.php`, `.htaccess`, `includes/` y `assets/`,
+dentro de `zona-nautico/`; las pruebas, los `.md` y `herramientas/` se quedan fuera (`.gitattributes`). Comprobado por
+`node tests/paquete.mjs`. El `.htaccess` (Apache) bloquea además `.md`, `.mjs` y `tests/` por si alguien copiara la
+carpeta entera.
+
+**2. `wp-config.php` del servidor.**
+- `define( 'WP_ENVIRONMENT_TYPE', 'staging' );` en el de pruebas y `'production'` en el de verdad.
+- **Correo (R57, R57-bis):** sin `ZN_CORREO_REAL` no sale ningún correo a personas reales, solo a `@ejemplo.invalid`
+  (lo comprueba `tests/correo-sin-salida.php`). Solo en producción: `define( 'ZN_CORREO_REAL', true );` (a `true`;
+  ni `'1'` ni `1`), y solo funciona con el entorno `production`. En el servidor de pruebas, **nunca**.
+- `define( 'ZN_CORREO_CONTACTO', '…' );` con el correo que diga Luis: lo usan el correo de alta del panel (R103) y el de
+  «tu cuenta se ha borrado» (R111). Sin él, esos correos salen sin la dirección de contacto.
+- **`EMPTY_TRASH_DAYS`: nunca a 0** (R100). Con 0, WordPress no usa la papelera y borrar desde el panel sería para siempre.
+- `define( 'DISABLE_WP_CRON', true );` si se pone el cron real del punto 5.
+- **R34e:** `WP_DEBUG_DISPLAY` a `false` y `display_errors` apagado.
+- **R67:** `define( 'DISALLOW_UNFILTERED_HTML', true );`.
+- `ZN_PROXIES` solo si hay proxy (punto 3).
+
+**3. Comprobar en el servidor (no se puede en Local).**
+- **R39:** que la cabecera `Authorization` llega a PHP (el `.htaccess` estándar de WordPress la pasa con
+  `RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]`; el plugin lee también `REDIRECT_HTTP_AUTHORIZATION`)
+  y que `SCRIPT_NAME` es `index.php` con su PHP-CGI/FPM. Antes de abrir el login.
+- **R49:** que `/wp-json/zonanautico/` queda fuera de toda caché (la del hosting, la de un plugin y la de un CDN), y que
+  las rutas privadas salen con `Cache-Control: private, no-store` y `Vary: Authorization`.
+- **R78 / R59 (proxy):** mirar `REMOTE_ADDR`. Si Dinahosting pone un proxy delante, `define( 'ZN_PROXIES', '…' );` con su
+  rango exacto, en forma IPv4 (`10.0.0.0/8`, nunca `::ffff:10.0.0.0/104`) y nunca `0.0.0.0/0`. Sin proxy, no definirla.
+- **PHP 8.4 (R85):** nada que hacer; la huella de relleno del login se adapta sola al coste de ese servidor.
+
+**4. Tickets de los sorteos (R131, R142, R143).**
+- Que PHP pueda crear y escribir `zn-privado-tickets/` **junto a** la carpeta de WordPress, fuera de la web (si WordPress
+  está en `/home/usuario/public_html/`, la carpeta es `/home/usuario/zn-privado-tickets/`). Si no puede, la app no deja
+  participar (503) y wp-admin lo avisa: no hay plan B dentro de `uploads`.
+- **R142:** comprobar por HTTP que `zn-privado-tickets` no se abre desde la web. Si WordPress está en una subcarpeta
+  (`public_html/wp/`, estilo Bedrock), la carpeta por defecto quedaría dentro de la raíz web: poner con el filtro
+  `zn_carpeta_tickets` una ruta fuera de ella.
+- **R143:** si el camino lleva enlaces simbólicos (algunos hostings montan `/home` o `/var/www` así), `carpeta()` da `''`
+  por seguridad: poner la ruta real con el mismo filtro.
+
+**5. Tareas diarias (WP-Cron).** WP-Cron depende de las visitas: para que el borrado de los tickets sea puntual, poner un
+cron real del servidor que llame cada día a `wp cron event run --due-now` (con `DISABLE_WP_CRON`, punto 2). Comprobar
+después que la tarea diaria se ha ejecutado.
+
+**6. Cuentas de wp-admin (R67).** Solo administradores y los roles de la app: ningún Editor. Doble factor y límite de
+intentos para el administrador. El «¿Has olvidado tu contraseña?» de `wp-login.php` tiene que responder siempre lo
+mismo (hoy delata si la cuenta de administración existe).
+
+**7. Plugins del servidor (R57, R114).** No instalar plugins de correo (SMTP) ni de registro de correos sin revisarlos:
+el correo de «tu cuenta se ha borrado» lleva la dirección de una cuenta que ya no existe, y un registro la guardaría.
+
+**8. Datos.** La migración desde el Laravel tiene su propia lista en la revisión (R23: `user_id`, destinatario de las
+preguntas, `comment_date_gmt`, `first_name`, `laravel_id`, contraseñas `$2y$` tal cual, `zn_verificado` y
+`zn_parent_id`); al final, `wp zona-nautico recalcular-puntuaciones`. Si se quieren las Novedades ZN y las slides de la
+app de hoy: `wp zona-nautico portada-inicial <carpeta de la app>` (una vez). Nunca `wp zona-nautico datos-prueba` (solo
+para Local).
+
+**9. La app (R112).** Cuando el plugin funcione en el servidor, cambiar `EXPO_PUBLIC_API_URL` de la app a
+`https://<servidor>/wp-json/zonanautico/v1` (hoy apunta al Laravel; en este PC, `.env.local` apunta a Local) y quitar
+lo provisional de la portada.
 
 ## Portada: Novedades ZN, slides y categorías (bloque 2)
 
@@ -361,6 +407,8 @@ un enlace de carpeta en `wp-content/plugins/zona-nautico`.
 - Datos personales: borrar cuenta, exportar y borrar (crea y borra cuentas, negocios y comentarios): `wp eval-file tests/privacidad.php`
 - Gestionar participantes desde «Mi zona» y wp-admin (crea y borra cuentas, sorteos y fotos; los correos se recogen y no salen): `wp eval-file tests/participaciones-admin.php`
 - Sin adivinar ids (R50, R109: lo que no existe da el mismo 401 que lo ajeno; crea y borra cuentas, un negocio, borradores, una reseña y una pregunta): `wp eval-file tests/sin-adivinar.php`
+- Sin ZN_CORREO_REAL no sale ningún correo a una dirección de verdad, por ninguna ruta (crea y borra cuentas; los correos se recogen y no salen): `wp eval-file tests/correo-sin-salida.php`
+- El paquete para subir (R55): lo que lleva y lo que no, y lo hace de verdad en una carpeta temporal (no necesita Local): `node tests/paquete.mjs`
 - Participaciones en sorteos: fotos privadas sin EXIF, export, ganadores, borrado automático y RGPD (crea y borra cuentas, sorteos y fotos; los correos se recogen y no salen): `wp eval-file tests/participaciones.php`
 - Favoritos y su RGPD (crea y borra cuentas, negocios, tokens, favoritos e intentos; también por HTTP): `wp eval-file tests/favoritos.php`
 - Portada: `/news`, `/home-slides`, `/business-category`, `includesCategory` y la carga inicial con datos inventados (crea y borra novedades, slides, negocios y una cuenta): `wp eval-file tests/portada.php`

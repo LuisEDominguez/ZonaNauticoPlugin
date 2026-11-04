@@ -105,7 +105,7 @@ class ZN_Puertas {
 		if ( null !== $resultado ) {
 			return $resultado;
 		}
-		if ( defined( 'ZN_CORREO_REAL' ) && true === ZN_CORREO_REAL && 'production' === wp_get_environment_type() ) {
+		if ( self::correo_real_activado( defined( 'ZN_CORREO_REAL' ), defined( 'ZN_CORREO_REAL' ) ? ZN_CORREO_REAL : null, wp_get_environment_type() ) ) {
 			return $resultado;
 		}
 		foreach ( self::destinatarios( $correo ) as $direccion ) {
@@ -114,6 +114,16 @@ class ZN_Puertas {
 			}
 		}
 		return $resultado;
+	}
+
+	/**
+	 * La regla del interruptor, aparte para poder probarla también para producción (en Local el entorno no se
+	 * puede cambiar): solo con la constante definida, a true (ni «1» ni 1) y con el entorno `production`.
+	 *
+	 * @param mixed $valor
+	 */
+	public static function correo_real_activado( bool $definida, $valor, string $entorno ): bool {
+		return $definida && true === $valor && 'production' === $entorno;
 	}
 
 	/** Todas las direcciones de un correo de wp_mail: to, Cc y Bcc, en minúsculas y sin «Nombre <…>». */
