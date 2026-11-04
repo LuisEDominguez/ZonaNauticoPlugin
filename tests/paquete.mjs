@@ -36,7 +36,10 @@ const pruebas = {
       assert.equal(zip, join(carpeta, `zona-nautico-${version('HEAD')}.zip`));
       assert.ok(existsSync(zip) && statSync(zip).size > 1000);
       // tar lista zips en Windows 10+ y en Mac (bsdtar).
-      const dentro = execFileSync('tar', ['-tf', zip], { encoding: 'utf8' }).split(/\r?\n/).filter((l) => l && !l.endsWith('/'));
+      const entradas = execFileSync('tar', ['-tf', zip], { encoding: 'utf8' }).split(/\r?\n/).filter(Boolean);
+      // Ni siquiera las carpetas vacías de pruebas o herramientas.
+      assert.deepEqual(entradas.filter((a) => /^zona-nautico\/(tests|herramientas)(\/|$)/.test(a)), []);
+      const dentro = entradas.filter((l) => !l.endsWith('/'));
       assert.ok(dentro.length > 10);
       assert.deepEqual(dentro.filter((a) => !a.startsWith(PREFIJO)), []);
       assert.ok(dentro.includes(`${PREFIJO}zona-nautico.php`) && dentro.includes(`${PREFIJO}uninstall.php`));

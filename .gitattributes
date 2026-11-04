@@ -1,7 +1,10 @@
 # Lo que NO va en el paquete para subir al servidor (git archive, R55). Va solo: zona-nautico.php, uninstall.php,
 # .htaccess, includes/ y assets/. El paquete se hace con: node herramientas/empaquetar.mjs (ver README).
-# Con «/**»: «carpeta/» sola vale para git archive pero no para git check-attr, que usa la prueba (tests/paquete.mjs).
+# Las dos formas de cada carpeta: «carpeta/» quita la carpeta del zip (sin ella queda vacía dentro) y «carpeta/**»
+# hace que git check-attr, que usa la prueba (tests/paquete.mjs), vea fuera también cada archivo.
+tests/ export-ignore
 tests/** export-ignore
+herramientas/ export-ignore
 herramientas/** export-ignore
 *.md export-ignore
 .gitignore export-ignore
