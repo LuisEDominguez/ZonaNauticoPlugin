@@ -65,7 +65,8 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Bloque 2, parte B | 04-11-2026 | `a6e3ab4` (v0.26.0) | `8641ecf` (v0.27.0) | Portada: `/news`, `/home-slides`, `/business-category` e `includesCategory` |
 | Bloque 2, parte C | 04-11-2026 | `8641ecf` (v0.27.0) | `57e1dbd` (v0.28.0) | Favoritos: `/favorite` y su RGPD |
 | Sorteos, parte 1 (plugin) | 04-11-2026 | `3f8ecdf` (v0.28.0) | `dda1515` (v0.29.0) | Participaciones: `/draw-participation`, fotos privadas sin EXIF, export, ganadores, borrado y RGPD |
-| Ronda 45 (sorteos) | 04-11-2026 | `dda1515` (v0.29.0) | `d649d33` (R132, R134) y este commit (v0.29.1) | R131-R141 |
+| Ronda 45 (sorteos) | 04-11-2026 | `dda1515` (v0.29.0) | `d649d33` (R132, R134) y `cf983a8` (v0.29.1) | R131-R141 |
+| Ronda 45-bis | 04-11-2026 | `cf983a8` (v0.29.1) | (este commit, v0.29.2) | R144 (escalar antes de girar); R142 y R143 anotados para «Al subir» |
 
 ---
 
@@ -96,6 +97,13 @@ traspaso. Diff: `git diff a6e3ab4 HEAD`. Pruebas escritas antes (`tests/portada.
 | **Quién edita** | hecho | `ZN_Roles::actualizar` da al administrador los permisos de los dos tipos nuevos; `ZN_Instalacion::es_del_plugin` los reconoce para `uninstall.php` (R68). Panel R40 sin cambios. |
 | **Carga inicial** | hecho | `wp zona-nautico portada-inicial <carpeta de la app>`: 60 Novedades ZN (`zn_origen` = id de Adalo, fecha UTC de Adalo) y 6 slides con sus fotos subidas a medios. Repetirla no duplica. **Ejecutada en el Local** (60 y 6). |
 | **Pruebas** | hecho | `tests/portada.php` 36; sin regresiones en `instalacion` 28, `roles` 90, `panel` 177, `seguridad` 84, `esquema` 65, `contrato-negocios`, `contrato-muestras` y `puertas`. |
+
+## Ronda 45-bis (R142-R144)
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **R144** Memoria | hecho | `cargar_imagen()`: primero se escala a 2000 px y se suelta la grande, y luego se gira. Prueba escrita antes (fallaba): una foto de 6000 × 3000 con Orientation = 6 pasaba de 140 MB de memoria; ahora 78 MB, y se guarda en 1000 × 2000. |
+| **R142, R143** | anotado | En el README, «Subir al servidor»: comprobar por HTTP que `zn-privado-tickets` no se abre; con WordPress en una subcarpeta de la web o enlaces en el camino, poner la ruta real con el filtro `zn_carpeta_tickets`. |
 
 ## Ronda 45: participaciones (R131-R141)
 

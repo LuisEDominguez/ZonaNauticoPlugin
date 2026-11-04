@@ -516,7 +516,7 @@ class ZN_Participaciones {
 		return null;
 	}
 
-	/** Imagen GD de una foto ya comprobada (comprobar_imagen), girada según su EXIF y a MAX_LADO como mucho. */
+	/** Imagen GD de una foto ya comprobada (comprobar_imagen), a MAX_LADO como mucho y girada según su EXIF. */
 	private static function cargar_imagen( string $ruta ) {
 		$info = @getimagesize( $ruta ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
 		if ( ! $info ) {
@@ -528,17 +528,24 @@ class ZN_Participaciones {
 		if ( ! $imagen ) {
 			return null;
 		}
-		// Las fotos del móvil llevan el giro en el EXIF: se aplica antes de tirarlo.
-		$giro = IMAGETYPE_JPEG === $info[2] && function_exists( 'exif_read_data' ) ? (int) ( @exif_read_data( $ruta )['Orientation'] ?? 1 ) : 1; // phpcs:ignore WordPress.PHP.NoSilencedErrors
-		$grados = array( 3 => 180, 6 => -90, 8 => 90 )[ $giro ] ?? 0;
-		if ( $grados ) {
-			$imagen = imagerotate( $imagen, $grados, 0 ) ?: $imagen;
-		}
+		// R144: primero se escala a MAX_LADO (girar la foto entera haría otra copia del mismo tamaño) y se suelta la grande.
 		$ancho = imagesx( $imagen );
 		$alto  = imagesy( $imagen );
 		if ( max( $ancho, $alto ) > self::MAX_LADO ) {
-			$escala = self::MAX_LADO / max( $ancho, $alto );
-			$imagen = imagescale( $imagen, (int) round( $ancho * $escala ), (int) round( $alto * $escala ) ) ?: $imagen;
+			$escala   = self::MAX_LADO / max( $ancho, $alto );
+			$pequena  = imagescale( $imagen, (int) round( $ancho * $escala ), (int) round( $alto * $escala ) );
+			if ( $pequena ) {
+				imagedestroy( $imagen );
+				$imagen = $pequena;
+			}
+		}
+		// Las fotos del móvil llevan el giro en el EXIF: se aplica antes de tirarlo.
+		$giro = IMAGETYPE_JPEG === $info[2] && function_exists( 'exif_read_data' ) ? (int) ( @exif_read_data( $ruta )['Orientation'] ?? 1 ) : 1; // phpcs:ignore WordPress.PHP.NoSilencedErrors
+		$grados = array( 3 => 180, 6 => -90, 8 => 90 )[ $giro ] ?? 0;
+		$girada = $grados ? imagerotate( $imagen, $grados, 0 ) : false;
+		if ( $girada ) {
+			imagedestroy( $imagen );
+			$imagen = $girada;
 		}
 		return $imagen;
 	}

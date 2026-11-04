@@ -194,6 +194,39 @@ try {
 	list( $estado, $cuerpo ) = $llamar( 'POST', '/draw-participation', $ana, array( 'draw' => $abierto, 'adult' => '1' ), array( 'ticket' => $archivo( $foto() ) ) );
 	$ok( 'decisión a: una por persona y sorteo: la segunda, 422 en draw', 422 === $estado && isset( $cuerpo['errors']['draw'] ) && 1 === $filas( array( 'user_id' => $ana ) ) );
 
+	// --- R144: una foto grande y girada (EXIF Orientation = 6) se escala ANTES de girarla ---
+	// 6000 × 3000 (18 MP): decodificada ocupa unos 72 MB. Girarla entera haría otra copia igual (~144 MB juntas);
+	// escalando primero, la segunda copia es de 2000 × 1000 (~8 MB).
+	if ( function_exists( 'memory_reset_peak_usage' ) ) {
+		$grande = imagecreatetruecolor( 6000, 3000 );
+		ob_start();
+		imagejpeg( $grande, null, 60 );
+		$jpeg_grande = (string) ob_get_clean();
+		imagedestroy( $grande );
+		unset( $grande );
+		// APP1 con un IFD de una entrada: Orientation (0x0112), SHORT, 1 valor = 6 (girar 90° a la derecha).
+		$tiff        = "MM\0*\0\0\0\x08" . pack( 'n', 1 ) . pack( 'nnNn', 0x0112, 3, 1, 6 ) . "\0\0" . pack( 'N', 0 );
+		$carga       = "Exif\0\0" . $tiff;
+		$jpeg_grande = substr( $jpeg_grande, 0, 2 ) . "\xFF\xE1" . pack( 'n', strlen( $carga ) + 2 ) . $carga . substr( $jpeg_grande, 2 );
+		$ruta_grande = wp_tempnam( 'grande.jpg' );
+		file_put_contents( $ruta_grande, $jpeg_grande ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+		unset( $jpeg_grande );
+		$temporales[] = $ruta_grande;
+		$giro_prueba  = $cuenta( 'zn_usuario', 'Giro' );
+		$sorteo_giro  = $sorteo( $cuenta( 'zn_comercio', 'Org giro' ) );
+		gc_collect_cycles();
+		$base_memoria = memory_get_usage();
+		memory_reset_peak_usage();
+		list( $estado, $cuerpo ) = $llamar( 'POST', '/draw-participation', $giro_prueba, array( 'draw' => $sorteo_giro, 'adult' => '1' ), array( 'ticket' => $archivo( $ruta_grande ) ) );
+		$pico = ( memory_get_peak_usage() - $base_memoria ) / MB_IN_BYTES;
+		$f_giro = $wpdb->get_row( $wpdb->prepare( 'SELECT * FROM ' . ZN_Participaciones::tabla() . ' WHERE id = %d', (int) ( $cuerpo['data']['_id'] ?? 0 ) ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$medidas = $f_giro ? @getimagesize( ZN_Participaciones::ruta_ticket( $f_giro ) ) : false; // phpcs:ignore WordPress.PHP.NoSilencedErrors
+		$ok( 'R144: la foto girada se guarda bien: 1000 × 2000 (escalada a 2000 y en vertical)', 201 === $estado && $medidas && 1000 === $medidas[0] && 2000 === $medidas[1] );
+		$ok( sprintf( 'R144: memoria de más al procesarla: %d MB (escalar antes de girar: menos de 110 MB)', (int) $pico ), $pico < 110 );
+	} else {
+		echo "aviso sin memory_reset_peak_usage (PHP < 8.2): no se mide la memoria de R144\n";
+	}
+
 	// --- Ver: lo mío; las del sorteo, solo quien organiza y la administración (R43) ---
 	$luis   = $cuenta( 'zn_usuario', 'Luis Pérez' );
 	$admin  = $cuenta( 'zn_administrador', 'Admin' );

@@ -250,7 +250,12 @@ borrado de los tickets sea puntual, poner un cron real del servidor que llame ca
 --due-now` (y `define( 'DISABLE_WP_CRON', true );`). **Tickets de los sorteos (R131):** hace falta poder crear y
 escribir en `zn-privado-tickets/` **junto a** la carpeta de WordPress, fuera de la web (por ejemplo, si WordPress está
 en `/home/usuario/public_html/`, la carpeta es `/home/usuario/zn-privado-tickets/`). Si el hosting no lo deja, la app
-no deja participar (503) y wp-admin lo avisa: no hay plan B dentro de `uploads`.
+no deja participar (503) y wp-admin lo avisa: no hay plan B dentro de `uploads`. **Comprobar por HTTP que
+`zn-privado-tickets` no se puede abrir** (R142): si WordPress está en una subcarpeta de la web (`public_html/wp/`, estilo
+Bedrock), la carpeta por defecto quedaría dentro de la raíz web; entonces, poner con el filtro `zn_carpeta_tickets`
+una ruta fuera de ella. Si el camino lleva enlaces simbólicos (algunos hostings montan `/home` o `/var/www` así),
+`carpeta()` da `''` por seguridad (R143): poner con el mismo filtro la ruta real. Comprobar también que la tarea diaria
+(WP-Cron) se ejecuta.
 
 ## Portada: Novedades ZN, slides y categorías (bloque 2)
 
@@ -274,7 +279,8 @@ esa carpeta no se guarda ningún ticket (R131). La ruta de la carpeta se comprue
 (se llama `zn-privado*`, no es ni contiene WordPress, `wp-content` ni `uploads`, y no es un enlace; R134). Solo se
 sirven por `GET /draw-participation/{id}/ticket` con permiso (con `?_envelope` no sale nada del archivo, R135). Al
 subirla, se mira antes la cabecera (tipo real y como mucho 40 megapíxeles, R132) y luego se vuelve a guardar en JPG
-con GD (sin ningún metadato: ni EXIF ni ubicación), girada según su EXIF y con 2000 px como mucho.
+con GD (sin ningún metadato: ni EXIF ni ubicación), primero reducida a 2000 px como mucho y luego girada según su
+EXIF (así una foto grande no ocupa dos veces la memoria, R144).
 **Borrado automático** (tarea diaria `zn_limpiar_participaciones` de WP-Cron, que se quita al desactivar el plugin):
 30 días después de que el sorteo esté cerrado y con todos sus premios entregados (R138), o 90 días después del fin si
 no se entregan (R133: también el nombre y el correo de quien ganó), se borran todas las fotos y las participaciones
