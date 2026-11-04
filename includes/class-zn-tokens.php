@@ -33,7 +33,10 @@ class ZN_Tokens {
 	const MAX_ACTIVOS = 10;
 	// Desde el login original, /refresh renueva como mucho durante este tiempo (R86; el refresh_ttl por defecto de jwt-auth).
 	const MAX_RENOVAR   = 14 * DAY_IN_SECONDS;
-	const VERSION_TABLA = '4';
+	// R159 (Luis: 10 s): un refresh ya usado que vuelve dentro de este margen (la respuesta se perdió) recibe UNA vez un
+	// par nuevo de la misma cadena, si su sucesor está sin usar y sin anular. Se cambia solo aquí.
+	const MARGEN_GRACIA_S = 10;
+	const VERSION_TABLA   = '5';
 
 	/** ¿La cuenta de esta petición salió de un token? (para la segunda barrera de R46). */
 	private static bool $desde_token = false;
@@ -89,6 +92,9 @@ class ZN_Tokens {
 				tipo varchar(10) NOT NULL DEFAULT 'acceso',
 				cadena char(32) DEFAULT NULL,
 				usado datetime DEFAULT NULL,
+				padre bigint(20) unsigned DEFAULT NULL,
+				motivo varchar(10) DEFAULT NULL,
+				gracia datetime DEFAULT NULL,
 				PRIMARY KEY  (id),
 				UNIQUE KEY hash (hash),
 				KEY user_id (user_id),
@@ -102,9 +108,9 @@ class ZN_Tokens {
 	/**
 	 * Nuevo token para una cuenta de la app; null si no es cuenta de la app. Devuelve el token en claro (solo esta
 	 * vez). $origen: momento del login del que viene (al renovar); si no se da, es un login nuevo. $cadena: la del login
-	 * del que viene (refresh token); sin ella, el token no va en ninguna.
+	 * del que viene (refresh token); sin ella, el token no va en ninguna. $padre: el refresh del que sale (R159).
 	 */
-	public static function emitir( int $usuario, ?int $origen = null, ?string $cadena = null ): ?string {
+	public static function emitir( int $usuario, ?int $origen = null, ?string $cadena = null, ?int $padre = null ): ?string {
 		$cuenta = get_userdata( $usuario );
 		if ( ! $cuenta || ! ZN_Roles::rol_app( $cuenta ) ) {
 			return null;
@@ -122,8 +128,9 @@ class ZN_Tokens {
 				'origen'  => gmdate( 'Y-m-d H:i:s', $origen ?? $ahora ),
 				'tipo'    => 'acceso',
 				'cadena'  => $cadena,
+				'padre'   => $padre,
 			),
-			array( '%s', '%d', '%s', '%s', '%s', '%s', '%s' )
+			array( '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%d' )
 		);
 		// Tope de tokens activos por cuenta (R59): se quedan los MAX_ACTIVOS más nuevos.
 		$wpdb->query(
@@ -141,15 +148,21 @@ class ZN_Tokens {
 		return $token;
 	}
 
-	/** Cuenta dueña de un token que vale (existe, no caducado, no anulado, cuenta de la app); 0 si no. */
+	/**
+	 * Cuenta dueña de un token que vale (existe, no caducado, no anulado, cuenta de la app); 0 si no. R159: un token
+	 * anulado por la gracia que vuelve a aparecer (en cualquier petición) es un reuso: se anula toda su cadena.
+	 */
 	public static function validar( string $token ): int {
 		if ( ! preg_match( '/^[A-Za-z0-9_-]{43}$/', $token ) ) {
 			return 0;
 		}
 		global $wpdb;
 		$fila = $wpdb->get_row(
-			$wpdb->prepare( 'SELECT user_id, caduca, anulado FROM ' . self::tabla() . " WHERE hash = %s AND tipo = 'acceso'", self::huella( $token ) ) // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+			$wpdb->prepare( 'SELECT user_id, caduca, anulado, motivo, cadena FROM ' . self::tabla() . " WHERE hash = %s AND tipo = 'acceso'", self::huella( $token ) ) // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		);
+		if ( $fila && null !== $fila->anulado && 'gracia' === $fila->motivo && $fila->cadena ) {
+			self::anular_cadena( (string) $fila->cadena );
+		}
 		if ( ! $fila || null !== $fila->anulado || strtotime( $fila->caduca . ' UTC' ) <= time() ) {
 			return 0;
 		}
@@ -202,7 +215,7 @@ class ZN_Tokens {
 	 * Refresh token nuevo de la cadena (en claro, solo esta vez). Caduca a MAX_RENOVAR del login ($origen): renovar no
 	 * alarga los 14 días. Si la cuenta pasa de MAX_ACTIVOS cadenas con refresh, se anulan las más antiguas (R59).
 	 */
-	public static function emitir_renovacion( int $usuario, string $cadena, int $origen ): string {
+	public static function emitir_renovacion( int $usuario, string $cadena, int $origen, ?int $padre = null ): string {
 		global $wpdb;
 		$refresh = rtrim( strtr( base64_encode( random_bytes( 64 ) ), '+/', '-_' ), '=' );
 		$ahora   = time();
@@ -216,8 +229,9 @@ class ZN_Tokens {
 				'origen'  => gmdate( 'Y-m-d H:i:s', $origen ),
 				'tipo'    => 'renovar',
 				'cadena'  => $cadena,
+				'padre'   => $padre,
 			),
-			array( '%s', '%d', '%s', '%s', '%s', '%s', '%s' )
+			array( '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%d' )
 		);
 		$vivas = $wpdb->get_col( $wpdb->prepare( 'SELECT cadena FROM ' . self::tabla() . " WHERE user_id = %d AND tipo = 'renovar' AND anulado IS NULL AND usado IS NULL AND caduca > %s GROUP BY cadena ORDER BY MAX(id) DESC", $usuario, gmdate( 'Y-m-d H:i:s', $ahora ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		foreach ( array_slice( $vivas, self::MAX_ACTIVOS ) as $vieja ) {
@@ -230,20 +244,29 @@ class ZN_Tokens {
 	 * Gasta un refresh token: si vale (existe, sin usar, sin anular, dentro de los 14 días, cuenta de la app activa), lo
 	 * marca como usado, anula los tokens de acceso de su cadena y devuelve {user_id, origen, cadena}. Si ya estaba usado
 	 * (reuso: lo tiene alguien más), anula toda la cadena. Si no, null. El UPDATE con «usado IS NULL» hace que, de dos
-	 * peticiones a la vez con el mismo, solo una lo gaste: la otra es un reuso (R87).
+	 * peticiones a la vez con el mismo, solo una lo gaste: la otra es un reuso (R87), salvo la gracia de R159.
+	 *
+	 * R159: si ya estaba usado hace menos de MARGEN_GRACIA_S, su sucesor (el refresh que salió de él) sigue sin usar ni
+	 * anular y la gracia de este refresh no se ha gastado, vale UNA vez más: se anulan sus sucesores (token y refresh,
+	 * con motivo «gracia») y se devuelve lo mismo, para un par nuevo de la misma cadena y con el mismo origen. Lo anulado
+	 * por la gracia que vuelva a aparecer (aquí o como token de acceso en validar()) es un reuso: se anula la cadena.
 	 */
 	public static function usar_renovacion( string $refresh ): ?array {
 		if ( ! preg_match( '/^[A-Za-z0-9_-]{86}$/', $refresh ) ) {
 			return null;
 		}
 		global $wpdb;
-		$fila = $wpdb->get_row( $wpdb->prepare( 'SELECT id, user_id, caduca, origen, anulado, usado, cadena FROM ' . self::tabla() . " WHERE hash = %s AND tipo = 'renovar'", self::huella( $refresh ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$fila = $wpdb->get_row( $wpdb->prepare( 'SELECT id, user_id, caduca, origen, anulado, usado, cadena, motivo, gracia FROM ' . self::tabla() . " WHERE hash = %s AND tipo = 'renovar'", self::huella( $refresh ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		if ( $fila && null !== $fila->anulado && 'gracia' === $fila->motivo ) {
+			self::anular_cadena( (string) $fila->cadena );
+			return null;
+		}
 		if ( ! $fila || null !== $fila->anulado || strtotime( $fila->caduca . ' UTC' ) <= time() ) {
 			return null;
 		}
 		$ahora   = gmdate( 'Y-m-d H:i:s' );
 		$gastado = null === $fila->usado && 1 === (int) $wpdb->query( $wpdb->prepare( 'UPDATE ' . self::tabla() . ' SET usado = %s WHERE id = %d AND usado IS NULL AND anulado IS NULL', $ahora, (int) $fila->id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-		if ( ! $gastado ) {
+		if ( ! $gastado && ! self::gracia( $fila ) ) {
 			self::anular_cadena( (string) $fila->cadena );
 			return null;
 		}
@@ -252,8 +275,32 @@ class ZN_Tokens {
 			self::anular_cadena( (string) $fila->cadena );
 			return null;
 		}
-		$wpdb->query( $wpdb->prepare( 'UPDATE ' . self::tabla() . " SET anulado = %s WHERE cadena = %s AND tipo = 'acceso' AND anulado IS NULL", $ahora, (string) $fila->cadena ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		if ( $gastado ) {
+			$wpdb->query( $wpdb->prepare( 'UPDATE ' . self::tabla() . " SET anulado = %s WHERE cadena = %s AND tipo = 'acceso' AND anulado IS NULL", $ahora, (string) $fila->cadena ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		}
 		return array( 'id' => (int) $fila->id, 'user_id' => (int) $fila->user_id, 'origen' => (int) strtotime( $fila->origen . ' UTC' ), 'cadena' => (string) $fila->cadena );
+	}
+
+	/**
+	 * R159: ¿vale la gracia para este refresh ya usado? Usado hace menos de MARGEN_GRACIA_S, con su sucesor (refresh)
+	 * sin usar ni anular, y sin haber gastado ya la gracia. La gracia se gasta con un UPDATE «gracia IS NULL» (de dos a
+	 * la vez solo una la consigue) y anula los sucesores con motivo «gracia».
+	 */
+	private static function gracia( object $fila ): bool {
+		if ( null === $fila->usado || null !== $fila->gracia || strtotime( $fila->usado . ' UTC' ) + self::MARGEN_GRACIA_S < time() ) {
+			return false;
+		}
+		global $wpdb;
+		$sucesor = $wpdb->get_row( $wpdb->prepare( 'SELECT usado, anulado FROM ' . self::tabla() . " WHERE padre = %d AND tipo = 'renovar' ORDER BY id DESC LIMIT 1", (int) $fila->id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		if ( ! $sucesor || null !== $sucesor->usado || null !== $sucesor->anulado ) {
+			return false;
+		}
+		$ahora = gmdate( 'Y-m-d H:i:s' );
+		if ( 1 !== (int) $wpdb->query( $wpdb->prepare( 'UPDATE ' . self::tabla() . ' SET gracia = %s WHERE id = %d AND gracia IS NULL AND anulado IS NULL', $ahora, (int) $fila->id ) ) ) { // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+			return false;
+		}
+		$wpdb->query( $wpdb->prepare( 'UPDATE ' . self::tabla() . " SET anulado = %s, motivo = 'gracia' WHERE padre = %d AND anulado IS NULL", $ahora, (int) $fila->id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		return true;
 	}
 
 	/**

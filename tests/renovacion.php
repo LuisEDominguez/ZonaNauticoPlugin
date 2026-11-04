@@ -117,12 +117,16 @@ try {
 	$ok( '…y su refresh de ahora', ! $vivo( $r3 ) && ! $vale_refresh( $r3 ) );
 	$ok( '…pero no la del otro móvil (otro login)', $ana === ZN_Tokens::validar( (string) $otro['token'] ) && $vivo( (string) $otro['refreshToken'] ) );
 
-	// R87: dos /refresh con el mismo refresh no dan dos sesiones (el segundo es un reuso).
+	// R87: dos /refresh con el mismo refresh no dan dos sesiones. Con la gracia de R159, el segundo (dentro del margen)
+	// recibe un par nuevo y el del primero queda anulado: sigue habiendo UNA sola sesión. El tercero ya es un reuso.
 	$l = $entrar();
 	list( $e1, $c1 ) = $llamar( '/refresh', array( 'refreshToken' => $l['refreshToken'] ) );
 	list( $e2, $c2 ) = $llamar( '/refresh', array( 'refreshToken' => $l['refreshToken'] ) );
-	$ok( 'R87: el mismo refresh dos veces: el primero 200, el segundo 401', 200 === $e1 && 401 === $e2 && ! isset( $c2['token'] ) );
-	$ok( 'R87: …y no queda ninguna sesión de esa cadena', 0 === ZN_Tokens::validar( (string) $c1['token'] ) && ! $vivo( (string) $c1['refreshToken'] ) );
+	$ok( 'R87: el mismo refresh dos veces: los dos 200 (el segundo, por la gracia)…', 200 === $e1 && 200 === $e2 );
+	// (Se mira la fila: usar el token del primero con validar() sería justo el reuso que anula la cadena.)
+	$ok( 'R87: …pero solo queda viva una sesión: la del primero, anulada', null !== $fila_de( (string) $c1['token'] )->anulado && ! $vivo( (string) $c1['refreshToken'] ) && $ana === ZN_Tokens::validar( (string) $c2['token'] ) );
+	list( $e3, $c3 ) = $llamar( '/refresh', array( 'refreshToken' => $l['refreshToken'] ) );
+	$ok( 'R87: el tercero es un reuso: 401 y no queda ninguna sesión de esa cadena', 401 === $e3 && ! isset( $c3['token'] ) && 0 === ZN_Tokens::validar( (string) $c2['token'] ) && ! $vivo( (string) $c2['refreshToken'] ) );
 
 	// R157: la carrera. Mientras una petición gasta el refresh, otra lo reusa y anula la cadena justo antes de que la
 	// primera inserte los tokens nuevos. Lo recién insertado tampoco puede quedar vivo.
@@ -147,6 +151,78 @@ try {
 	$l = $entrar();
 	list( $estado, $cuerpo ) = $http( 'POST', '/refresh', array( 'refreshToken' => null ), (string) $l['token'] );
 	$ok( 'H3: HTTP: refreshToken null con un token de acceso que vale: 200 por la ruta de antes', 200 === $estado && array( 'status', 'token', 'id', 'role' ) === array_keys( (array) $cuerpo ) );
+
+	// --- R159: margen de gracia (Luis: «Sí, añadirlo»; 10 s, ZN_Tokens::MARGEN_GRACIA_S) ---
+	// Un refresh ya usado que vuelve dentro del margen, con su sucesor sin usar ni anular: par NUEVO en la misma cadena y
+	// con el mismo origen; el sucesor de antes se anula «por la gracia». Una sola vez por refresh. Lo anulado por la
+	// gracia que vuelva a aparecer (token de acceso en cualquier petición, o refresh) es un reuso: se anula la cadena.
+	$renueva = static fn( string $r ) => $llamar( '/refresh', array( 'refreshToken' => $r ) );
+	$par     = static fn( array $c ) => array( (string) ( $c['token'] ?? '' ), (string) ( $c['refreshToken'] ?? '' ) );
+	$viva    = static function ( string $cadena ) use ( $wpdb ): int {
+		return (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . ZN_Tokens::tabla() . ' WHERE cadena = %s AND anulado IS NULL', $cadena ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+	};
+
+	$l = $entrar();
+	$r0 = (string) $l['refreshToken'];
+	$cad = $fila_de( $r0 )->cadena;
+	list( $t1, $r1 ) = $par( $renueva( $r0 )[1] );
+	list( $estado, $cuerpo ) = $renueva( $r0 ); // la respuesta se perdió y el móvil repite con el mismo
+	list( $t2, $r2 ) = $par( $cuerpo );
+	$ok( 'R159: el mismo refresh otra vez dentro del margen: 200 con un par NUEVO', 200 === $estado && $ana === ZN_Tokens::validar( $t2 ) && $vivo( $r2 ) && $t2 !== $t1 && $r2 !== $r1 );
+	$ok( 'R159: …en la misma cadena y con el mismo origen', $fila_de( $r2 )->cadena === $cad && $fila_de( $r2 )->caduca === $fila_de( $r0 )->caduca );
+	$ok( 'R159: …y el sucesor de antes queda anulado por la gracia', null !== $fila_de( $t1 )->anulado && 'gracia' === $fila_de( $t1 )->motivo && ! $vivo( $r1 ) && 'gracia' === $fila_de( $r1 )->motivo );
+	list( $estado ) = $renueva( $r0 );
+	$ok( 'R159: una sola vez por refresh: el tercer uso es un reuso (401 y toda la cadena anulada)', 401 === $estado && 0 === $viva( $cad ) );
+
+	// Fuera del margen: reuso.
+	$l = $entrar();
+	$r0 = (string) $l['refreshToken'];
+	$cad = $fila_de( $r0 )->cadena;
+	$renueva( $r0 );
+	$wpdb->update( ZN_Tokens::tabla(), array( 'usado' => gmdate( 'Y-m-d H:i:s', time() - ZN_Tokens::MARGEN_GRACIA_S - 1 ) ), array( 'hash' => hash( 'sha256', $r0 ) ) );
+	list( $estado ) = $renueva( $r0 );
+	$ok( sprintf( 'R159: pasado el margen de gracia (MARGEN_GRACIA_S = %d s), es un reuso: 401 y toda la cadena anulada', ZN_Tokens::MARGEN_GRACIA_S ), 401 === $estado && 0 === $viva( $cad ) );
+
+	// Con el sucesor ya usado: reuso.
+	$l = $entrar();
+	$r0 = (string) $l['refreshToken'];
+	$cad = $fila_de( $r0 )->cadena;
+	list( , $r1 ) = $par( $renueva( $r0 )[1] );
+	$renueva( $r1 );
+	list( $estado ) = $renueva( $r0 );
+	$ok( 'R159: si el sucesor ya se usó, es un reuso aunque se esté dentro del margen', 401 === $estado && 0 === $viva( $cad ) );
+
+	// Primero el móvil legítimo y luego el ladrón (con el refresh copiado), dentro del margen.
+	foreach ( array( 'su token de acceso' => 'acceso', 'su refresh' => 'renovar' ) as $que => $con ) {
+		$l = $entrar();
+		$r0 = (string) $l['refreshToken'];
+		$cad = $fila_de( $r0 )->cadena;
+		list( $t_leg, $r_leg ) = $par( $renueva( $r0 )[1] ); // el legítimo
+		list( $t_lad, $r_lad ) = $par( $renueva( $r0 )[1] ); // el ladrón se lleva la gracia
+		$ok( "R159 (legítimo y luego ladrón): el ladrón consigue un par por la gracia", $ana === ZN_Tokens::validar( $t_lad ) );
+		if ( 'acceso' === $con ) {
+			list( $estado ) = $http( 'GET', '/me', null, $t_leg );
+		} else {
+			list( $estado ) = $renueva( $r_leg );
+		}
+		$ok( "R159 (legítimo y luego ladrón): en cuanto el legítimo usa $que, 401 y se anula toda la cadena: el ladrón se queda fuera", 401 === $estado && 0 === $viva( $cad ) && 0 === ZN_Tokens::validar( $t_lad ) && ! $vivo( $r_lad ) );
+	}
+
+	// Al revés: primero el ladrón y luego el móvil legítimo.
+	foreach ( array( 'su token de acceso' => 'acceso', 'su refresh' => 'renovar' ) as $que => $con ) {
+		$l = $entrar();
+		$r0 = (string) $l['refreshToken'];
+		$cad = $fila_de( $r0 )->cadena;
+		list( $t_lad, $r_lad ) = $par( $renueva( $r0 )[1] ); // el ladrón, primero
+		list( $t_leg, $r_leg ) = $par( $renueva( $r0 )[1] ); // el legítimo, dentro del margen: la gracia
+		$ok( "R159 (ladrón y luego legítimo): el legítimo sigue dentro por la gracia", $ana === ZN_Tokens::validar( $t_leg ) );
+		if ( 'acceso' === $con ) {
+			$ok( "R159 (ladrón y luego legítimo): el token del ladrón, anulado por la gracia, no vale", 0 === ZN_Tokens::validar( $t_lad ) );
+		} else {
+			$renueva( $r_lad );
+		}
+		$ok( "R159 (ladrón y luego legítimo): en cuanto el ladrón usa $que, se anula toda la cadena (también la del legítimo)", 0 === $viva( $cad ) && 0 === ZN_Tokens::validar( $t_leg ) && ! $vivo( $r_leg ) );
+	}
 
 	// --- 14 días ---
 	$l      = $entrar();

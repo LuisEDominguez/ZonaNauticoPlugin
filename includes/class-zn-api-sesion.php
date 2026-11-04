@@ -111,7 +111,7 @@ class ZN_API_Sesion {
 			if ( ! $cuenta ) {
 				return ZN_Errores::no_autenticado();
 			}
-			$respuesta = self::con_token( $cuenta, $uso['origen'], $uso['cadena'], true );
+			$respuesta = self::con_token( $cuenta, $uso['origen'], $uso['cadena'], true, $uso['id'] );
 			// R157: si otra petición ha reusado el refresh mientras tanto, lo recién emitido también se anula.
 			return ZN_Tokens::confirmar_renovacion( $uso['id'], $uso['cadena'] ) ? $respuesta : ZN_Errores::no_autenticado();
 		}
@@ -159,11 +159,12 @@ class ZN_API_Sesion {
 	/**
 	 * 200 {status, token, id, role} con un token nuevo para la cuenta y, con $con_refresh, también `refreshToken` de la
 	 * misma cadena ($cadena, o una nueva en un login). $origen: el login del que viene (null: es un login, ahora).
+	 * $padre: el refresh del que salen (para la gracia de R159).
 	 */
-	private static function con_token( WP_User $cuenta, ?int $origen = null, ?string $cadena = null, bool $con_refresh = false ): WP_REST_Response {
+	private static function con_token( WP_User $cuenta, ?int $origen = null, ?string $cadena = null, bool $con_refresh = false, ?int $padre = null ): WP_REST_Response {
 		$origen = $origen ?? time();
 		$cadena = $cadena ?? ( $con_refresh ? ZN_Tokens::nueva_cadena() : null );
-		$token  = ZN_Tokens::emitir( $cuenta->ID, $origen, $cadena );
+		$token  = ZN_Tokens::emitir( $cuenta->ID, $origen, $cadena, $padre );
 		if ( null === $token ) {
 			return ZN_Errores::no_autenticado();
 		}
@@ -174,7 +175,7 @@ class ZN_API_Sesion {
 			'role'   => ZN_Roles::rol_app( $cuenta ),
 		);
 		if ( $con_refresh && null !== $cadena ) {
-			$datos['refreshToken'] = ZN_Tokens::emitir_renovacion( $cuenta->ID, $cadena, $origen );
+			$datos['refreshToken'] = ZN_Tokens::emitir_renovacion( $cuenta->ID, $cadena, $origen, $padre );
 		}
 		return self::sin_cache( new WP_REST_Response( $datos ) );
 	}

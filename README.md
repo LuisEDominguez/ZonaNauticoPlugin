@@ -182,7 +182,12 @@ de antes lo ignora): opaco y largo (64 bytes), guardado solo como huella en la m
 uso y ligado a su login (`cadena`). `POST /refresh {refreshToken}` lo acepta aunque el token de acceso haya caducado: da
 token y refresh nuevos de la misma cadena y gasta el usado. Los 14 días cuentan siempre desde el login
 (`ZN_Tokens::MAX_RENOVAR`, R86): renovar no los alarga. **Reuso:** si llega un refresh ya usado, se anula toda la cadena de
-ese login (sus tokens de acceso y su refresh) y 401; así, de dos `/refresh` a la vez con el mismo solo uno da sesión (R87).
+ese login (sus tokens de acceso y su refresh) y 401; así, de dos `/refresh` a la vez con el mismo solo uno da sesión (R87). **Margen de gracia (R159, Luis: 10 s,
+`ZN_Tokens::MARGEN_GRACIA_S`):** si un refresh ya usado vuelve dentro del margen (se perdió la respuesta) y su sucesor está sin
+usar ni anular, recibe UNA vez un par nuevo de la misma cadena y con el mismo origen, y el sucesor de antes se anula
+«por la gracia» (no se guarda ningún token, ni en claro ni cifrado). Un segundo reuso, fuera del margen o con el sucesor ya
+usado, es un reuso. Lo anulado por la gracia que vuelva a aparecer (como refresh, o como token de acceso en cualquier
+petición) anula toda la cadena: si un ladrón se cuela en ese margen, en cuanto el otro use su llave se cierra todo.
 Sin `refreshToken`, como antes: `POST /refresh` con un token de acceso que vale da uno nuevo (sin refresh) y anula el anterior;
 con uno caducado o pasados 14 días, hay que entrar. **Nunca se renueva un token de acceso caducado.** `POST /logout` anula la
 cadena del token de la petición (los otros móviles de la cuenta siguen); con el token de acceso ya caducado vale `{refreshToken}` en el cuerpo. Sin ninguno, `401 «Unauthenticated.»`. Cambiar la contraseña o el correo con `PATCH /user` anula todos

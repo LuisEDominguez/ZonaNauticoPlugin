@@ -73,7 +73,8 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Tanda C, parte 3 | 04-11-2026 | `dff6625` (v0.30.2) | `f878bde` y `6bdde6d` (v0.30.3) | Preparar la subida: paquete (R55), lista «Día de la subida» y prueba de que sin `ZN_CORREO_REAL` no sale correo |
 | Refresh token (opción C) | 04-11-2026 | `c4ba8c4` (v0.30.3) | `bae96a2` (v0.31.0) | `refreshToken` de un solo uso, ligado al login, 14 días; reuso anula la cadena |
 | Ronda 57 | 04-11-2026 | `bae96a2` (v0.31.0) | `17ccc9b` (v0.31.1) | R157 (carrera al renovar) y H3 (`refreshToken: null`) |
-| R158 | 04-11-2026 | `17ccc9b` (v0.31.1) | (este commit, v0.31.2) | Contraseña o correo: se renuevan todas las sesiones, también la propia |
+| R158 | 04-11-2026 | `17ccc9b` (v0.31.1) | `3985cc5` (v0.31.2) y app `e1b779d` | Contraseña o correo: se renuevan todas las sesiones, también la propia |
+| R159 | 04-11-2026 | `3985cc5` (v0.31.2) | (este commit, v0.31.3) | Margen de gracia de 10 s para un refresh repetido |
 
 ---
 
@@ -104,6 +105,17 @@ traspaso. Diff: `git diff a6e3ab4 HEAD`. Pruebas escritas antes (`tests/portada.
 | **Quién edita** | hecho | `ZN_Roles::actualizar` da al administrador los permisos de los dos tipos nuevos; `ZN_Instalacion::es_del_plugin` los reconoce para `uninstall.php` (R68). Panel R40 sin cambios. |
 | **Carga inicial** | hecho | `wp zona-nautico portada-inicial <carpeta de la app>`: 60 Novedades ZN (`zn_origen` = id de Adalo, fecha UTC de Adalo) y 6 slides con sus fotos subidas a medios. Repetirla no duplica. **Ejecutada en el Local** (60 y 6). |
 | **Pruebas** | hecho | `tests/portada.php` 36; sin regresiones en `instalacion` 28, `roles` 90, `panel` 177, `seguridad` 84, `esquema` 65, `contrato-negocios`, `contrato-muestras` y `puertas`. |
+
+## R159 (Luis: «Sí, añadirlo»; 10 s)
+
+Diff: `git diff 3985cc5 HEAD`. Pruebas escritas antes en `tests/renovacion.php` (ahora 61; fallaban 7).
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **Forma** | hecho | La de los revisores: no se guarda el par sucesor (ni en claro ni cifrado). Dentro del margen se emite un par NUEVO en la misma cadena y con el mismo origen, y se anulan los sucesores de antes con `motivo = gracia`. Columnas nuevas (tabla v5): `padre` (el refresh del que sale cada token), `motivo` y `gracia` (cuándo se gastó la gracia de ese refresh). Margen en `ZN_Tokens::MARGEN_GRACIA_S` (10). |
+| **Condiciones** | hecho | Refresh usado hace menos del margen, sucesor (refresh) sin usar y sin anular, y gracia sin gastar: un `UPDATE … gracia IS NULL` hace que solo una petición la consiga. Un segundo reuso dentro del margen, uno fuera del margen o con el sucesor ya usado: reuso, toda la cadena anulada. |
+| **Anulado por la gracia** | hecho | Si vuelve a aparecer, es un reuso y se anula toda la cadena: como refresh (en `usar_renovacion`) y como token de acceso en cualquier petición (en `validar()`, no solo un 401). Probado en los dos órdenes (primero el legítimo y luego el ladrón, y al revés), con el token de acceso (también por HTTP, `GET /me`) y con el refresh. |
+| **R157 y R87** | revisado | R157 sigue: `confirmar_renovacion()` mira el refresh gastado; la gracia no lo anula (solo marca `gracia` y anula los sucesores), así que el par de la gracia se confirma, y si otra petición anula la cadena a la vez, lo nuevo también cae. R87: de dos `/refresh` seguidos con el mismo refresh, el segundo recibe el par de la gracia y el del primero queda anulado: sigue habiendo una sola sesión viva; el tercero es un reuso. A la vez de verdad: si el sucesor aún no está insertado, el segundo es un reuso (los dos se quedan sin sesión, lado seguro). |
 
 ## R158 (Luis: «Sí, renovarla»)
 
