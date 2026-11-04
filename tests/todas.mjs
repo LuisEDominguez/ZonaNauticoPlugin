@@ -42,7 +42,7 @@ function ordenWp() {
 }
 
 // Primero las de PHP (por dentro) y después las de Node (por HTTP, como la app).
-const PHP = ['admin-fichas', 'errores', 'esquema', 'instalacion', 'portada', 'comentarios', 'seguridad', 'roles', 'tokens', 'me', 'limite', 'escrituras', 'login', 'registro', 'mis-datos', 'borrar-cuenta', 'nombre-de-pila', 'favoritos', 'participaciones', 'participaciones-admin', 'opiniones', 'novedades-sorteos', 'privacidad', 'panel', 'sin-adivinar', 'correo-sin-salida'];
+const PHP = ['admin-fichas', 'errores', 'esquema', 'instalacion', 'portada', 'comentarios', 'seguridad', 'roles', 'tokens', 'me', 'limite', 'escrituras', 'login', 'registro', 'mis-datos', 'borrar-cuenta', 'nombre-de-pila', 'favoritos', 'participaciones', 'participaciones-admin', 'opiniones', 'novedades-sorteos', 'privacidad', 'panel', 'sin-adivinar', 'correo-sin-salida', 'renovacion'];
 const NODE = ['contrato-negocios', 'contrato-eventos', 'contrato-sorteos', 'contrato-resenas', 'contrato-preguntas', 'contrato-muestras', 'contrato-errores', 'puertas', 'paquete'];
 
 const esperar = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);

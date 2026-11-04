@@ -70,7 +70,8 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Sorteos, parte 3 | 04-11-2026 | `93f4d0c` (v0.29.2) | `bece42f` (v0.30.0) | Gestionar participantes desde «Mi zona» y wp-admin |
 | Ronda 47 | 04-11-2026 | `bece42f` (v0.30.0) | `3db3ef0` (v0.30.1) | R147 (sello por acción y fila) y R148 (foto del sorteo de la dirección) |
 | Tanda C, parte 2 | 04-11-2026 | `3db3ef0` (v0.30.1) | `dff6625` (v0.30.2) | R50 y R109: sin permiso, 401 también cuando el id no existe |
-| Tanda C, parte 3 | 04-11-2026 | `dff6625` (v0.30.2) | (este commit, v0.30.3) | Preparar la subida: paquete (R55), lista «Día de la subida» y prueba de que sin `ZN_CORREO_REAL` no sale correo |
+| Tanda C, parte 3 | 04-11-2026 | `dff6625` (v0.30.2) | `f878bde` y `6bdde6d` (v0.30.3) | Preparar la subida: paquete (R55), lista «Día de la subida» y prueba de que sin `ZN_CORREO_REAL` no sale correo |
+| Refresh token (opción C) | 04-11-2026 | `c4ba8c4` (v0.30.3) | (este commit, v0.31.0) | `refreshToken` de un solo uso, ligado al login, 14 días; reuso anula la cadena |
 
 ---
 
@@ -101,6 +102,18 @@ traspaso. Diff: `git diff a6e3ab4 HEAD`. Pruebas escritas antes (`tests/portada.
 | **Quién edita** | hecho | `ZN_Roles::actualizar` da al administrador los permisos de los dos tipos nuevos; `ZN_Instalacion::es_del_plugin` los reconoce para `uninstall.php` (R68). Panel R40 sin cambios. |
 | **Carga inicial** | hecho | `wp zona-nautico portada-inicial <carpeta de la app>`: 60 Novedades ZN (`zn_origen` = id de Adalo, fecha UTC de Adalo) y 6 slides con sus fotos subidas a medios. Repetirla no duplica. **Ejecutada en el Local** (60 y 6). |
 | **Pruebas** | hecho | `tests/portada.php` 36; sin regresiones en `instalacion` 28, `roles` 90, `panel` 177, `seguridad` 84, `esquema` 65, `contrato-negocios`, `contrato-muestras` y `puertas`. |
+
+## Refresh token (opción C)
+
+Aprobado por Luis (vía la maestra, 04-11): «Sí, hasta 14 días», con la opción C de los revisores y sin renovar tokens caducados. Diff: `git diff c4ba8c4 HEAD`. Pruebas escritas antes en `tests/renovacion.php` (42; fallaban 18).
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **Login** | hecho | Además del token de 60 min, `refreshToken`: 64 bytes al azar en base64url (86 caracteres), al final de la respuesta. Se guarda solo su huella, en `zn_tokens` (versión de tabla 4: columnas `tipo` acceso/renovar, `cadena` y `usado`). Cada login abre una cadena; todo lo que sale de él la comparte. Caduca a `MAX_RENOVAR` (14 días) del login. No vale como token de acceso. |
+| **POST /refresh** | hecho | Con `{refreshToken}`: no mira el token de acceso (puede haber caducado). Si vale, lo marca como usado (un `UPDATE … WHERE usado IS NULL`: solo una petición lo gasta), anula los tokens de acceso de su cadena y da token y refresh nuevos de la misma cadena, con la fecha del login de siempre. Sin `refreshToken`, exactamente como antes (prueba de `login`). Nunca se renueva un token de acceso caducado. |
+| **Reuso** | hecho | Un refresh ya usado (o el segundo de dos a la vez) anula toda la cadena: su token de acceso y su refresh de ahora; 401. Los otros logins de la cuenta siguen. Así R87 sigue: de dos `/refresh` a la vez con lo mismo, solo uno da sesión (y con el refresh, ninguna queda). |
+| **Anulación** | hecho | `/logout`: anula la cadena del token (también su refresh); con el token de acceso caducado, `{refreshToken}` en el cuerpo. Contraseña o correo: los refresh de los demás logins (no el de quien hace el cambio, R56). Rol, baja en el panel y borrado: todos (`anular_todos`). Cuenta dada de baja o sin rol de la app: el refresh no vale. Como mucho `MAX_ACTIVOS` cadenas con refresh (R59). |
+| **Pruebas** | hecho | `renovacion` 42 (también por HTTP: token caducado en la cabecera, refresh como Bearer, logout). Cambiadas: `login` (la respuesta lleva `refreshToken` al final; la prueba de R87 llama a `renovar()` con su petición) 74. Sin cambios: `tokens` 60, `instalacion` 28, `mis-datos` 78, `registro` 77, `borrar-cuenta` 39, `panel` 177, `seguridad` 84, `me` 18, `roles` 90, `sin-adivinar` 35. |
 
 ## Tanda C, parte 3: preparar la subida (sin servidor)
 

@@ -15,11 +15,16 @@
  * - Sin wp_authenticate() ni wp_signon(): las cuentas de la app no pueden entrar por wp-login.php (R22, R38).
  *   Tampoco se abre sesión de WordPress ni se ponen cookies; al entrar se cierran las que tuviera la cuenta (R39),
  *   salvo las del panel de asociación y federación (R98).
- * - POST /refresh: con un token que vale, uno nuevo (misma respuesta que el login) y el anterior anulado. Con
- *   un token caducado hay que entrar de nuevo, y también pasados ZN_Tokens::MAX_RENOVAR desde el login (R86).
- *   Primero se anula el viejo y solo si lo ha anulado esta petición se da el nuevo: dos /refresh a la vez con el
- *   mismo token no dan dos tokens (R87). POST /logout: anula el token de la petición (los de otros
- *   móviles de la misma cuenta siguen). Los dos, solo con el token: sin él, 401 «Unauthenticated.».
+ * - El login da también `refreshToken` (opción C, ZN_Tokens): opaco, de un solo uso y ligado a ese login (cadena),
+ *   hasta MAX_RENOVAR (14 días) desde el login. Va al final de la respuesta: la app de antes lo ignora.
+ * - POST /refresh {refreshToken}: vale aunque el token de acceso haya caducado (no se mira); da token y refresh
+ *   nuevos de la misma cadena y gasta el usado. Uno ya usado es un reuso: se anula toda la cadena y 401. Sin
+ *   refreshToken, como antes: con un token que vale, uno nuevo (sin refresh) y el anterior anulado; con uno
+ *   caducado hay que entrar de nuevo, y también pasados ZN_Tokens::MAX_RENOVAR desde el login (R86). En los dos
+ *   casos, de dos /refresh a la vez con lo mismo solo uno da sesión (R87).
+ * - POST /logout: con el token de acceso, anula su cadena (ese login: su token y su refresh); los de otros móviles
+ *   de la misma cuenta siguen. Si el token de acceso ya ha caducado, vale {refreshToken} en el cuerpo. Sin ninguno
+ *   de los dos, 401 «Unauthenticated.».
  * - Respuestas con token: Cache-Control no-store (R49).
  */
 
@@ -44,7 +49,8 @@ class ZN_API_Sesion {
 				array(
 					'methods'             => WP_REST_Server::CREATABLE,
 					'callback'            => array( __CLASS__, $metodo ),
-					'permission_callback' => array( 'ZN_API', 'con_sesion_de_la_app' ),
+					// La sesión se mira dentro: con refreshToken, el token de acceso puede haber caducado.
+					'permission_callback' => '__return_true',
 				)
 			);
 		}
@@ -93,28 +99,49 @@ class ZN_API_Sesion {
 		if ( ! ZN_Panel::puede_entrar( $cuenta ) ) {
 			WP_Session_Tokens::get_instance( $cuenta->ID )->destroy_all();
 		}
-		return self::con_token( $cuenta );
+		return self::con_token( $cuenta, null, null, true );
 	}
 
-	public static function renovar(): WP_REST_Response {
-		$token = self::token_de_la_sesion();
+	public static function renovar( WP_REST_Request $peticion ): WP_REST_Response {
+		$cuerpo = self::cuerpo( $peticion );
+		if ( array_key_exists( 'refreshToken', $cuerpo ) ) {
+			$uso    = is_string( $cuerpo['refreshToken'] ) ? ZN_Tokens::usar_renovacion( $cuerpo['refreshToken'] ) : null;
+			$cuenta = $uso ? get_userdata( $uso['user_id'] ) : false;
+			return $cuenta ? self::con_token( $cuenta, $uso['origen'], $uso['cadena'], true ) : ZN_Errores::no_autenticado();
+		}
+		// Sin refreshToken, como antes (R86, R87).
+		$token = ZN_API::con_sesion_de_la_app() ? self::token_de_la_sesion() : null;
 		if ( null === $token ) {
 			return ZN_Errores::no_autenticado();
 		}
 		$origen = ZN_Tokens::origen( $token );
+		$cadena = ZN_Tokens::cadena_de( $token );
 		if ( null === $origen || $origen + ZN_Tokens::MAX_RENOVAR < time() || ! ZN_Tokens::anular( $token ) ) {
 			return ZN_Errores::no_autenticado();
 		}
-		return self::con_token( wp_get_current_user(), $origen );
+		return self::con_token( wp_get_current_user(), $origen, $cadena );
 	}
 
-	public static function salir(): WP_REST_Response {
-		$token = self::token_de_la_sesion();
-		if ( null === $token ) {
+	public static function salir( WP_REST_Request $peticion ): WP_REST_Response {
+		$token   = ZN_API::con_sesion_de_la_app() ? self::token_de_la_sesion() : null;
+		$refresh = self::cuerpo( $peticion )['refreshToken'] ?? null;
+		$cadena  = null !== $token ? ZN_Tokens::cadena_de( $token ) : ( is_string( $refresh ) ? ZN_Tokens::cadena_de_renovacion( $refresh ) : null );
+		if ( null === $token && null === $cadena ) {
 			return ZN_Errores::no_autenticado();
 		}
-		ZN_Tokens::anular( $token );
+		if ( null !== $token ) {
+			ZN_Tokens::anular( $token );
+		}
+		if ( null !== $cadena ) {
+			ZN_Tokens::anular_cadena( $cadena );
+		}
 		return self::sin_cache( new WP_REST_Response( array( 'message' => 'Successfully logged out' ) ) );
+	}
+
+	/** El cuerpo JSON (o de formulario) como lista; nunca lo de la dirección (H8). */
+	private static function cuerpo( WP_REST_Request $peticion ): array {
+		$cuerpo = $peticion->get_json_params() ?: $peticion->get_body_params();
+		return is_array( $cuerpo ) ? $cuerpo : array();
 	}
 
 	/** El token de la petición si es el que ha dado la sesión (no una cookie de wp-admin); si no, null. */
@@ -123,22 +150,27 @@ class ZN_API_Sesion {
 		return $id ? ZN_Tokens::token_en_uso( $id ) : null;
 	}
 
-	/** 200 {status, token, id, role} con un token nuevo para la cuenta. */
-	private static function con_token( WP_User $cuenta, ?int $origen = null ): WP_REST_Response {
-		$token = ZN_Tokens::emitir( $cuenta->ID, $origen );
+	/**
+	 * 200 {status, token, id, role} con un token nuevo para la cuenta y, con $con_refresh, también `refreshToken` de la
+	 * misma cadena ($cadena, o una nueva en un login). $origen: el login del que viene (null: es un login, ahora).
+	 */
+	private static function con_token( WP_User $cuenta, ?int $origen = null, ?string $cadena = null, bool $con_refresh = false ): WP_REST_Response {
+		$origen = $origen ?? time();
+		$cadena = $cadena ?? ( $con_refresh ? ZN_Tokens::nueva_cadena() : null );
+		$token  = ZN_Tokens::emitir( $cuenta->ID, $origen, $cadena );
 		if ( null === $token ) {
 			return ZN_Errores::no_autenticado();
 		}
-		return self::sin_cache(
-			new WP_REST_Response(
-				array(
-					'status' => 'success',
-					'token'  => $token,
-					'id'     => (int) $cuenta->ID,
-					'role'   => ZN_Roles::rol_app( $cuenta ),
-				)
-			)
+		$datos = array(
+			'status' => 'success',
+			'token'  => $token,
+			'id'     => (int) $cuenta->ID,
+			'role'   => ZN_Roles::rol_app( $cuenta ),
 		);
+		if ( $con_refresh && null !== $cadena ) {
+			$datos['refreshToken'] = ZN_Tokens::emitir_renovacion( $cuenta->ID, $cadena, $origen );
+		}
+		return self::sin_cache( new WP_REST_Response( $datos ) );
 	}
 
 	/**

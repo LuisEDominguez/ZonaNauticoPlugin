@@ -177,10 +177,17 @@ con el coste de este servidor, R85); sin verificar el correo (`zn_verificado`), 
 solo con la contraseña buena. Primero valida el formato (422, sin contar el intento), luego el límite de
 intentos (429) y luego la contraseña con `wp_check_password()` (nunca `wp_authenticate()`, que rechaza las
 cuentas de la app). No abre sesión de WordPress ni pone cookies, y cierra las que tuviera la cuenta.
-`POST /refresh` (con un token que vale) da uno nuevo con la misma respuesta y anula el anterior (solo una
-vez: dos a la vez con el mismo token no dan dos, R87); con uno caducado, o pasados 14 días desde el login
-(`ZN_Tokens::MAX_RENOVAR`, R86), hay que entrar de nuevo. `POST /logout` anula el token de la petición. Sin token, los dos dan
-`401 «Unauthenticated.»`. Las respuestas con token llevan `Cache-Control: no-store`.
+**Refresh token (opción C, Luis: «Sí, hasta 14 días»).** El login da además `refreshToken`, al final de la respuesta (la app
+de antes lo ignora): opaco y largo (64 bytes), guardado solo como huella en la misma tabla (`tipo = renovar`), de un solo
+uso y ligado a su login (`cadena`). `POST /refresh {refreshToken}` lo acepta aunque el token de acceso haya caducado: da
+token y refresh nuevos de la misma cadena y gasta el usado. Los 14 días cuentan siempre desde el login
+(`ZN_Tokens::MAX_RENOVAR`, R86): renovar no los alarga. **Reuso:** si llega un refresh ya usado, se anula toda la cadena de
+ese login (sus tokens de acceso y su refresh) y 401; así, de dos `/refresh` a la vez con el mismo solo uno da sesión (R87).
+Sin `refreshToken`, como antes: `POST /refresh` con un token de acceso que vale da uno nuevo (sin refresh) y anula el anterior;
+con uno caducado o pasados 14 días, hay que entrar. **Nunca se renueva un token de acceso caducado.** `POST /logout` anula la
+cadena del token de la petición (los otros móviles de la cuenta siguen); con el token de acceso ya caducado vale `{refreshToken}` en el cuerpo. Sin ninguno, `401 «Unauthenticated.»`. Cambiar la contraseña o el correo anula los refresh de los
+demás logins (no el de quien hace el cambio, R56); el cambio de rol, la baja en el panel y el borrado, todos. Como mucho
+`MAX_ACTIVOS` logins con refresh a la vez (R59): uno nuevo anula el más antiguo. Las respuestas con token llevan `Cache-Control: no-store`.
 
 **Alta, verificación y recuperación (R30, R53, R62).** `includes/class-zn-api-cuenta.php`, con las respuestas
 del Laravel que espera la app. `POST /register` (nombre, email, contraseña y, si quiere, teléfono; la ubicación no se guarda, R91):
@@ -408,6 +415,7 @@ un enlace de carpeta en `wp-content/plugins/zona-nautico`.
 - Novedades y sorteos desde la app (crea y borra cuentas, negocios, novedades y sorteos; también por HTTP): `wp eval-file tests/novedades-sorteos.php`
 - Datos personales: borrar cuenta, exportar y borrar (crea y borra cuentas, negocios y comentarios): `wp eval-file tests/privacidad.php`
 - Gestionar participantes desde «Mi zona» y wp-admin (crea y borra cuentas, sorteos y fotos; los correos se recogen y no salen): `wp eval-file tests/participaciones-admin.php`
+- Refresh token (opción C: refresh de un solo uso, reuso, 14 días, logout y cambios de cuenta; crea y borra cuentas): `wp eval-file tests/renovacion.php`
 - Sin adivinar ids (R50, R109: lo que no existe da el mismo 401 que lo ajeno; crea y borra cuentas, un negocio, borradores, una reseña y una pregunta): `wp eval-file tests/sin-adivinar.php`
 - Sin ZN_CORREO_REAL no sale ningún correo a una dirección de verdad, por ninguna ruta (crea y borra cuentas; los correos se recogen y no salen): `wp eval-file tests/correo-sin-salida.php`
 - El paquete para subir (R55): lo que lleva y lo que no, y lo hace de verdad en una carpeta temporal (no necesita Local): `node tests/paquete.mjs`

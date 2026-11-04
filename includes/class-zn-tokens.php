@@ -16,6 +16,12 @@
  * - Se valida con `determine_current_user` (no en cada ruta): un token que no vale es «sin sesión», así que
  *   en las rutas públicas la respuesta es la normal (200) y en las privadas, 401 «Unauthenticated.».
  * - Solo para cuentas de la app (un único rol zn_*).
+ * - Refresh token (opción C, Luis: «Sí, hasta 14 días»): POST /login da además uno aparte, opaco y largo (64 bytes),
+ *   en la misma tabla con tipo «renovar» y solo su huella. Es de un solo uso y va ligado a su login (cadena): todos los
+ *   tokens que salen de un login comparten cadena. Caduca a MAX_RENOVAR del login y vale aunque el token de acceso haya
+ *   caducado (POST /refresh {refreshToken}). Si llega uno ya usado (reuso), se anula toda su cadena. Al cerrar sesión se
+ *   anula su cadena; los cambios de contraseña, correo, rol y el borrado anulan también los refresh (menos el de la
+ *   cadena de quien hace el cambio, R56). Como mucho MAX_ACTIVOS logins (cadenas) con refresh a la vez.
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -27,7 +33,7 @@ class ZN_Tokens {
 	const MAX_ACTIVOS = 10;
 	// Desde el login original, /refresh renueva como mucho durante este tiempo (R86; el refresh_ttl por defecto de jwt-auth).
 	const MAX_RENOVAR   = 14 * DAY_IN_SECONDS;
-	const VERSION_TABLA = '3';
+	const VERSION_TABLA = '4';
 
 	/** ¿La cuenta de esta petición salió de un token? (para la segunda barrera de R46). */
 	private static bool $desde_token = false;
@@ -80,10 +86,14 @@ class ZN_Tokens {
 				caduca datetime NOT NULL,
 				origen datetime DEFAULT NULL,
 				anulado datetime DEFAULT NULL,
+				tipo varchar(10) NOT NULL DEFAULT 'acceso',
+				cadena char(32) DEFAULT NULL,
+				usado datetime DEFAULT NULL,
 				PRIMARY KEY  (id),
 				UNIQUE KEY hash (hash),
 				KEY user_id (user_id),
-				KEY caduca (caduca)
+				KEY caduca (caduca),
+				KEY cadena (cadena)
 			) {$wpdb->get_charset_collate()};"
 		);
 		update_option( 'zn_tokens_tabla', self::VERSION_TABLA );
@@ -91,9 +101,10 @@ class ZN_Tokens {
 
 	/**
 	 * Nuevo token para una cuenta de la app; null si no es cuenta de la app. Devuelve el token en claro (solo esta
-	 * vez). $origen: momento del login del que viene (al renovar); si no se da, es un login nuevo.
+	 * vez). $origen: momento del login del que viene (al renovar); si no se da, es un login nuevo. $cadena: la del login
+	 * del que viene (refresh token); sin ella, el token no va en ninguna.
 	 */
-	public static function emitir( int $usuario, ?int $origen = null ): ?string {
+	public static function emitir( int $usuario, ?int $origen = null, ?string $cadena = null ): ?string {
 		$cuenta = get_userdata( $usuario );
 		if ( ! $cuenta || ! ZN_Roles::rol_app( $cuenta ) ) {
 			return null;
@@ -109,13 +120,15 @@ class ZN_Tokens {
 				'creado'  => gmdate( 'Y-m-d H:i:s', $ahora ),
 				'caduca'  => gmdate( 'Y-m-d H:i:s', $ahora + self::DURACION ),
 				'origen'  => gmdate( 'Y-m-d H:i:s', $origen ?? $ahora ),
+				'tipo'    => 'acceso',
+				'cadena'  => $cadena,
 			),
-			array( '%s', '%d', '%s', '%s', '%s' )
+			array( '%s', '%d', '%s', '%s', '%s', '%s', '%s' )
 		);
 		// Tope de tokens activos por cuenta (R59): se quedan los MAX_ACTIVOS más nuevos.
 		$wpdb->query(
 			$wpdb->prepare(
-				'UPDATE ' . self::tabla() . ' SET anulado = %s WHERE user_id = %d AND anulado IS NULL AND id NOT IN ( SELECT id FROM ( SELECT id FROM ' . self::tabla() . ' WHERE user_id = %d AND anulado IS NULL AND caduca > %s ORDER BY id DESC LIMIT %d ) AS nuevos )', // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+				'UPDATE ' . self::tabla() . " SET anulado = %s WHERE user_id = %d AND tipo = 'acceso' AND anulado IS NULL AND id NOT IN ( SELECT id FROM ( SELECT id FROM " . self::tabla() . " WHERE user_id = %d AND tipo = 'acceso' AND anulado IS NULL AND caduca > %s ORDER BY id DESC LIMIT %d ) AS nuevos )", // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 				gmdate( 'Y-m-d H:i:s', $ahora ),
 				$usuario,
 				$usuario,
@@ -135,7 +148,7 @@ class ZN_Tokens {
 		}
 		global $wpdb;
 		$fila = $wpdb->get_row(
-			$wpdb->prepare( 'SELECT user_id, caduca, anulado FROM ' . self::tabla() . ' WHERE hash = %s', self::huella( $token ) ) // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+			$wpdb->prepare( 'SELECT user_id, caduca, anulado FROM ' . self::tabla() . " WHERE hash = %s AND tipo = 'acceso'", self::huella( $token ) ) // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		);
 		if ( ! $fila || null !== $fila->anulado || strtotime( $fila->caduca . ' UTC' ) <= time() ) {
 			return 0;
@@ -157,10 +170,100 @@ class ZN_Tokens {
 		return $fila ? (int) strtotime( ( $fila->origen ?? $fila->creado ) . ' UTC' ) : null;
 	}
 
-	/** Anula todos los tokens de la cuenta, salvo (si se da) el token $menos. */
+	/**
+	 * Anula todos los tokens de la cuenta, también los refresh, salvo (si se da) el token $menos y el refresh de su misma
+	 * cadena (quien hace el cambio sigue con su sesión, R56).
+	 */
 	public static function anular_todos( int $usuario, ?string $menos = null ): void {
 		global $wpdb;
-		$wpdb->query( $wpdb->prepare( 'UPDATE ' . self::tabla() . ' SET anulado = %s WHERE user_id = %d AND anulado IS NULL AND hash <> %s', gmdate( 'Y-m-d H:i:s' ), $usuario, null === $menos ? '' : self::huella( $menos ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$cadena = null === $menos ? '' : (string) self::cadena_de( $menos );
+		$wpdb->query( $wpdb->prepare( 'UPDATE ' . self::tabla() . " SET anulado = %s WHERE user_id = %d AND anulado IS NULL AND hash <> %s AND NOT ( tipo = 'renovar' AND cadena = %s )", gmdate( 'Y-m-d H:i:s' ), $usuario, null === $menos ? '' : self::huella( $menos ), $cadena ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+	}
+
+	/** Cadena (login de origen) de un token de acceso; null si no tiene o no existe. */
+	public static function cadena_de( string $token ): ?string {
+		global $wpdb;
+		$cadena = $wpdb->get_var( $wpdb->prepare( 'SELECT cadena FROM ' . self::tabla() . " WHERE hash = %s AND tipo = 'acceso'", self::huella( $token ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		return is_string( $cadena ) && '' !== $cadena ? $cadena : null;
+	}
+
+	/** Una cadena nueva, para un login nuevo. */
+	public static function nueva_cadena(): string {
+		return bin2hex( random_bytes( 16 ) );
+	}
+
+	/** Anula todo lo de una cadena (tokens de acceso y refresh). */
+	public static function anular_cadena( string $cadena ): void {
+		global $wpdb;
+		$wpdb->query( $wpdb->prepare( 'UPDATE ' . self::tabla() . ' SET anulado = %s WHERE cadena = %s AND anulado IS NULL', gmdate( 'Y-m-d H:i:s' ), $cadena ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+	}
+
+	/**
+	 * Refresh token nuevo de la cadena (en claro, solo esta vez). Caduca a MAX_RENOVAR del login ($origen): renovar no
+	 * alarga los 14 días. Si la cuenta pasa de MAX_ACTIVOS cadenas con refresh, se anulan las más antiguas (R59).
+	 */
+	public static function emitir_renovacion( int $usuario, string $cadena, int $origen ): string {
+		global $wpdb;
+		$refresh = rtrim( strtr( base64_encode( random_bytes( 64 ) ), '+/', '-_' ), '=' );
+		$ahora   = time();
+		$wpdb->insert(
+			self::tabla(),
+			array(
+				'hash'    => self::huella( $refresh ),
+				'user_id' => $usuario,
+				'creado'  => gmdate( 'Y-m-d H:i:s', $ahora ),
+				'caduca'  => gmdate( 'Y-m-d H:i:s', $origen + self::MAX_RENOVAR ),
+				'origen'  => gmdate( 'Y-m-d H:i:s', $origen ),
+				'tipo'    => 'renovar',
+				'cadena'  => $cadena,
+			),
+			array( '%s', '%d', '%s', '%s', '%s', '%s', '%s' )
+		);
+		$vivas = $wpdb->get_col( $wpdb->prepare( 'SELECT cadena FROM ' . self::tabla() . " WHERE user_id = %d AND tipo = 'renovar' AND anulado IS NULL AND usado IS NULL AND caduca > %s GROUP BY cadena ORDER BY MAX(id) DESC", $usuario, gmdate( 'Y-m-d H:i:s', $ahora ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		foreach ( array_slice( $vivas, self::MAX_ACTIVOS ) as $vieja ) {
+			self::anular_cadena( (string) $vieja );
+		}
+		return $refresh;
+	}
+
+	/**
+	 * Gasta un refresh token: si vale (existe, sin usar, sin anular, dentro de los 14 días, cuenta de la app activa), lo
+	 * marca como usado, anula los tokens de acceso de su cadena y devuelve {user_id, origen, cadena}. Si ya estaba usado
+	 * (reuso: lo tiene alguien más), anula toda la cadena. Si no, null. El UPDATE con «usado IS NULL» hace que, de dos
+	 * peticiones a la vez con el mismo, solo una lo gaste: la otra es un reuso (R87).
+	 */
+	public static function usar_renovacion( string $refresh ): ?array {
+		if ( ! preg_match( '/^[A-Za-z0-9_-]{86}$/', $refresh ) ) {
+			return null;
+		}
+		global $wpdb;
+		$fila = $wpdb->get_row( $wpdb->prepare( 'SELECT id, user_id, caduca, origen, anulado, usado, cadena FROM ' . self::tabla() . " WHERE hash = %s AND tipo = 'renovar'", self::huella( $refresh ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		if ( ! $fila || null !== $fila->anulado || strtotime( $fila->caduca . ' UTC' ) <= time() ) {
+			return null;
+		}
+		$ahora   = gmdate( 'Y-m-d H:i:s' );
+		$gastado = null === $fila->usado && 1 === (int) $wpdb->query( $wpdb->prepare( 'UPDATE ' . self::tabla() . ' SET usado = %s WHERE id = %d AND usado IS NULL AND anulado IS NULL', $ahora, (int) $fila->id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		if ( ! $gastado ) {
+			self::anular_cadena( (string) $fila->cadena );
+			return null;
+		}
+		$cuenta = get_userdata( (int) $fila->user_id );
+		if ( ! $cuenta || ! ZN_Roles::rol_app( $cuenta ) || ZN_Panel::desactivada( $cuenta->ID ) ) {
+			self::anular_cadena( (string) $fila->cadena );
+			return null;
+		}
+		$wpdb->query( $wpdb->prepare( 'UPDATE ' . self::tabla() . " SET anulado = %s WHERE cadena = %s AND tipo = 'acceso' AND anulado IS NULL", $ahora, (string) $fila->cadena ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		return array( 'user_id' => (int) $fila->user_id, 'origen' => (int) strtotime( $fila->origen . ' UTC' ), 'cadena' => (string) $fila->cadena );
+	}
+
+	/** Cadena de un refresh token que no esté anulado ni caducado (para /logout sin token de acceso); null si no. */
+	public static function cadena_de_renovacion( string $refresh ): ?string {
+		if ( ! preg_match( '/^[A-Za-z0-9_-]{86}$/', $refresh ) ) {
+			return null;
+		}
+		global $wpdb;
+		$fila = $wpdb->get_row( $wpdb->prepare( 'SELECT cadena, caduca, anulado FROM ' . self::tabla() . " WHERE hash = %s AND tipo = 'renovar'", self::huella( $refresh ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		return $fila && null === $fila->anulado && strtotime( $fila->caduca . ' UTC' ) > time() ? (string) $fila->cadena : null;
 	}
 
 	/** El token de esta petición si vale y es de esa cuenta (quien está haciendo el cambio); si no, null. */

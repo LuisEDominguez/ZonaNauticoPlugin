@@ -91,7 +91,7 @@ try {
 	// --- Login bueno (R39: el contrato de src/api/auth.ts) ---
 	list( $estado, $cuerpo, $cabeceras ) = $entrar( array( 'email' => $email, 'password' => $clave ) );
 	$ok( 'login bueno: 200', 200 === $estado );
-	$ok( 'login bueno: {status, token, id, role} en ese orden', array( 'status', 'token', 'id', 'role' ) === array_keys( (array) $cuerpo ) );
+	$ok( 'login bueno: {status, token, id, role} en ese orden, y al final refreshToken (opción C; la app de antes lo ignora)', array( 'status', 'token', 'id', 'role', 'refreshToken' ) === array_keys( (array) $cuerpo ) );
 	$ok( 'login bueno: status «success», id numérico y role «user»', 'success' === ( $cuerpo['status'] ?? null ) && $usuario === ( $cuerpo['id'] ?? null ) && 'user' === ( $cuerpo['role'] ?? null ) );
 	$ok( 'login bueno: el token vale y es de esa cuenta', $usuario === ZN_Tokens::validar( (string) ( $cuerpo['token'] ?? '' ) ) );
 	$ok( 'login bueno: sin caché (Cache-Control: no-store)', false !== strpos( (string) ( $cabeceras['Cache-Control'] ?? '' ), 'no-store' ) );
@@ -249,7 +249,7 @@ try {
 	$_SERVER['SCRIPT_NAME'] = '/index.php';
 	$_SERVER['HTTP_AUTHORIZATION'] = "Bearer $tres";
 	wp_set_current_user( $usuario );
-	$respuesta = ZN_API_Sesion::renovar();
+	$respuesta = ZN_API_Sesion::renovar( new WP_REST_Request( 'POST', '/' . ZN_NAMESPACE . '/refresh' ) );
 	wp_set_current_user( 0 );
 	remove_filter( 'query', $adelantarse );
 	$_SERVER = $servidor;
