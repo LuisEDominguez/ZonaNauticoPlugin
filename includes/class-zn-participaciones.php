@@ -34,6 +34,8 @@ class ZN_Participaciones {
 	const TAREA         = 'zn_limpiar_participaciones';
 	const MAX_BYTES     = 8 * MB_IN_BYTES;
 	const MAX_LADO      = 2000;
+	// R132: tope antes de decodificar (un PNG pequeño puede decir medir 20000 × 20000 y agotar la memoria).
+	const MAX_PIXELES   = 40000000;
 	const DIAS_TRAS_ENTREGA = 30;
 	const DIAS_SIN_ENTREGA  = 90;
 
@@ -90,9 +92,11 @@ class ZN_Participaciones {
 	 * uploads con .htaccess que lo niega todo. Siempre con index.php vacío y .htaccess, por si acaso.
 	 */
 	public static function carpeta(): string {
-		$fuera   = wp_normalize_path( dirname( untrailingslashit( ABSPATH ) ) ) . '/zn-privado-tickets';
-		$dentro  = wp_normalize_path( wp_get_upload_dir()['basedir'] ) . '/zn-privado';
-		$carpeta = (string) apply_filters( 'zn_carpeta_tickets', ( is_dir( $fuera ) || wp_is_writable( dirname( $fuera ) ) ) ? $fuera : $dentro );
+		$carpeta = self::carpeta_pedida();
+		if ( ! self::ruta_valida( $carpeta ) ) {
+			// R134: lo que diga el filtro solo vale si es una carpeta zn-privado* segura; si no, la de siempre.
+			$carpeta = self::carpeta_por_defecto();
+		}
 		if ( ! is_dir( $carpeta ) ) {
 			wp_mkdir_p( $carpeta );
 		}
@@ -103,6 +107,39 @@ class ZN_Participaciones {
 			file_put_contents( "$carpeta/index.php", "<?php\n// Silencio.\n" ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
 		}
 		return $carpeta;
+	}
+
+	private static function carpeta_por_defecto(): string {
+		$fuera = wp_normalize_path( dirname( untrailingslashit( ABSPATH ) ) ) . '/zn-privado-tickets';
+		return ( is_dir( $fuera ) || wp_is_writable( dirname( $fuera ) ) ) ? $fuera : wp_normalize_path( wp_get_upload_dir()['basedir'] ) . '/zn-privado';
+	}
+
+	/** La carpeta que pide el filtro zn_carpeta_tickets (por defecto, la de siempre), sin comprobarla. */
+	private static function carpeta_pedida(): string {
+		return wp_normalize_path( untrailingslashit( (string) apply_filters( 'zn_carpeta_tickets', self::carpeta_por_defecto() ) ) );
+	}
+
+	/**
+	 * R134: ¿es una carpeta en la que se pueden guardar y borrar tickets? Se llama zn-privado*, no está vacía,
+	 * no es un enlace simbólico y no es ni contiene la de WordPress, wp-content o uploads.
+	 */
+	public static function ruta_valida( string $ruta ): bool {
+		$ruta = untrailingslashit( wp_normalize_path( trim( $ruta ) ) );
+		if ( '' === $ruta || ! preg_match( '/^zn-privado[a-z0-9_-]*$/', basename( $ruta ) ) || is_link( $ruta ) ) {
+			return false;
+		}
+		$real = is_dir( $ruta ) ? untrailingslashit( wp_normalize_path( (string) realpath( $ruta ) ) ) : $ruta;
+		if ( '' === $real || $real !== $ruta ) {
+			// Una carpeta que existe y no es lo que dice ser (enlace o junction por el camino): no.
+			return false;
+		}
+		foreach ( array( ABSPATH, WP_CONTENT_DIR, wp_get_upload_dir()['basedir'] ) as $protegida ) {
+			$protegida = untrailingslashit( wp_normalize_path( (string) $protegida ) );
+			if ( $real === $protegida || 0 === strpos( $protegida . '/', $real . '/' ) ) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	/** Ruta del archivo de la foto de una fila; '' si no tiene. */
@@ -247,20 +284,13 @@ class ZN_Participaciones {
 		}
 		$archivos = $peticion->get_file_params();
 		$foto     = $archivos['ticket'] ?? $archivos['attachment'] ?? null;
-		$imagen   = null;
 		if ( ! is_array( $foto ) || UPLOAD_ERR_OK !== (int) ( $foto['error'] ?? UPLOAD_ERR_NO_FILE ) || empty( $foto['tmp_name'] ) || ! is_file( $foto['tmp_name'] ) ) {
 			$errores['ticket'] = ZN_Esquema::mensaje( 'required', 'ticket' );
-		} elseif ( (int) filesize( $foto['tmp_name'] ) > self::MAX_BYTES ) {
-			$errores['ticket'] = 'The ticket field must not be greater than 8192 kilobytes.';
-		} else {
-			$imagen = self::cargar_imagen( $foto['tmp_name'] );
-			if ( ! $imagen ) {
-				$errores['ticket'] = 'The ticket field must be an image (jpg, png or webp).';
-			}
 		}
 		if ( $errores ) {
 			return ZN_Errores::no_valido( $errores );
 		}
+		// R132: el sorteo, el permiso y si ya participa se miran antes de tocar la imagen.
 		$sorteo = self::sorteo( (int) $valor );
 		if ( ! $sorteo || ! ZN_API::entrada( $sorteo->ID, ZN_Sorteos::TIPO ) ) {
 			return ZN_API::no_encontrado();
@@ -277,6 +307,15 @@ class ZN_Participaciones {
 		$repetida = ZN_Errores::no_valido( array( 'draw' => 'You are already taking part in this draw.' ) );
 		if ( $existe ) {
 			return $repetida;
+		}
+		// Luego la imagen: primero tamaño, tipo y píxeles con la cabecera (sin decodificar); solo entonces se abre.
+		$fallo = self::comprobar_imagen( $foto['tmp_name'] );
+		if ( null !== $fallo ) {
+			return ZN_Errores::no_valido( array( 'ticket' => $fallo ) );
+		}
+		$imagen = self::cargar_imagen( $foto['tmp_name'] );
+		if ( ! $imagen ) {
+			return ZN_Errores::no_valido( array( 'ticket' => 'The ticket field must be an image (jpg, png or webp).' ) );
 		}
 		$nombre = self::guardar_imagen( $imagen );
 		if ( '' === $nombre ) {
@@ -412,12 +451,32 @@ class ZN_Participaciones {
 
 	// --- Fotos ---
 
-	/** Imagen GD de un JPG, PNG o WebP de verdad (se mira el contenido, no el nombre), ya girada según su EXIF. */
-	private static function cargar_imagen( string $ruta ) {
+	/**
+	 * R132: lo que se puede saber sin decodificar (solo la cabecera, con getimagesize): tamaño del archivo, que sea
+	 * JPG, PNG o WebP de verdad y que no pase de MAX_PIXELES. null si vale; si no, el mensaje del error.
+	 */
+	private static function comprobar_imagen( string $ruta ): ?string {
+		if ( (int) filesize( $ruta ) > self::MAX_BYTES ) {
+			return 'The ticket field must not be greater than 8192 kilobytes.';
+		}
 		$info = @getimagesize( $ruta ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
 		if ( ! $info || ! in_array( $info[2], array( IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_WEBP ), true ) || ! function_exists( 'imagecreatefromstring' ) ) {
+			return 'The ticket field must be an image (jpg, png or webp).';
+		}
+		if ( (int) $info[0] * (int) $info[1] > self::MAX_PIXELES ) {
+			return 'The ticket field has too many pixels (40 megapixels at most).';
+		}
+		return null;
+	}
+
+	/** Imagen GD de una foto ya comprobada (comprobar_imagen), girada según su EXIF y a MAX_LADO como mucho. */
+	private static function cargar_imagen( string $ruta ) {
+		$info = @getimagesize( $ruta ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
+		if ( ! $info ) {
 			return null;
 		}
+		// Una foto de 40 MP decodificada ocupa unos 160 MB: se sube el límite de memoria como hace WordPress con las imágenes.
+		wp_raise_memory_limit( 'image' );
 		$imagen = @imagecreatefromstring( (string) file_get_contents( $ruta ) ); // phpcs:ignore
 		if ( ! $imagen ) {
 			return null;
@@ -583,14 +642,22 @@ class ZN_Participaciones {
 		return array_values( array_filter( array_map( static fn( $id ) => ZN_API::usuario_publico( $id )['name'] ?? null, $ids ) ) );
 	}
 
-	/** Para uninstall.php: la carpeta de las fotos. */
-	public static function borrar_carpeta(): void {
-		$carpeta = self::carpeta();
-		foreach ( (array) glob( "$carpeta/{,.}*", GLOB_BRACE ) as $archivo ) {
-			if ( is_file( $archivo ) ) {
-				unlink( $archivo ); // phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink
+	/**
+	 * Para uninstall.php: borra la carpeta de las fotos. Solo si es una carpeta válida (R134) y solo lo que pone el
+	 * plugin (fotos con su nombre al azar, .htaccess e index.php); si queda algo más, la carpeta no se quita.
+	 * Devuelve false si no se ha borrado nada por no ser válida.
+	 */
+	public static function borrar_carpeta(): bool {
+		$carpeta = self::carpeta_pedida();
+		if ( ! self::ruta_valida( $carpeta ) || ! is_dir( $carpeta ) ) {
+			return false;
+		}
+		foreach ( (array) scandir( $carpeta ) as $nombre ) {
+			if ( preg_match( '/^([a-z0-9]{32}\.jpg|\.htaccess|index\.php)$/', (string) $nombre ) && is_file( "$carpeta/$nombre" ) && ! is_link( "$carpeta/$nombre" ) ) {
+				unlink( "$carpeta/$nombre" ); // phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink
 			}
 		}
 		@rmdir( $carpeta ); // phpcs:ignore
+		return true;
 	}
 }

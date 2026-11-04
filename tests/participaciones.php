@@ -96,7 +96,32 @@ try {
 	foreach ( array( '/draw-participation', '/draw-participation/(?P<id>\d+)', '/draw-participation/(?P<id>\d+)/ticket', '/draw-participation/export/(?P<drawId>\d+)' ) as $ruta ) {
 		$ok( "existe $ruta", isset( $rutas[ '/' . ZN_NAMESPACE . $ruta ] ) );
 	}
+	// R134: la carpeta solo vale si se llama zn-privado*, no es la de WordPress ni uploads, no está vacía y no es un
+	// enlace simbólico. Si no, ni se usa ni se borra.
+	$ajena = wp_normalize_path( get_temp_dir() ) . 'otra-carpeta-' . wp_rand( 1000, 9999 );
+	wp_mkdir_p( $ajena );
+	file_put_contents( "$ajena/no-borrar.txt", 'x' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+	foreach ( array( 'una carpeta que no se llama zn-privado*' => $ajena, 'la carpeta de WordPress' => ABSPATH, 'uploads' => wp_get_upload_dir()['basedir'], 'vacía' => '' ) as $caso => $mala ) {
+		$filtro = static fn() => $mala;
+		add_filter( 'zn_carpeta_tickets', $filtro );
+		$valida = ZN_Participaciones::ruta_valida( $mala );
+		$usada  = ZN_Participaciones::carpeta();
+		$borra  = ZN_Participaciones::borrar_carpeta();
+		remove_filter( 'zn_carpeta_tickets', $filtro );
+		$ok( "R134: $caso: no vale, no se usa y borrar_carpeta() no borra nada", ! $valida && untrailingslashit( wp_normalize_path( $usada ) ) !== untrailingslashit( wp_normalize_path( (string) $mala ) ) && false === $borra );
+	}
+	$ok( 'R134: lo que había en la carpeta ajena sigue ahí', is_file( "$ajena/no-borrar.txt" ) );
+	unlink( "$ajena/no-borrar.txt" ); // phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink
+	rmdir( $ajena ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir
+	$enlace = wp_normalize_path( get_temp_dir() ) . 'zn-privado-enlace-' . wp_rand( 1000, 9999 );
+	if ( @symlink( wp_normalize_path( get_temp_dir() ), $enlace ) ) { // phpcs:ignore WordPress.PHP.NoSilencedErrors
+		$ok( 'R134: un enlace simbólico (aunque se llame zn-privado*) no vale', ! ZN_Participaciones::ruta_valida( $enlace ) );
+		@unlink( $enlace ); // phpcs:ignore
+	} else {
+		echo "aviso Windows sin permiso para crear enlaces simbólicos: la comprobación de is_link() no se puede probar aquí\n";
+	}
 	$carpeta = ZN_Participaciones::carpeta();
+	$ok( 'R134: la carpeta de verdad sí vale', ZN_Participaciones::ruta_valida( $carpeta ) );
 	$ok( 'las fotos van fuera de la carpeta pública de WordPress (o, si no se puede, protegidas)', is_dir( $carpeta ) && ( 0 !== strpos( wp_normalize_path( $carpeta ), wp_normalize_path( ABSPATH ) ) || ( is_file( "$carpeta/.htaccess" ) && is_file( "$carpeta/index.php" ) ) ) );
 	$ok( 'la carpeta no está dentro de la biblioteca de medios pública (uploads sin proteger)', 0 !== strpos( wp_normalize_path( $carpeta ), wp_normalize_path( wp_get_upload_dir()['basedir'] ) ) || is_file( "$carpeta/.htaccess" ) );
 
@@ -124,6 +149,18 @@ try {
 	$ok( 'sorteo cerrado: 422', 422 === $estado );
 	list( $estado ) = $llamar( 'POST', '/draw-participation', $ana, array( 'draw' => 999999999, 'adult' => '1' ), array( 'ticket' => $archivo( $foto() ) ) );
 	$ok( 'sorteo que no existe: 404', 404 === $estado );
+	// R132: un PNG que dice medir 20000 × 20000 (400 MP). Solo la cabecera: nunca se llega a decodificar.
+	$ihdr  = pack( 'NN', 20000, 20000 ) . "\x08\x06\x00\x00\x00";
+	$png   = "\x89PNG\r\n\x1a\n" . pack( 'N', 13 ) . 'IHDR' . $ihdr . pack( 'N', crc32( 'IHDR' . $ihdr ) ) . pack( 'N', 0 ) . 'IEND' . pack( 'N', crc32( 'IEND' ) );
+	$gigante = wp_tempnam( 'gigante.png' );
+	file_put_contents( $gigante, $png ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+	$temporales[] = $gigante;
+	list( $estado, $cuerpo ) = $llamar( 'POST', '/draw-participation', $ana, array( 'draw' => $abierto, 'adult' => '1' ), array( 'ticket' => $archivo( $gigante, 'gigante.png', 'image/png' ) ) );
+	$ok( 'R132: imagen de más de 40 megapíxeles: 422 en ticket (no 500) y nada guardado', 422 === $estado && isset( $cuerpo['errors']['ticket'] ) && 0 === $filas( array( 'user_id' => $ana ) ) );
+	list( $estado ) = $llamar( 'POST', '/draw-participation', $ana, array( 'draw' => 999999999, 'adult' => '1' ), array( 'ticket' => $archivo( $gigante, 'gigante.png', 'image/png' ) ) );
+	$ok( 'R132: el sorteo se mira antes de abrir la imagen: con un sorteo que no existe, 404', 404 === $estado );
+	list( $estado ) = $llamar( 'POST', '/draw-participation', $ana, array( 'draw' => $cerrado, 'adult' => '1' ), array( 'ticket' => $archivo( $gigante, 'gigante.png', 'image/png' ) ) );
+	$ok( 'R132: … y con uno cerrado, 422 en draw', 422 === $estado );
 	$ok( 'nada se ha guardado todavía', 0 === $filas( array( 'user_id' => $ana ) ) );
 	$correos = array();
 	list( $estado, $cuerpo ) = $llamar( 'POST', '/draw-participation', $ana, array( 'drawId' => $abierto, 'adult' => 'true', 'user' => $comercio ), array( 'ticket' => $archivo( $foto() ) ) );
