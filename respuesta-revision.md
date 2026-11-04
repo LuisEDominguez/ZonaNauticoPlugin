@@ -63,7 +63,8 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Ronda 37, notas | 04-11-2026 | `6b39aa8` (v0.25.0) | `63c01aa` (v0.25.1) y `d579bd6` (puerto en las `.mjs`) | R119 y R121 (README) y R120 (migración solo de cuentas de la app); R122, a la espera de Luis |
 | Bloque 2, parte A | 04-11-2026 | `d579bd6` (v0.25.1) | `c6713e7` (v0.26.0) | `GET /me` con los permisos de la cuenta |
 | Bloque 2, parte B | 04-11-2026 | `a6e3ab4` (v0.26.0) | `8641ecf` (v0.27.0) | Portada: `/news`, `/home-slides`, `/business-category` e `includesCategory` |
-| Bloque 2, parte C | 04-11-2026 | `8641ecf` (v0.27.0) | (este commit, v0.28.0) | Favoritos: `/favorite` y su RGPD |
+| Bloque 2, parte C | 04-11-2026 | `8641ecf` (v0.27.0) | `57e1dbd` (v0.28.0) | Favoritos: `/favorite` y su RGPD |
+| Sorteos, parte 1 (plugin) | 04-11-2026 | `3f8ecdf` (v0.28.0) | (este commit, v0.29.0) | Participaciones: `/draw-participation`, fotos privadas sin EXIF, export, ganadores, borrado y RGPD |
 
 ---
 
@@ -94,6 +95,24 @@ traspaso. Diff: `git diff a6e3ab4 HEAD`. Pruebas escritas antes (`tests/portada.
 | **Quién edita** | hecho | `ZN_Roles::actualizar` da al administrador los permisos de los dos tipos nuevos; `ZN_Instalacion::es_del_plugin` los reconoce para `uninstall.php` (R68). Panel R40 sin cambios. |
 | **Carga inicial** | hecho | `wp zona-nautico portada-inicial <carpeta de la app>`: 60 Novedades ZN (`zn_origen` = id de Adalo, fecha UTC de Adalo) y 6 slides con sus fotos subidas a medios. Repetirla no duplica. **Ejecutada en el Local** (60 y 6). |
 | **Pruebas** | hecho | `tests/portada.php` 36; sin regresiones en `instalacion` 28, `roles` 90, `panel` 177, `seguridad` 84, `esquema` 65, `contrato-negocios`, `contrato-muestras` y `puertas`. |
+
+## Participaciones en sorteos, parte 1: plugin
+
+Luis (vía la maestra, 04-11): «Sí, como recomiendas» a la propuesta, con los ajustes del traspaso (draw o drawId,
+`user` del token, export `/export/{drawId}?format=csv`, campos `_id`, `date`, `user`, `draw`; sin instagram) y las
+respuestas a-e. Diff: `git diff 3f8ecdf HEAD`. Pruebas escritas antes (`tests/participaciones.php`, 67).
+**Datos personales y archivos: revisor principal + uno de seguridad, solo el diff.** La app va en la parte 2.
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **Tabla** | hecho | `{prefijo}zn_participaciones` (`draw_id`, `user_id`, `ticket`, `adulto_en`, `date`, `ganador`, `entregado_en`, `nombre`, `correo`), única por sorteo y cuenta (decisión a). La instala `ZN_Instalacion`; `uninstall.php` borra la tabla, la carpeta de tickets y la tarea diaria. |
+| **POST** | hecho | Multipart; `draw` o `drawId`; `adult` aceptado o 422 (decisión 6, se guarda la fecha); `ticket` (o `attachment`) obligatorio, de 8 MB como mucho y que sea de verdad JPG, PNG o WebP (`getimagesize`, no el nombre); sorteo inexistente 404, cerrado 422, repetido 422 (también con dos envíos a la vez, por la clave única); `user` ignorado (H21); límite R94. |
+| **Fotos** | hecho | Fuera de la web (`zn-privado-tickets/` junto a WordPress) o, si no se puede, `uploads/zn-privado/` con `.htaccess`. Nombre al azar de 32 caracteres; nunca URL pública: `ticket` es la ruta `/draw-participation/{id}/ticket`, que sirve el archivo tal cual (`rest_pre_serve_request`) solo a quien participa, organiza o administra, con `no-store` y `nosniff`. Se vuelve a guardar con GD (sin EXIF: probado con una foto con bloque EXIF y marca de GPS), girada y a 2000 px como mucho (decisión 2). |
+| **Ver y exportar** | hecho | `GET` sin `draw`: las mías. Con `draw`: todas para quien organiza y la administración (`ZN_Roles::puede( 'draw_participation:read' )`, R43); a quien participa, solo la suya; otro organizador, 401. Export CSV (UTF-8 con BOM, `;`) con nombre y correo (R45, decisión 5), con las celdas protegidas contra fórmulas; otro formato, 422. |
+| **Ganador y entrega** | hecho | `PATCH {winner, delivered}`, a mano (decisión d), quien organiza o la administración (decisión c). Entregar sin ser ganador: 422. Al marcar ganador se copian nombre y correo y se le manda un aviso privado (decisión 4). `/draw/{id}?includesWinners=1` → `winnerNames` con el nombre de pila. |
+| **Borrado** | hecho | Tarea diaria `zn_limpiar_participaciones`: entrega de todos los premios + 30 días (decisión 1) o fin + 90 días sin entrega (decisión b): fuera todas las fotos y las participaciones de quien no ganó; a quien ganó se le quitan nombre, correo y foto. |
+| **RGPD** | hecho | `delete_user` y borrar el sorteo: todo fuera salvo ganador sin premio entregado (nombre y correo hasta la entrega, sin foto; al entregar a una cuenta ya borrada, se quitan). Exportador (sin la foto) y borrador incluidos (decisión 7). |
+| **Pendiente** | parte 2 | La app (pantalla de participar con foto, `expo-image-picker`) y marcar ganador y entrega desde wp-admin y el panel (hoy solo por la API). |
 
 ## Decisiones de Luis para las participaciones en sorteos (04-11, vía la maestra; sin programar)
 

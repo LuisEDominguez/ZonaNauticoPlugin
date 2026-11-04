@@ -178,6 +178,15 @@ class ZN_Privacidad {
 					)
 				),
 			);
+			// Participaciones en sorteos: sorteo, fecha, si ganó y si se entregó (sin la foto del ticket).
+			foreach ( ZN_Participaciones::para_exportar( $cuenta->ID ) as $participacion ) {
+				$elementos[] = array(
+					'group_id'    => 'zn-participaciones',
+					'group_label' => 'Participaciones en sorteos (app Zona Náutico)',
+					'item_id'     => 'zn-participacion-' . $participacion['id'],
+					'data'        => $participacion['datos'],
+				);
+			}
 			// Favoritos (bloque 2): los negocios que ha marcado.
 			foreach ( ZN_Favoritos::de( $cuenta->ID ) as $negocio ) {
 				$elementos[] = array(
@@ -256,6 +265,9 @@ class ZN_Privacidad {
 			$quitado = delete_user_meta( $cuenta->ID, $clave ) || $quitado;
 		}
 		$quitado = ZN_Favoritos::borrar_de( $cuenta->ID ) > 0 || $quitado;
+		// Participaciones: fuera, salvo un premio aún sin entregar (decisión 7), del que se guardan nombre y correo.
+		list( $participaciones, $pendientes ) = ZN_Participaciones::borrar_de( $cuenta->ID );
+		$quitado = $participaciones > 0 || $pendientes > 0 || $quitado;
 		// Siempre los primeros que queden: los de la llamada anterior ya no existen.
 		$ids = self::escritos_por( $cuenta->ID, self::POR_PAGINA );
 		foreach ( $ids as $id ) {
@@ -264,7 +276,10 @@ class ZN_Privacidad {
 		return array(
 			'items_removed'  => $quitado,
 			'items_retained' => true,
-			'messages'       => array( 'La cuenta (nombre y correo) sigue en Usuarios: para quitarla del todo, bórrala allí.' ),
+			'messages'       => array_merge(
+				array( 'La cuenta (nombre y correo) sigue en Usuarios: para quitarla del todo, bórrala allí.' ),
+				$pendientes ? array( 'Ha ganado un sorteo cuyo premio aún no se ha entregado: se guardan su nombre y su correo hasta la entrega.' ) : array()
+			),
 			'done'           => count( $ids ) < self::POR_PAGINA,
 		);
 	}

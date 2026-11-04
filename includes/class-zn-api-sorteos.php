@@ -44,7 +44,8 @@ class ZN_API_Sorteos {
 				'callback'            => array( __CLASS__, 'ficha' ),
 				'permission_callback' => '__return_true',
 				'args'                => array(
-					'includesUser' => array( 'type' => 'boolean', 'default' => false ),
+					'includesUser'    => array( 'type' => 'boolean', 'default' => false ),
+					'includesWinners' => array( 'type' => 'boolean', 'default' => false ),
 				),
 			)
 		);
@@ -91,7 +92,12 @@ class ZN_API_Sorteos {
 		if ( ! $entrada ) {
 			return ZN_API::no_encontrado();
 		}
-		return new WP_REST_Response( array( 'data' => self::formatear( $entrada, (bool) $peticion['includesUser'] ) ) );
+		$datos = self::formatear( $entrada, (bool) $peticion['includesUser'] );
+		// Quien ha ganado, solo con el nombre de pila (decisión 4, R66). `winners` es el número de premios del Laravel.
+		if ( $peticion['includesWinners'] ) {
+			$datos['winnerNames'] = ZN_Participaciones::ganadores( $entrada->ID );
+		}
+		return new WP_REST_Response( array( 'data' => $datos ) );
 	}
 
 	/** Entrada `sorteo` → objeto con los mismos campos y tipos que el DrawResource del Laravel. */

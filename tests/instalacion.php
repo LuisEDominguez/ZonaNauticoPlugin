@@ -43,7 +43,7 @@ try {
 	$ok( 'las dos tablas existen', ZN_Tokens::tabla() === $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', ZN_Tokens::tabla() ) ) && ZN_Limite::tabla() === $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', ZN_Limite::tabla() ) ) );
 
 	// --- Lo que se borra al desinstalar cubre todo lo que crea el plugin ---
-	$ok( 'desinstalar borra las tres tablas (tokens, intentos y favoritos)', array( ZN_Tokens::tabla(), ZN_Limite::tabla(), ZN_Favoritos::tabla() ) === ZN_Instalacion::tablas() );
+	$ok( 'desinstalar borra las cuatro tablas (tokens, intentos, favoritos y participaciones)', array( ZN_Tokens::tabla(), ZN_Limite::tabla(), ZN_Favoritos::tabla(), ZN_Participaciones::tabla() ) === ZN_Instalacion::tablas() );
 	$escritas = array();
 	foreach ( array_merge( glob( "$raiz/includes/*.php" ), array( "$raiz/zona-nautico.php" ) ) as $archivo ) {
 		preg_match_all( "/(?:update|add)_option\(\s*'([a-z0-9_]+)'/", (string) file_get_contents( $archivo ), $m ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents

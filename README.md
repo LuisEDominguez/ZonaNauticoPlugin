@@ -34,6 +34,12 @@ Base de la API: `<sitio>/wp-json/zonanautico/v1`
 | `GET /news/{id}` | público | Una Novedad ZN publicada; si no, 404 |
 | `GET /home-slides` | público | Slides de portada publicadas y con foto, por `sort_order`: `_id`, `name`, `image`, `link`, `sort_order`. Sin paginar |
 | `GET /business-category` | público | Las 7 categorías de negocio (fijas, `ZN_Negocios::CATEGORIAS`) con `_id`, `name` y `sort_order` (el «Orden» de Adalo). En `/business`, `?includesCategory=1` añade `category {_id, name}` |
+| `POST /draw-participation` | **con token** | Multipart: `draw` (o `drawId`), `ticket` (foto JPG, PNG o WebP, hasta 8 MB) y `adult` (casilla «soy mayor de 18»). Una por persona y sorteo, solo con el sorteo abierto. La cuenta es la del token (`user` se ignora, H21). `201 {data: {_id, date, user, draw, ticket, winner, delivered}}` |
+| `GET /draw-participation` | **con token** | Las mías; con `?draw={id}`, las de ese sorteo para quien lo organiza y la administración (R43). Nada público (H1) |
+| `GET /draw-participation/{id}/ticket` | **con token** | La foto del ticket (sin EXIF), solo a quien participa, a quien organiza y a la administración. `no-store` |
+| `DELETE /draw-participation/{id}` | **con token** | Quien participa, con el sorteo abierto; la administración, siempre |
+| `PATCH /draw-participation/{id}` | **con token** | `winner`, `delivered`: quien organiza o la administración. Al marcar ganador, aviso privado por correo |
+| `GET /draw-participation/export/{drawId}?format=csv` | **con token** | CSV con nombre y correo (R45), para quien organiza o la administración |
 | `GET /favorite` | **con token** | Mis negocios favoritos, el último añadido primero, con el formato de `GET /business/{id}` (solo los que se ven). `no-store` |
 | `POST /favorite` | **con token** | `businessId`. `201 {data: negocio}`; si ya era favorito, `200`. Negocio que no existe o no está publicado: 404. Límite de escrituras (R94) |
 | `DELETE /favorite/{businessId}` | **con token** | `200 {status: "success"}`, lo fuera o no |
@@ -239,7 +245,10 @@ Pendiente de comprobar en el servidor: que llega la cabecera `Authorization`, qu
 `index.php` (R39), que las respuestas con token no se guardan en caché (R49) y si hay un proxy delante
 (entonces, `ZN_PROXIES` con sus IPs, R59). En `wp-config.php`, `define( 'ZN_CORREO_CONTACTO', '…' );` con el
 correo que diga Luis: lo usan el correo de alta del panel (R103) y el de «tu cuenta se ha borrado» (R111); sin él,
-ese correo sale sin la frase «Si no has sido tú, escríbenos a …».
+ese correo sale sin la frase «Si no has sido tú, escríbenos a …». **WP-Cron** depende de las visitas: para que el
+borrado de los tickets sea puntual, poner un cron real del servidor que llame cada día a `wp cron event run
+--due-now` (y `define( 'DISABLE_WP_CRON', true );`). Comprobar que `zn-privado-tickets/` queda fuera de la web; si
+el plugin tiene que usar `uploads/zn-privado/` y el servidor es nginx, negar esa carpeta en su configuración.
 
 ## Portada: Novedades ZN, slides y categorías (bloque 2)
 
@@ -254,6 +263,21 @@ Carga inicial (solo una vez; repetirla no duplica): `wp zona-nautico portada-ini
 60 Novedades ZN de `src/data/provisional/noticias.json` (ya sin ganadores) y las 6 slides con sus fotos de
 `assets/img/slides/`, que se suben a la biblioteca de medios. Nada del export de Adalo.
 
+## Participaciones en sorteos
+
+`includes/class-zn-participaciones.php` (decisiones de Luis del 04-11). Tabla `{prefijo}zn_participaciones`, una por
+persona y sorteo. **Fotos de los tickets, privadas:** nunca en la biblioteca de medios; se guardan en
+`zn-privado-tickets/`, al lado de la carpeta de WordPress (fuera de la web), o, si ahí no se puede escribir, en
+`uploads/zn-privado/` con `.htaccess` que lo niega todo (en nginx hay que negar esa carpeta a mano). Solo se sirven
+por `GET /draw-participation/{id}/ticket` con permiso. Al subirla, la foto se vuelve a guardar en JPG con GD (sin
+ningún metadato: ni EXIF ni ubicación), girada según su EXIF y con 2000 px como mucho.
+**Borrado automático** (tarea diaria `zn_limpiar_participaciones` de WP-Cron): 30 días después de entregar todos los
+premios del sorteo, o 90 días después del fin si no se entregan, se borran todas las fotos y las participaciones de
+quien no ganó; a quien ganó se le quitan nombre, correo y foto. **RGPD (R65):** borrar la cuenta o el sorteo lo borra
+todo, salvo quien ganó y aún no tiene el premio (se guardan su nombre y su correo hasta la entrega); las herramientas
+de exportar y borrar datos personales incluyen las participaciones (sin la foto). En `/draw/{id}?includesWinners=1`,
+`winnerNames` con el nombre de pila de quien ganó (`winners` sigue siendo el número de premios, como el Laravel).
+
 ## Favoritos (bloque 2)
 
 `includes/class-zn-favoritos.php`. Tabla propia `{prefijo}zn_favoritos` (`user_id`, `business_id`, como
@@ -266,10 +290,10 @@ vuelve. `uninstall.php` borra la tabla.
 ## Instalar, actualizar y desinstalar (R68)
 
 `includes/class-zn-instalacion.php`, en un solo sitio. Al activar y en cada carga (`plugins_loaded`) crea o pone al
-día las tablas `{prefijo}zn_tokens`, `{prefijo}zn_limites` y `{prefijo}zn_favoritos` y, una vez por versión (opción `zn_version`), los
+día las tablas `{prefijo}zn_tokens`, `{prefijo}zn_limites`, `{prefijo}zn_favoritos` y `{prefijo}zn_participaciones` y, una vez por versión (opción `zn_version`), los
 cambios de datos (en la 0.25.0: el teléfono y la ubicación de las cuentas de la app pasan de `phone`, `latitude` y
 `longitude` a `zn_phone`, `zn_latitude` y `zn_longitude`; los negocios no cambian). Los roles se ponen al día en
-`init` (`ZN_Roles::actualizar`). Al **borrar** el plugin desde wp-admin, `uninstall.php` quita las tres tablas, las
+`init` (`ZN_Roles::actualizar`). Al **borrar** el plugin desde wp-admin, `uninstall.php` quita las cuatro tablas, la carpeta de los tickets, la tarea diaria, las
 opciones del plugin (también `zn_huella_relleno`), sus avisos temporales, los 5 roles de la app y las capacidades
 que dio a otros roles. **No** borra contenido ni cuentas: negocios, novedades, sorteos, reseñas, preguntas y
 usuarios se quedan. Desactivar el plugin no borra nada.
@@ -305,6 +329,7 @@ un enlace de carpeta en `wp-content/plugins/zona-nautico`.
 - Reseñas y preguntas desde la app (crea y borra cuentas, negocios y comentarios; también por HTTP): `wp eval-file tests/opiniones.php`
 - Novedades y sorteos desde la app (crea y borra cuentas, negocios, novedades y sorteos; también por HTTP): `wp eval-file tests/novedades-sorteos.php`
 - Datos personales: borrar cuenta, exportar y borrar (crea y borra cuentas, negocios y comentarios): `wp eval-file tests/privacidad.php`
+- Participaciones en sorteos: fotos privadas sin EXIF, export, ganadores, borrado automático y RGPD (crea y borra cuentas, sorteos y fotos; los correos se recogen y no salen): `wp eval-file tests/participaciones.php`
 - Favoritos y su RGPD (crea y borra cuentas, negocios, tokens, favoritos e intentos; también por HTTP): `wp eval-file tests/favoritos.php`
 - Portada: `/news`, `/home-slides`, `/business-category`, `includesCategory` y la carga inicial con datos inventados (crea y borra novedades, slides, negocios y una cuenta): `wp eval-file tests/portada.php`
 - `GET /me` con sus permisos (crea y borra cuentas y tokens; también por HTTP): `wp eval-file tests/me.php`

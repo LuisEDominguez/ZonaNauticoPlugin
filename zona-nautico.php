@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Zona Náutico
  * Description: API de la app Zona Náutico. Imita el contrato de la API Laravel actual ({data, links, meta}) para no rehacer la app.
- * Version:     0.28.0
+ * Version:     0.29.0
  * Author:      Visual Publinet
  * Text Domain: zona-nautico
  * Requires at least: 6.8
@@ -11,7 +11,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-const ZN_VERSION   = '0.28.0';
+const ZN_VERSION   = '0.29.0';
 const ZN_NAMESPACE = 'zonanautico/v1';
 
 require_once __DIR__ . '/includes/class-zn-api.php';
@@ -39,6 +39,7 @@ require_once __DIR__ . '/includes/class-zn-api-cuenta.php';
 require_once __DIR__ . '/includes/class-zn-instalacion.php';
 require_once __DIR__ . '/includes/class-zn-portada.php';
 require_once __DIR__ . '/includes/class-zn-favoritos.php';
+require_once __DIR__ . '/includes/class-zn-participaciones.php';
 
 add_action( 'init', array( 'ZN_Negocios', 'registrar' ) );
 add_action( 'init', array( 'ZN_Eventos', 'registrar' ) );
@@ -63,6 +64,8 @@ ZN_API_Cuenta::iniciar();
 ZN_Portada::iniciar();
 // Favoritos (bloque 2): tabla propia, solo lo de cada cuenta.
 ZN_Favoritos::iniciar();
+// Participaciones en sorteos: fotos privadas, sin EXIF y con borrado automático.
+ZN_Participaciones::iniciar();
 
 // Instalación y versión en un solo sitio (R68): al activar y en cada carga, por si se actualiza sin reactivar.
 // Al borrar el plugin, uninstall.php.

@@ -17,7 +17,7 @@ defined( 'ABSPATH' ) || exit;
 class ZN_Instalacion {
 
 	// Opciones que guarda el plugin (la prueba tests/instalacion.php comprueba que no falta ninguna).
-	const OPCIONES = array( 'zn_version', 'zn_tokens_tabla', 'zn_limites_tabla', 'zn_favoritos_tabla', 'zn_roles_version', 'zn_huella_relleno' );
+	const OPCIONES = array( 'zn_version', 'zn_tokens_tabla', 'zn_limites_tabla', 'zn_favoritos_tabla', 'zn_participaciones_tabla', 'zn_roles_version', 'zn_huella_relleno' );
 
 	// Prefijos de los avisos temporales (transients) del plugin.
 	const TEMPORALES = array( 'zn_avisos_', 'zn_panel_avisos_' );
@@ -37,6 +37,7 @@ class ZN_Instalacion {
 		ZN_Tokens::instalar();
 		ZN_Limite::instalar();
 		ZN_Favoritos::instalar();
+		ZN_Participaciones::instalar();
 		if ( get_option( 'zn_version' ) === ZN_VERSION ) {
 			return;
 		}
@@ -78,7 +79,7 @@ class ZN_Instalacion {
 	}
 
 	public static function tablas(): array {
-		return array( ZN_Tokens::tabla(), ZN_Limite::tabla(), ZN_Favoritos::tabla() );
+		return array( ZN_Tokens::tabla(), ZN_Limite::tabla(), ZN_Favoritos::tabla(), ZN_Participaciones::tabla() );
 	}
 
 	public static function roles(): array {
@@ -94,6 +95,9 @@ class ZN_Instalacion {
 
 	public static function desinstalar(): void {
 		global $wpdb;
+		// Las fotos de los tickets (fuera de la biblioteca de medios) y la tarea diaria de limpieza.
+		ZN_Participaciones::borrar_carpeta();
+		wp_clear_scheduled_hook( ZN_Participaciones::TAREA );
 		foreach ( self::tablas() as $tabla ) {
 			$wpdb->query( "DROP TABLE IF EXISTS `$tabla`" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		}
