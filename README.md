@@ -294,7 +294,9 @@ de exportar y borrar datos personales incluyen las participaciones (sin la foto)
 tus sorteos») y la administración (en la ficha del sorteo de wp-admin, caja «Participantes») ven la lista de SU sorteo
 con el nombre de pila, la fecha y la miniatura del ticket, marcan ganador o entrega y descargan el CSV (nombre y
 correo). La miniatura y el CSV salen por direcciones con sello (en el panel, la propia página de «Mi zona», sin
-`action`, R97; en wp-admin, `admin-post.php?action=zn_participantes`), nunca la del archivo. Mismas reglas que la
+`action`, R97; en wp-admin, `admin-post.php?action=zn_participantes`), nunca la del archivo. Cada enlace lleva su
+propio sello, por acción y por fila (R147: el de la miniatura no vale para marcar ni para otra fila), y la foto, como
+las marcas, tiene que ser de una participación del sorteo de la dirección (R148). Mismas reglas que la
 API (`ZN_Participaciones::marcar_fila`): R43 (sin herencia por el padre), R45, R139 y el aviso privado al ganador.
 
 ## Favoritos (bloque 2)

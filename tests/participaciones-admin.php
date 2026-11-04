@@ -115,6 +115,33 @@ try {
 	$csv = ZN_Participaciones::csv( get_post( $suyo ) );
 	$ok( 'R45: el CSV lleva nombre y correo de los dos, sin fotos', false !== strpos( $csv, get_userdata( $ana )->user_email ) && false !== strpos( $csv, get_userdata( $luis )->user_email ) && false === strpos( $csv, '.jpg' ) );
 
+	// R147: un sello por acción y por fila. El de la miniatura no vale para marcar ni para otra fila.
+	$sello = static function ( string $url ): string {
+		parse_str( (string) wp_parse_url( html_entity_decode( $url ), PHP_URL_QUERY ), $q ); // wp_nonce_url() devuelve &amp;.
+		return (string) ( $q['_wpnonce'] ?? '' );
+	};
+	$como(
+		$asociacion,
+		static function () use ( $ok, $sello, $suyo, $p_ana, $p_luis ) {
+			$urls       = ZN_Panel::urls_participantes( $suyo );
+			$de_foto    = $sello( $urls['ticket']( $p_ana ) );
+			$de_ganador = $sello( $urls['accion']( $p_ana, 'ganador' ) );
+			$sorteo     = get_post( $suyo );
+			$ok( 'R147: el sello de la foto vale para ver la foto', ZN_Participaciones::sello_valido( $sorteo, array( 'ticket' => $p_ana, '_wpnonce' => $de_foto ) ) );
+			$ok( 'R147: … pero no para marcar ganador', ! ZN_Participaciones::sello_valido( $sorteo, array( 'fila' => $p_ana, 'hacer' => 'ganador', '_wpnonce' => $de_foto ) ) );
+			$ok( 'R147: el de «ganador» de una fila no vale para otra', ! ZN_Participaciones::sello_valido( $sorteo, array( 'fila' => $p_luis, 'hacer' => 'ganador', '_wpnonce' => $de_ganador ) ) );
+			$ok( 'R147: ni para «entregado» de la misma fila', ! ZN_Participaciones::sello_valido( $sorteo, array( 'fila' => $p_ana, 'hacer' => 'entregado', '_wpnonce' => $de_ganador ) ) );
+			$ok( 'R147: el de «ganador» de esa fila, sí', ZN_Participaciones::sello_valido( $sorteo, array( 'fila' => $p_ana, 'hacer' => 'ganador', '_wpnonce' => $de_ganador ) ) );
+			$ok( 'R147: el del CSV no vale para la foto', ! ZN_Participaciones::sello_valido( $sorteo, array( 'ticket' => $p_ana, '_wpnonce' => $sello( $urls['csv'] ) ) ) && ZN_Participaciones::sello_valido( $sorteo, array( 'csv' => 1, '_wpnonce' => $sello( $urls['csv'] ) ) ) );
+			$ok( 'R147: sin sello, nada', ! ZN_Participaciones::sello_valido( $sorteo, array( 'ticket' => $p_ana ) ) );
+		}
+	);
+	// R148: la foto tiene que ser de una participación del sorteo de la dirección.
+	$ok( 'R148: foto de una participación de este sorteo: sí', '' !== ZN_Participaciones::ticket_de_sorteo( get_post( $suyo ), $p_ana, $asociacion ) );
+	if ( $admin_wp ) {
+		$ok( 'R148: foto de otro sorteo por la dirección de este: no (ni a la administración)', '' === ZN_Participaciones::ticket_de_sorteo( get_post( $suyo ), $p_otro, $admin_wp ) );
+	}
+
 	// Marcar desde el panel.
 	$correos = array();
 	$aviso   = $como( $asociacion, static fn() => ZN_Panel::marcar_participante( wp_get_current_user(), $suyo, $p_ana, 'ganador' ) );

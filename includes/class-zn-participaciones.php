@@ -508,6 +508,46 @@ class ZN_Participaciones {
 		return '' !== $ruta && is_file( $ruta ) ? $ruta : '';
 	}
 
+	/** R148: la foto, solo si la participación es del sorteo de la dirección (igual que las marcas); '' si no. */
+	public static function ticket_de_sorteo( WP_Post $sorteo, int $id, int $usuario ): string {
+		$fila = self::fila( $id );
+		return $fila && (int) $fila['draw_id'] === $sorteo->ID ? self::ticket_para( $id, $usuario ) : '';
+	}
+
+	/**
+	 * R147: acción del sello de lo que se pide, una por acción y por fila (la miniatura no vale para marcar ni para
+	 * otra fila): zn_part_{sorteo}_ticket_{fila}, zn_part_{sorteo}_{hacer}_{fila} o zn_part_{sorteo}_csv. Mismo orden
+	 * que atender(). '' si no se pide nada válido.
+	 */
+	private static function accion_sello( WP_Post $sorteo, array $get ): string {
+		$prefijo = 'zn_part_' . $sorteo->ID . '_';
+		if ( ! empty( $get['ticket'] ) ) {
+			return $prefijo . 'ticket_' . absint( $get['ticket'] );
+		}
+		if ( ! empty( $get['csv'] ) ) {
+			return $prefijo . 'csv';
+		}
+		$hacer = sanitize_key( (string) ( $get['hacer'] ?? '' ) );
+		$fila  = absint( $get['fila'] ?? 0 );
+		return $fila && in_array( $hacer, array( 'ganador', 'no_ganador', 'entregado', 'no_entregado' ), true ) ? $prefijo . $hacer . '_' . $fila : '';
+	}
+
+	/** ¿Trae $get el sello de exactamente lo que pide? */
+	public static function sello_valido( WP_Post $sorteo, array $get ): bool {
+		$accion = self::accion_sello( $sorteo, $get );
+		return '' !== $accion && isset( $get['_wpnonce'] ) && false !== wp_verify_nonce( sanitize_key( (string) $get['_wpnonce'] ), $accion );
+	}
+
+	/** Las tres direcciones de html_lista() sobre $base, cada una con su propio sello (R147). */
+	public static function urls_con_sello( WP_Post $sorteo, string $base ): array {
+		$con = static fn( array $mas ) => wp_nonce_url( add_query_arg( $mas, $base ), self::accion_sello( $sorteo, $mas ) );
+		return array(
+			'ticket' => static fn( int $id ) => $con( array( 'ticket' => $id ) ),
+			'accion' => static fn( int $id, string $hacer ) => $con( array( 'fila' => $id, 'hacer' => $hacer ) ),
+			'csv'    => $con( array( 'csv' => 1 ) ),
+		);
+	}
+
 	/**
 	 * Marca desde el panel o wp-admin. $hacer: ganador, no_ganador, entregado o no_entregado. La participación tiene
 	 * que ser de ese sorteo. Devuelve '' si se ha hecho; si no, el aviso para enseñar.
@@ -579,14 +619,10 @@ class ZN_Participaciones {
 		return (string) ob_get_clean();
 	}
 
-	/** Direcciones de wp-admin (admin-post.php, con sello por sorteo) para html_lista(). */
+	/** Direcciones de wp-admin (admin-post.php, con sello por acción y fila, R147) para html_lista(). */
 	public static function urls_admin( int $sorteo ): array {
-		$base = static fn( array $mas ) => wp_nonce_url( add_query_arg( array( 'action' => 'zn_participantes', 'sorteo' => $sorteo ) + $mas, admin_url( 'admin-post.php' ) ), 'zn_participantes_' . $sorteo );
-		return array(
-			'ticket' => static fn( int $id ) => $base( array( 'ticket' => $id ) ),
-			'accion' => static fn( int $id, string $hacer ) => $base( array( 'fila' => $id, 'hacer' => $hacer ) ),
-			'csv'    => $base( array( 'csv' => 1 ) ),
-		);
+		$entrada = get_post( $sorteo );
+		return $entrada ? self::urls_con_sello( $entrada, add_query_arg( array( 'action' => 'zn_participantes', 'sorteo' => $sorteo ), admin_url( 'admin-post.php' ) ) ) : array();
 	}
 
 	/**
@@ -599,7 +635,7 @@ class ZN_Participaciones {
 			wp_die( 'No puedes ver los participantes de este sorteo.', 403 );
 		}
 		if ( ! empty( $get['ticket'] ) ) {
-			$ruta = self::ticket_para( absint( $get['ticket'] ), $yo );
+			$ruta = self::ticket_de_sorteo( $sorteo, absint( $get['ticket'] ), $yo );
 			if ( '' === $ruta ) {
 				wp_die( 'No encontrado.', 404 );
 			}
@@ -631,7 +667,9 @@ class ZN_Participaciones {
 		if ( ! $sorteo ) {
 			wp_die( 'No encontrado.', 404 );
 		}
-		check_admin_referer( 'zn_participantes_' . $sorteo->ID );
+		if ( ! self::sello_valido( $sorteo, wp_unslash( $_GET ) ) ) { // phpcs:ignore WordPress.Security.NonceVerification -- sello_valido() lo comprueba.
+			wp_die( 'El enlace ha caducado. Vuelve a la ficha del sorteo y prueba otra vez.', 403 );
+		}
 		self::atender( $sorteo, wp_unslash( $_GET ), (string) get_edit_post_link( $sorteo->ID, 'url' ), 'zn_avisos_' );
 	}
 

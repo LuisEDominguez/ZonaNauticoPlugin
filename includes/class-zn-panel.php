@@ -565,14 +565,10 @@ class ZN_Panel {
 		return add_query_arg( 'participantes', $sorteo, self::url() );
 	}
 
-	/** Direcciones del panel para ZN_Participaciones::html_lista(), con sello por sorteo. */
+	/** Direcciones del panel para ZN_Participaciones::html_lista(), con sello por acción y fila (R147). */
 	public static function urls_participantes( int $sorteo ): array {
-		$base = static fn( array $mas ) => wp_nonce_url( add_query_arg( $mas, self::url_participantes( $sorteo ) ), 'zn_panel_participantes_' . $sorteo );
-		return array(
-			'ticket' => static fn( int $id ) => $base( array( 'ticket' => $id ) ),
-			'accion' => static fn( int $id, string $hacer ) => $base( array( 'fila' => $id, 'hacer' => $hacer ) ),
-			'csv'    => $base( array( 'csv' => 1 ) ),
-		);
+		$entrada = get_post( $sorteo );
+		return $entrada ? ZN_Participaciones::urls_con_sello( $entrada, self::url_participantes( $sorteo ) ) : array();
 	}
 
 	/** Lista de participantes de un sorteo que organiza (R43: solo los suyos, sin herencia por el padre). */
@@ -600,9 +596,11 @@ class ZN_Panel {
 		if ( ! isset( $_GET['ticket'] ) && ! isset( $_GET['csv'] ) && ! isset( $_GET['hacer'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
 			return;
 		}
-		check_admin_referer( 'zn_panel_participantes_' . $sorteo );
 		$entrada = get_post( $sorteo );
-		if ( ! $entrada || ! self::puede_entrar( wp_get_current_user() ) ) {
+		if ( ! $entrada || ! ZN_Participaciones::sello_valido( $entrada, wp_unslash( $_GET ) ) ) { // phpcs:ignore WordPress.Security.NonceVerification -- sello_valido() lo comprueba.
+			wp_die( 'El enlace ha caducado. Vuelve a la página de participantes y prueba otra vez.', 403 );
+		}
+		if ( ! self::puede_entrar( wp_get_current_user() ) ) {
 			wp_die( 'No puedes ver los participantes de este sorteo.', 403 );
 		}
 		ZN_Participaciones::atender( $entrada, wp_unslash( $_GET ), self::url_participantes( $sorteo ), 'zn_panel_avisos_' );

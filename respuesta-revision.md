@@ -67,7 +67,8 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Sorteos, parte 1 (plugin) | 04-11-2026 | `3f8ecdf` (v0.28.0) | `dda1515` (v0.29.0) | Participaciones: `/draw-participation`, fotos privadas sin EXIF, export, ganadores, borrado y RGPD |
 | Ronda 45 (sorteos) | 04-11-2026 | `dda1515` (v0.29.0) | `d649d33` (R132, R134) y `cf983a8` (v0.29.1) | R131-R141 |
 | Ronda 45-bis | 04-11-2026 | `cf983a8` (v0.29.1) | `93f4d0c` (v0.29.2) | R144 (escalar antes de girar); R142 y R143 anotados para «Al subir» |
-| Sorteos, parte 3 | 04-11-2026 | `93f4d0c` (v0.29.2) | (este commit, v0.30.0) | Gestionar participantes desde «Mi zona» y wp-admin |
+| Sorteos, parte 3 | 04-11-2026 | `93f4d0c` (v0.29.2) | `bece42f` (v0.30.0) | Gestionar participantes desde «Mi zona» y wp-admin |
+| Ronda 47 | 04-11-2026 | `bece42f` (v0.30.0) | (este commit, v0.30.1) | R147 (sello por acción y fila) y R148 (foto del sorteo de la dirección) |
 
 ---
 
@@ -99,6 +100,16 @@ traspaso. Diff: `git diff a6e3ab4 HEAD`. Pruebas escritas antes (`tests/portada.
 | **Carga inicial** | hecho | `wp zona-nautico portada-inicial <carpeta de la app>`: 60 Novedades ZN (`zn_origen` = id de Adalo, fecha UTC de Adalo) y 6 slides con sus fotos subidas a medios. Repetirla no duplica. **Ejecutada en el Local** (60 y 6). |
 | **Pruebas** | hecho | `tests/portada.php` 36; sin regresiones en `instalacion` 28, `roles` 90, `panel` 177, `seguridad` 84, `esquema` 65, `contrato-negocios`, `contrato-muestras` y `puertas`. |
 
+## Ronda 47 (R147, R148)
+
+Los pidió la maestra. Diff: `git diff bece42f HEAD`. Pruebas escritas antes en `tests/participaciones-admin.php` (ahora 38; fallaban).
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **R147** Sello | hecho | Un sello por acción y por fila: `zn_part_{sorteo}_ticket_{fila}`, `zn_part_{sorteo}_{hacer}_{fila}` y `zn_part_{sorteo}_csv`. `ZN_Participaciones::accion_sello()` lo saca de lo que se pide (mismo orden que `atender()`: foto, CSV, marca; un `hacer` desconocido no tiene sello) y `sello_valido()` lo comprueba en `atender_admin()` y en `ZN_Panel::procesar_participantes()`. `urls_con_sello()` hace las tres direcciones para los dos sitios. El sello del `<img>` ya no vale para «Marcar ganador», ni el de una fila para otra, ni el de «ganador» para «entregado», ni el del CSV para la foto. |
+| **R148** Foto | hecho | `ticket_de_sorteo()`: la participación tiene que ser del sorteo de la dirección (también para la administración), igual que las marcas; `atender()` la usa. |
+| **Pruebas** | hecho | `participaciones-admin` 38, `participaciones` 91 y `panel` 177, de una en una. |
+
 ## Sorteos, parte 3: gestionar participantes (panel y wp-admin)
 
 Aprobado en la propuesta de participaciones. Diff: `git diff 93f4d0c HEAD`. Pruebas escritas antes (`tests/participaciones-admin.php`, 29).
@@ -106,8 +117,8 @@ Aprobado en la propuesta de participaciones. Diff: `git diff 93f4d0c HEAD`. Prue
 | Punto | Estado | Qué se hizo |
 |---|---|---|
 | **Quién** | hecho | `puede_gestionar()`: quien organiza (`ZN_Roles::puede( 'draw_participation:read' )`, R43, sin herencia: la asociación no ve los de su comercio) o la administración de WordPress (`edit_others_zn_sorteos`). |
-| **Panel** | hecho | «Mi zona»: enlace «Participantes de tus sorteos»; página `?participantes={id}` (sin `action`, R97) con la lista, la miniatura (`&ticket=`), los enlaces de ganador y entrega (`&fila=&hacer=`) y el CSV (`&csv=1`), todo con sello `zn_panel_participantes_{id}` y atendido en `load-` antes de pintar. |
-| **wp-admin** | hecho | Caja «Participantes» en la ficha del sorteo; foto, CSV y marcas por `admin-post.php?action=zn_participantes` con sello `zn_participantes_{id}`. Enlaces y no formularios, porque la caja está dentro del formulario de la ficha. |
+| **Panel** | hecho | «Mi zona»: enlace «Participantes de tus sorteos»; página `?participantes={id}` (sin `action`, R97) con la lista, la miniatura (`&ticket=`), los enlaces de ganador y entrega (`&fila=&hacer=`) y el CSV (`&csv=1`), todo con sello (desde la ronda 47, uno por acción y fila: R147) y atendido en `load-` antes de pintar. |
+| **wp-admin** | hecho | Caja «Participantes» en la ficha del sorteo; foto, CSV y marcas por `admin-post.php?action=zn_participantes` con sello (R147). Enlaces y no formularios, porque la caja está dentro del formulario de la ficha. |
 | **Reglas** | hecho | `marcar_fila()` común con la API: entrega solo a quien ganó, R139 (límite), aviso privado al ganador (R57). `csv()` común con el export. La participación tiene que ser del sorteo de la dirección. La miniatura nunca es la dirección del archivo. |
 | **Sin probar aquí** | nota | Las páginas reales de wp-admin y «Mi zona» con sesión (haría falta entrar con contraseña): la prueba pinta el HTML y llama a los manejadores directamente. |
 
