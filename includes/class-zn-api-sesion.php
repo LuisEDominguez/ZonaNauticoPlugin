@@ -18,10 +18,12 @@
  * - El login da también `refreshToken` (opción C, ZN_Tokens): opaco, de un solo uso y ligado a ese login (cadena),
  *   hasta MAX_RENOVAR (14 días) desde el login. Va al final de la respuesta: la app de antes lo ignora.
  * - POST /refresh {refreshToken}: vale aunque el token de acceso haya caducado (no se mira); da token y refresh
- *   nuevos de la misma cadena y gasta el usado. Uno ya usado es un reuso: se anula toda la cadena y 401. Sin
+ *   nuevos de la misma cadena y gasta el usado. Uno ya usado es un reuso: se anula toda la cadena y 401, salvo la
+ *   gracia de R159 (dentro de ZN_Tokens::MARGEN_GRACIA_S, una vez: par nuevo y el anterior anulado). Sin
  *   refreshToken, como antes: con un token que vale, uno nuevo (sin refresh) y el anterior anulado; con uno
- *   caducado hay que entrar de nuevo, y también pasados ZN_Tokens::MAX_RENOVAR desde el login (R86). En los dos
- *   casos, de dos /refresh a la vez con lo mismo solo uno da sesión (R87).
+ *   caducado hay que entrar de nuevo, y también pasados ZN_Tokens::MAX_RENOVAR desde el login (R86). R87: de dos
+ *   /refresh con lo mismo, como mucho queda UNA sesión viva (con la gracia, el segundo recibe un par y el del primero
+ *   se anula; sin ella, el segundo da 401), nunca dos.
  * - POST /logout: con el token de acceso, anula su cadena (ese login: su token y su refresh); los de otros móviles
  *   de la misma cuenta siguen. Si el token de acceso ya ha caducado, vale {refreshToken} en el cuerpo. Sin ninguno
  *   de los dos, 401 «Unauthenticated.».
