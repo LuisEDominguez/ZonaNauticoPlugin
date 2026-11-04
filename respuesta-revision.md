@@ -65,6 +65,21 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 
 ---
 
+## Decisiones de Luis para las participaciones en sorteos (04-11, vía la maestra; sin programar)
+
+Sus palabras: «1. Tal cual dices. 2. Lo que dices. 3. a) 4. Nombre de pila y aviso privado. 5. Nombre y correo.
+6. Solo mayores de edad. 7. Como recomiendas». Se harán después de los bloques de portada y favoritos.
+
+| # | Decisión |
+|---|---|
+| 1 | La foto del ticket se guarda hasta entregar el premio y después se borra. **Plazo por confirmar:** la maestra lo lee como «entrega + 30 días»; la pregunta no proponía un número. |
+| 2 | Se quitan siempre los datos EXIF (ubicación incluida) al subir la foto. |
+| 3 | El comercio que organiza ve el nombre y la foto del ticket de cada participante (R43). |
+| 4 | Quien gana sale en la app solo con su nombre de pila (R66) y se le avisa en privado. |
+| 5 | La exportación (R45) lleva nombre y correo; sin teléfono ni fotos. |
+| 6 | Solo mayores de edad: casilla obligatoria «soy mayor de 18». |
+| 7 | Al borrar la cuenta o el sorteo se borra todo (R65), salvo quien ha ganado y aún no ha recibido el premio: se guardan su nombre y su correo hasta la entrega y luego se borran. |
+
 ## GET /me (bloque 2, parte A)
 
 Luis (vía la maestra, 04-11): «Bloque 2». Diff: `git diff d579bd6 HEAD`. Pruebas escritas antes (`tests/me.php`, 18).
