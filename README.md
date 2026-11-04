@@ -32,7 +32,7 @@ Base de la API: `<sitio>/wp-json/zonanautico/v1`
 | `PUT\|PATCH /draw/{id}`, `DELETE /draw/{id}` | **con token** | Solo su dueño o la administración de la app. Un PATCH sin `legalUrl` no lo borra |
 | `GET /user/{id}` | **con token** | La propia cuenta, o la que pueda ver (`user:read`…). Formato del UserResource del Laravel con `id` numérico |
 | `PUT\|PATCH /user/{id}` | **con token** | Solo la propia cuenta: `name`, `phone`, `email`, `password`. El correo y la contraseña piden `currentPassword` (R69). null borra solo el teléfono; "" es 422. `roleId` → 401. `200 {data}` como `GET /user/{id}` |
-| `DELETE /user/{id}` | **con token** | «Eliminar cuenta»: solo la propia y con `user:delete_self` (hoy, solo el rol `user`, R44). Borrado definitivo, como en Usuarios (R65, R95, R96) y con sus tokens anulados. `200 {status: "success"}` |
+| `DELETE /user/{id}` | **con token** | «Eliminar cuenta»: solo la propia y con `user:delete_self` (hoy, solo el rol `user`, R44), con `currentPassword` en el cuerpo (R110). Borrado definitivo, como en Usuarios (R65, R95, R96), con sus tokens anulados y un correo de aviso (R111). `200 {status: "success"}` |
 | `GET\|POST /verify-email` | público | Enlace del correo nuevo (`id`, `token`): GET pinta el botón, POST confirma el cambio |
 
 Los negocios se guardan como entradas personalizadas de WordPress (tipo `negocio`, menú «Negocios»
@@ -181,9 +181,11 @@ viejo le llega otro aviso (R107); si otra cuenta se ha quedado el mismo correo a
 
 **Eliminar cuenta.** `DELETE /user/{id}`, solo sobre la propia cuenta y solo si su rol tiene `user:delete_self`
 (hoy, solo `user`, R44): el comercio, la asociación, la federación y la administración de la app reciben `401`, y
-nadie borra otra cuenta desde aquí. Cuenta en el límite de escrituras (R94, 429). Borra con `wp_delete_user()`,
-así que pasa lo mismo que al borrarla en Usuarios: reseñas y preguntas fuera, negocios, novedades y sorteos a
-borrador y sin dueño, y todos sus tokens anulados. No manda correos.
+nadie borra otra cuenta desde aquí. Cuenta en el límite de escrituras (R94, 429). Pide la contraseña actual
+(`currentPassword`, R110) igual que `PATCH /user/{id}`: mismos 422 y mismo límite de intentos `datos` (429). Borra
+con `wp_delete_user()`, así que pasa lo mismo que al borrarla en Usuarios: reseñas y preguntas fuera, negocios,
+novedades y sorteos a borrador y sin dueño, y todos sus tokens anulados. Después le llega un correo: «Tu cuenta de
+Zona Náutico se ha borrado.» y, solo si `ZN_CORREO_CONTACTO` es un correo, «Si no has sido tú, escríbenos a …» (R111).
 
 **Panel de asociación y federación (R40).** Asociación y federación entran a wp-admin
 por `wp-login.php` con su misma cuenta de la app (correo verificado, un solo rol; mismo límite de intentos
@@ -222,7 +224,9 @@ paquete se hace con git, que ya excluye lo demás (`.gitattributes`):
 El `.htaccess` (Apache) bloquea además `.md`, `.mjs` y `tests/` por si se copiara la carpeta entera.
 Pendiente de comprobar en el servidor: que llega la cabecera `Authorization`, que `SCRIPT_NAME` es
 `index.php` (R39), que las respuestas con token no se guardan en caché (R49) y si hay un proxy delante
-(entonces, `ZN_PROXIES` con sus IPs, R59).
+(entonces, `ZN_PROXIES` con sus IPs, R59). En `wp-config.php`, `define( 'ZN_CORREO_CONTACTO', '…' );` con el
+correo que diga Luis: lo usan el correo de alta del panel (R103) y el de «tu cuenta se ha borrado» (R111); sin él,
+ese correo sale sin la frase «Si no has sido tú, escríbenos a …».
 
 ## Desarrollo en local
 
@@ -249,7 +253,7 @@ un enlace de carpeta en `wp-content/plugins/zona-nautico`.
 - Reseñas y preguntas desde la app (crea y borra cuentas, negocios y comentarios; también por HTTP): `wp eval-file tests/opiniones.php`
 - Novedades y sorteos desde la app (crea y borra cuentas, negocios, novedades y sorteos; también por HTTP): `wp eval-file tests/novedades-sorteos.php`
 - Datos personales: borrar cuenta, exportar y borrar (crea y borra cuentas, negocios y comentarios): `wp eval-file tests/privacidad.php`
-- Eliminar cuenta desde la app, `DELETE /user/{id}` (crea y borra cuentas, negocios, comentarios, tokens y sus intentos; también por HTTP): `wp eval-file tests/borrar-cuenta.php`
+- Eliminar cuenta desde la app, `DELETE /user/{id}` (crea y borra cuentas, negocios, comentarios, tokens y sus intentos; también por HTTP; los correos se recogen y no salen): `wp eval-file tests/borrar-cuenta.php`
 - Panel de asociación y federación (crea y borra cuentas, entradas y sus intentos): `wp eval-file tests/panel.php`
 - Formato de los errores: `node tests/contrato-errores.mjs` y `wp eval-file tests/errores.php` (los dos solo leen)
 - Recalcular todas las puntuaciones (al final de una migración): `wp zona-nautico recalcular-puntuaciones`

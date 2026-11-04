@@ -56,8 +56,22 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Cambiar mis datos | 02-11-2026 | `6a197c2` (v0.20.1) | `2fa7c1d` (v0.21.0) | R69: `PATCH /user/{id}` con la contraseña actual y confirmación del correo nuevo |
 | Cambiar mis datos-bis | 02-11-2026 | `2fa7c1d` (v0.21.0) | `75fc042` (v0.21.1) | R105, R106, R107, R108 |
 | Eliminar cuenta | 04-11-2026 | `3013a0b` (v0.21.1) | `a7332e4` (v0.22.0) | `DELETE /user/{id}` (D1: la app lo llamaba y no existía) |
+| Eliminar cuenta-bis | 04-11-2026 | `a7332e4` (v0.22.0) | (este commit, v0.23.0) | R110 (contraseña actual para borrar) y R111 (correo de aviso) |
 
 ---
+
+## Eliminar cuenta-bis (R110, R111)
+
+Luis (vía la maestra, 04-11): R110 «Sí, se debe pedir la contraseña actual para poder borrar la cuenta, como cuando
+quieres cambiar la contraseña»; R111, aviso «Tu cuenta de Zona Náutico se ha borrado. Si no has sido tú, escríbenos
+a…», y «De momento no hay correo de contacto, eso lo añadiremos al final». Diff: `git diff a7332e4 HEAD`. Pruebas
+escritas antes (`tests/borrar-cuenta.php`, ahora 39).
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **R110** Contraseña actual | hecho | `borrar()` pide `currentPassword` en el cuerpo, como `cambiar()`: tras el permiso y el límite de escrituras, sin ella (o "") 422 «The current password field is required.», si no es texto 422 `string`; luego `ZN_Limite::intentar( 'datos' )` (429; 5 malas desde una IP bloquean aunque la 6.ª sea buena) y `wp_check_password` (mala: 422 «The password is incorrect.»). Con la buena se olvidan los intentos. Sin sesión, 401 antes de mirar nada. |
+| **R111** Correo de aviso | hecho | Tras `wp_delete_user()`, `wp_mail()` a su correo: «Zona Náutico: tu cuenta se ha borrado», texto de `ZN_API_Usuarios::texto_cuenta_borrada()`. La frase «Si no has sido tú, escríbenos a …» solo con un correo válido en `ZN_CORREO_CONTACTO` (como `linea_contacto()` de R103); sin él, no aparece. Fuera de producción solo sale a `@ejemplo.invalid` (R57). Anotado en el README, en «Subir al servidor». |
+| **App** | hecho | `Zona-Nautico`: campo «Contraseña actual» en la confirmación de borrar la cuenta, mandado como `currentPassword` en el DELETE. |
 
 ## Eliminar cuenta (DELETE /user/{id})
 

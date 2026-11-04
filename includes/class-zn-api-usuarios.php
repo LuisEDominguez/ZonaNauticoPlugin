@@ -33,7 +33,10 @@
  * - Solo la propia cuenta y solo con user:delete_self (hoy, solo el rol user, R44); si no, 401 «This action is
  *   unauthorized.». Ni la cuenta padre ni la administración de la app borran otra cuenta desde aquí, y la
  *   administración tampoco la suya (su user:delete general no cuenta).
+ * - Pide la contraseña actual (currentPassword, R110), igual que PATCH: sin ella, 422 «The current password field is
+ *   required.»; mala, 422 «The password is incorrect.»; con el mismo límite de intentos 'datos' (429).
  * - Cuenta en el límite de escrituras de la cuenta (R94; 429). Responde 200 {status: "success"}.
+ * - Tras borrar, avisa a su correo de que la cuenta se ha borrado (R111; texto_cuenta_borrada()).
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -78,10 +81,30 @@ class ZN_API_Usuarios {
 		if ( null !== $espera ) {
 			return ZN_Limite::demasiados( $espera );
 		}
+		// La contraseña actual, como en cambiar() (R110 = R69): formato, límite 'datos' y luego la contraseña.
+		$actual = ZN_API::cuerpo( $peticion )['currentPassword'] ?? null;
+		if ( null === $actual || '' === $actual ) {
+			return ZN_Errores::no_valido( array( 'currentPassword' => ZN_Esquema::mensaje( 'required', 'currentPassword' ) ) );
+		}
+		if ( ! is_string( $actual ) ) {
+			return ZN_Errores::no_valido( array( 'currentPassword' => ZN_Esquema::mensaje( 'string', 'currentPassword' ) ) );
+		}
+		$espera = ZN_Limite::intentar( 'datos', $cuenta->user_email );
+		if ( null !== $espera ) {
+			return ZN_Limite::demasiados( $espera );
+		}
+		if ( ! wp_check_password( $actual, $cuenta->user_pass, $cuenta->ID ) ) {
+			return ZN_Errores::no_valido( array( 'currentPassword' => 'The password is incorrect.' ) );
+		}
+		ZN_Limite::olvidar( 'datos', $cuenta->user_email );
+
+		$email = $cuenta->user_email;
 		require_once ABSPATH . 'wp-admin/includes/user.php';
 		if ( ! wp_delete_user( $cuenta->ID ) ) {
 			return new WP_REST_Response( array( 'message' => 'Server Error' ), 500 );
 		}
+		// R111. Fuera de producción solo sale a @ejemplo.invalid (ZN_Puertas, R57).
+		wp_mail( $email, 'Zona Náutico: tu cuenta se ha borrado', self::texto_cuenta_borrada() );
 		$respuesta = new WP_REST_Response( array( 'status' => 'success' ) );
 		$respuesta->header( 'Cache-Control', 'no-store, private' );
 		return $respuesta;
@@ -180,6 +203,16 @@ class ZN_API_Usuarios {
 		$respuesta = new WP_REST_Response( array( 'data' => self::formatear( get_userdata( $cuenta->ID ) ) ) );
 		$respuesta->header( 'Cache-Control', 'no-store, private' );
 		return $respuesta;
+	}
+
+	/**
+	 * Correo de «tu cuenta se ha borrado» (R111). La frase de contacto solo sale con un correo válido en
+	 * wp-config.php: define( 'ZN_CORREO_CONTACTO', '…' ); (R103, pendiente de que Luis diga cuál).
+	 */
+	public static function texto_cuenta_borrada( ?string $correo = null ): string {
+		$correo = $correo ?? ( defined( 'ZN_CORREO_CONTACTO' ) ? (string) ZN_CORREO_CONTACTO : '' );
+		$texto  = "Hola:\n\nTu cuenta de Zona Náutico se ha borrado.\n";
+		return is_email( $correo ) ? $texto . "\nSi no has sido tú, escríbenos a $correo.\n" : $texto;
 	}
 
 	public static function ficha( WP_REST_Request $peticion ): WP_REST_Response {
