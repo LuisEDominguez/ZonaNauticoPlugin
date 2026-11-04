@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 
-const BASE = (process.argv[2] ?? (process.env.ZN_URL ?? 'http://localhost:10010').replace(/\/+$/, '') + '/wp-json/zonanautico/v1').replace(/\/+$/, '');
+const BASE = (process.argv[2] ?? (process.env.ZN_URL ?? 'http://localhost:10004').replace(/\/+$/, '') + '/wp-json/zonanautico/v1').replace(/\/+$/, '');
 const MUESTRAS = process.argv[3] ?? fileURLToPath(new URL('../../Zona-Nautico/api-muestras', import.meta.url));
 
 const muestra = (fichero) => JSON.parse(readFileSync(join(MUESTRAS, fichero), 'utf8'));

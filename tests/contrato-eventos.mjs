@@ -3,7 +3,7 @@
 //   node tests/contrato-eventos.mjs [url-base]
 import assert from 'node:assert/strict';
 
-const BASE = (process.argv[2] ?? (process.env.ZN_URL ?? 'http://localhost:10010').replace(/\/+$/, '') + '/wp-json/zonanautico/v1').replace(/\/+$/, '');
+const BASE = (process.argv[2] ?? (process.env.ZN_URL ?? 'http://localhost:10004').replace(/\/+$/, '') + '/wp-json/zonanautico/v1').replace(/\/+$/, '');
 
 const CAMPOS = [
   '_id', 'name', 'description', 'latitude', 'longitude', 'photo_0', 'photo_1', 'photo_2', 'video_0', 'video_1', 'video_2',

@@ -2,7 +2,7 @@
 // Uso, con el sitio de Local encendido: node tests/puertas.mjs [url-del-sitio]
 import assert from 'node:assert/strict';
 
-const SITIO = (process.argv[2] ?? (process.env.ZN_URL ?? 'http://localhost:10010').replace(/\/+$/, '') + '').replace(/\/+$/, '');
+const SITIO = (process.argv[2] ?? (process.env.ZN_URL ?? 'http://localhost:10004').replace(/\/+$/, '') + '').replace(/\/+$/, '');
 
 const pedir = (ruta, opciones = {}) => fetch(`${SITIO}${ruta}`, { redirect: 'manual', ...opciones });
 
