@@ -30,6 +30,7 @@ Base de la API: `<sitio>/wp-json/zonanautico/v1`
 | `DELETE /event/{id}` | **con token** | Los mismos. Borrado definitivo. `200 {status: "success"}` |
 | `POST /draw` | **con token** | `title`*, `userId`*, `startDate`*, `endDate`*, `winners`* (≥ 1), `description`, `legalUrl`, `photos[]`. `201 {data}` |
 | `PUT\|PATCH /draw/{id}`, `DELETE /draw/{id}` | **con token** | Solo su dueño o la administración de la app. Un PATCH sin `legalUrl` no lo borra |
+| `GET /me` | **con token** | La cuenta del token, como `GET /user/{id}`, más `permissions`: los permisos del Laravel de su rol, sin `zn:` (la app enseña u oculta botones con ellos; cada ruta sigue decidiendo). Sin sesión, `401 «Unauthenticated.»`; `no-store` |
 | `GET /user/{id}` | **con token** | La propia cuenta, o la que pueda ver (`user:read`…). Formato del UserResource del Laravel con `id` numérico |
 | `PUT\|PATCH /user/{id}` | **con token** | Solo la propia cuenta: `name`, `phone`, `email`, `password`. El correo y la contraseña piden `currentPassword` (R69). null borra solo el teléfono; "" es 422. `roleId` → 401. `200 {data}` como `GET /user/{id}` |
 | `DELETE /user/{id}` | **con token** | «Eliminar cuenta»: solo la propia y con `user:delete_self` (hoy, solo el rol `user`, R44), con `currentPassword` en el cuerpo (R110). Borrado definitivo, como en Usuarios (R65, R95, R96), con sus tokens anulados y un correo de aviso (R111). `200 {status: "success"}` |
@@ -275,6 +276,7 @@ un enlace de carpeta en `wp-content/plugins/zona-nautico`.
 - Reseñas y preguntas desde la app (crea y borra cuentas, negocios y comentarios; también por HTTP): `wp eval-file tests/opiniones.php`
 - Novedades y sorteos desde la app (crea y borra cuentas, negocios, novedades y sorteos; también por HTTP): `wp eval-file tests/novedades-sorteos.php`
 - Datos personales: borrar cuenta, exportar y borrar (crea y borra cuentas, negocios y comentarios): `wp eval-file tests/privacidad.php`
+- `GET /me` con sus permisos (crea y borra cuentas y tokens; también por HTTP): `wp eval-file tests/me.php`
 - Instalación, versión, lo que borra `uninstall.php` y el prefijo `zn_` de las cuentas (R68; no desinstala de verdad; crea y borra cuentas y un negocio): `wp eval-file tests/instalacion.php`
 - Solo el nombre de pila en lo público y `/review?user=` con token (R66; crea y borra cuentas, un negocio y reseñas; también por HTTP): `wp eval-file tests/nombre-de-pila.php`
 - Eliminar cuenta desde la app, `DELETE /user/{id}` (crea y borra cuentas, negocios, comentarios, tokens y sus intentos; también por HTTP; los correos se recogen y no salen): `wp eval-file tests/borrar-cuenta.php`

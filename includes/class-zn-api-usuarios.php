@@ -46,6 +46,16 @@ class ZN_API_Usuarios {
 	public static function registrar_rutas(): void {
 		register_rest_route(
 			ZN_NAMESPACE,
+			'/me',
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => array( __CLASS__, 'yo' ),
+				// La sesión se mira dentro, para responder siempre 401 «Unauthenticated.» (también a wp-admin).
+				'permission_callback' => '__return_true',
+			)
+		);
+		register_rest_route(
+			ZN_NAMESPACE,
 			'/user/(?P<id>\d+)',
 			array(
 				array(
@@ -66,6 +76,24 @@ class ZN_API_Usuarios {
 				),
 			)
 		);
+	}
+
+	/**
+	 * GET /me (bloque 2): la cuenta del token, como GET /user/{id}, más `permissions` (los del Laravel, sin «zn:»):
+	 * la app los usa para enseñar u ocultar botones en vez de llevar copiada la tabla de capacidades. Quien decide
+	 * sigue siendo cada ruta. Sin sesión de una cuenta de la app: 401 «Unauthenticated.».
+	 */
+	public static function yo(): WP_REST_Response {
+		$cuenta = wp_get_current_user();
+		$rol    = $cuenta->exists() ? ZN_Roles::rol_app( $cuenta ) : null;
+		if ( ! $rol ) {
+			return ZN_Errores::no_autenticado();
+		}
+		$datos                = self::formatear( $cuenta );
+		$datos['permissions'] = array_map( static fn( $p ) => substr( $p, 3 ), ZN_Roles::permisos( $rol ) );
+		$respuesta            = new WP_REST_Response( array( 'data' => $datos ) );
+		$respuesta->header( 'Cache-Control', 'no-store, private' );
+		return $respuesta;
 	}
 
 	public static function borrar( WP_REST_Request $peticion ): WP_REST_Response {

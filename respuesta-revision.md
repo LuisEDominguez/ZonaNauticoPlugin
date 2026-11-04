@@ -60,9 +60,20 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Eliminar cuenta-bis | 04-11-2026 | `a7332e4` (v0.22.0) | `09fac02` (v0.23.0) | R110 (contraseña actual para borrar) y R111 (correo de aviso) |
 | Bloque 1, parte B | 04-11-2026 | `89521b9` (v0.23.0) | `f889285` (v0.24.0) | R66: solo el nombre de pila en lo público y `/review?user=` con token |
 | Bloque 1, parte C | 04-11-2026 | `237719b` (v0.24.0) | `6b39aa8` (v0.25.0) | R68: instalación en un solo sitio, `uninstall.php` y prefijo `zn_` en las cuentas |
-| Ronda 37, notas | 04-11-2026 | `6b39aa8` (v0.25.0) | (este commit, v0.25.1) | R119 y R121 (README) y R120 (migración solo de cuentas de la app); R122, a la espera de Luis |
+| Ronda 37, notas | 04-11-2026 | `6b39aa8` (v0.25.0) | `63c01aa` (v0.25.1) y `d579bd6` (puerto en las `.mjs`) | R119 y R121 (README) y R120 (migración solo de cuentas de la app); R122, a la espera de Luis |
+| Bloque 2, parte A | 04-11-2026 | `d579bd6` (v0.25.1) | (este commit, v0.26.0) | `GET /me` con los permisos de la cuenta |
 
 ---
+
+## GET /me (bloque 2, parte A)
+
+Luis (vía la maestra, 04-11): «Bloque 2». Diff: `git diff d579bd6 HEAD`. Pruebas escritas antes (`tests/me.php`, 18).
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **Ruta** | hecho | `GET /me` en `class-zn-api-usuarios.php` (`yo()`): la cuenta del token con los mismos campos que `GET /user/{id}` y además `permissions` (de `ZN_Roles::permisos()`, sin `zn:`; nunca `read` ni `zn_panel_ver`). Sin sesión, cuenta de wp-admin o con dos roles (R37): 401 «Unauthenticated.». `no-store`. El Laravel no tiene esta ruta (se le pidió, 6.2): la forma es nueva, imitando la de `/user/{id}`. |
+| **Solo para enseñar** | nota | Los permisos sirven a la app para enseñar u ocultar botones; cada ruta sigue comprobando con `ZN_Roles::puede()`. |
+| **App** | hecho | `Zona-Nautico`: la sesión pide `/me` tras entrar y al restaurar, y `puede()` mira esos permisos en lugar de la tabla copiada. |
 
 ## Notas de la ronda 37 (R119-R121)
 
