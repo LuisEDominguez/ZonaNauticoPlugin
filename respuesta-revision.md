@@ -64,7 +64,8 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Bloque 2, parte A | 04-11-2026 | `d579bd6` (v0.25.1) | `c6713e7` (v0.26.0) | `GET /me` con los permisos de la cuenta |
 | Bloque 2, parte B | 04-11-2026 | `a6e3ab4` (v0.26.0) | `8641ecf` (v0.27.0) | Portada: `/news`, `/home-slides`, `/business-category` e `includesCategory` |
 | Bloque 2, parte C | 04-11-2026 | `8641ecf` (v0.27.0) | `57e1dbd` (v0.28.0) | Favoritos: `/favorite` y su RGPD |
-| Sorteos, parte 1 (plugin) | 04-11-2026 | `3f8ecdf` (v0.28.0) | (este commit, v0.29.0) | Participaciones: `/draw-participation`, fotos privadas sin EXIF, export, ganadores, borrado y RGPD |
+| Sorteos, parte 1 (plugin) | 04-11-2026 | `3f8ecdf` (v0.28.0) | `dda1515` (v0.29.0) | Participaciones: `/draw-participation`, fotos privadas sin EXIF, export, ganadores, borrado y RGPD |
+| Ronda 45 (sorteos) | 04-11-2026 | `dda1515` (v0.29.0) | `d649d33` (R132, R134) y este commit (v0.29.1) | R131-R141 |
 
 ---
 
@@ -95,6 +96,25 @@ traspaso. Diff: `git diff a6e3ab4 HEAD`. Pruebas escritas antes (`tests/portada.
 | **Quién edita** | hecho | `ZN_Roles::actualizar` da al administrador los permisos de los dos tipos nuevos; `ZN_Instalacion::es_del_plugin` los reconoce para `uninstall.php` (R68). Panel R40 sin cambios. |
 | **Carga inicial** | hecho | `wp zona-nautico portada-inicial <carpeta de la app>`: 60 Novedades ZN (`zn_origen` = id de Adalo, fecha UTC de Adalo) y 6 slides con sus fotos subidas a medios. Repetirla no duplica. **Ejecutada en el Local** (60 y 6). |
 | **Pruebas** | hecho | `tests/portada.php` 36; sin regresiones en `instalacion` 28, `roles` 90, `panel` 177, `seguridad` 84, `esquema` 65, `contrato-negocios`, `contrato-muestras` y `puertas`. |
+
+## Ronda 45: participaciones (R131-R141)
+
+R132 y R134 los pidió la maestra; R131, R133, R135-R141, aprobados por Luis («Sí, como recomiendas»). Pruebas
+escritas antes, en `tests/participaciones.php` (ahora 89). Diff: `git diff dda1515 HEAD`.
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **R131** Sin plan B | hecho | `carpeta()` solo da `zn-privado-tickets/` fuera de la web; si no es válida o no se puede escribir, `''`: el POST responde 503 («Tickets cannot be saved right now…») sin guardar nada y wp-admin avisa (`aviso_carpeta()`, solo a quien puede `manage_options`). Anotado en el README, en «Subir al servidor». |
+| **R132** Píxeles | hecho | `comprobar_imagen()` con la cabecera (`getimagesize`): tamaño, tipo real y como mucho 40 MP, antes de decodificar; y `wp_raise_memory_limit( 'image' )`. El sorteo, el permiso, R140 y «ya participas» se miran antes de tocar la imagen. Probado con un PNG que dice medir 20000 × 20000: 422, no 500. |
+| **R133** 90 días | hecho | Sin entrega, a los 90 días del fin también se borran nombre y correo de quien ganó (ya lo hacía; ahora con prueba). |
+| **R134** Ruta | hecho | `ruta_valida()`: nombre `zn-privado*`, no vacía, no enlace (`is_link`, y `realpath` igual a la ruta), y que no sea ni contenga ABSPATH, `wp-content` ni `uploads`. `carpeta()` y `borrar_carpeta()` la exigen; `borrar_carpeta()` solo borra lo que pone el plugin (fotos de 32 caracteres, `.htaccess`, `index.php`). Probado con una carpeta ajena, ABSPATH, `uploads` y vacía (en Windows no se puede crear un enlace simbólico sin permisos: esa parte no se ha podido probar aquí). |
+| **R135** `_envelope` | hecho | En `servir_archivo()`, si la respuesta viene envuelta y es un archivo, se responde un JSON con un mensaje, sin la ruta. Probado por HTTP. |
+| **R136** Huérfanos | hecho | Si `unlink` falla, la fila se queda (la tarea lo reintenta). La tarea diaria barre las fotos sin fila de más de un día. |
+| **R137** Desactivar | hecho | `register_deactivation_hook` → `desprogramar()` quita la tarea. |
+| **R138** Cuándo cuentan los 30 días | hecho | Desde lo más tarde: el fin del sorteo o la última entrega. |
+| **R139** PATCH | hecho | Cuenta en el límite de escrituras (429). |
+| **R140** Organizador | hecho | Quien organiza no participa en su sorteo: 422 en `draw`. |
+| **R141** Comentario | hecho | Corregido: queda el `user_id` de quien ganó y `winnerNames` sigue dando su nombre de pila mientras exista la cuenta (decisión 4). |
 
 ## Participaciones en sorteos, parte 1: plugin
 

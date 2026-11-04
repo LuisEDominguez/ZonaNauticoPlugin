@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Zona Náutico
  * Description: API de la app Zona Náutico. Imita el contrato de la API Laravel actual ({data, links, meta}) para no rehacer la app.
- * Version:     0.29.0
+ * Version:     0.29.1
  * Author:      Visual Publinet
  * Text Domain: zona-nautico
  * Requires at least: 6.8
@@ -11,7 +11,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-const ZN_VERSION   = '0.29.0';
+const ZN_VERSION   = '0.29.1';
 const ZN_NAMESPACE = 'zonanautico/v1';
 
 require_once __DIR__ . '/includes/class-zn-api.php';
@@ -71,6 +71,8 @@ ZN_Participaciones::iniciar();
 // Al borrar el plugin, uninstall.php.
 ZN_Instalacion::iniciar();
 register_activation_hook( __FILE__, array( 'ZN_Instalacion', 'instalar' ) );
+// Al desactivar, solo se quita la tarea diaria de los tickets (R137); no se borra nada.
+register_deactivation_hook( __FILE__, array( 'ZN_Participaciones', 'desprogramar' ) );
 
 if ( is_admin() ) {
 	require_once __DIR__ . '/includes/class-zn-admin-campos.php';

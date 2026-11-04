@@ -18,12 +18,14 @@
  * - GET /draw-participation/export/{drawId}?format=csv: nombre y correo (R45, decisión 5).
  * En /draw/{id}?includesWinners=1, winnerNames con el nombre de pila de quien ganó (R66).
  *
- * Fotos: fuera de la carpeta pública de WordPress si se puede (carpeta()); si no, en uploads/zn-privado con
- * .htaccess que lo niega todo. Nunca en la biblioteca de medios ni con URL pública: solo por la ruta /ticket.
- * Borrado (tarea diaria): 30 días después de entregar todos los premios del sorteo (decisión 1), o 90 días después
- * del fin si no se entregan (decisión b): se borran todas las fotos y las participaciones de quien no ganó; a quien
- * ganó se le quitan nombre, correo y foto. RGPD (R65, decisión 7): borrar la cuenta o el sorteo lo borra todo salvo
- * a quien ganó y aún no tiene su premio, de quien se guardan nombre y correo hasta la entrega.
+ * Fotos: en zn-privado-tickets/, junto a la carpeta de WordPress y fuera de la web (carpeta()). Sin esa carpeta no
+ * se guarda ningún ticket (R131: 503 y aviso en wp-admin); no hay plan B en uploads. Nunca en la biblioteca de medios
+ * ni con URL pública: solo por la ruta /ticket.
+ * Borrado (tarea diaria; se quita al desactivar, R137): 30 días después de que el sorteo esté cerrado y todos sus
+ * premios entregados (decisión 1, R138), o 90 días después del fin si no se entregan (decisión b, R133): se borran
+ * todas las fotos y las participaciones de quien no ganó; a quien ganó se le quitan nombre, correo y foto. Las fotos
+ * sin fila se barren (R136). RGPD (R65, decisión 7): borrar la cuenta o el sorteo lo borra todo salvo a quien ganó y
+ * aún no tiene su premio, de quien se guardan nombre y correo hasta la entrega (como mucho, los 90 días).
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -47,6 +49,7 @@ class ZN_Participaciones {
 		add_action( 'delete_user', array( __CLASS__, 'al_borrar_cuenta' ) );
 		add_action( 'wpmu_delete_user', array( __CLASS__, 'al_borrar_cuenta' ) );
 		add_action( 'before_delete_post', array( __CLASS__, 'al_borrar_sorteo' ) );
+		add_action( 'admin_notices', array( __CLASS__, 'avisar_en_admin' ) );
 	}
 
 	public static function tabla(): string {
@@ -93,12 +96,15 @@ class ZN_Participaciones {
 	 */
 	public static function carpeta(): string {
 		$carpeta = self::carpeta_pedida();
-		if ( ! self::ruta_valida( $carpeta ) ) {
-			// R134: lo que diga el filtro solo vale si es una carpeta zn-privado* segura; si no, la de siempre.
-			$carpeta = self::carpeta_por_defecto();
+		// R134: solo una carpeta zn-privado* segura. R131: y fuera de la web; si no la hay, '' y no se guarda ningún ticket.
+		if ( ! self::ruta_valida( $carpeta ) || 0 === strpos( $carpeta . '/', wp_normalize_path( ABSPATH ) ) ) {
+			return '';
 		}
 		if ( ! is_dir( $carpeta ) ) {
 			wp_mkdir_p( $carpeta );
+		}
+		if ( ! is_dir( $carpeta ) || ! wp_is_writable( $carpeta ) ) {
+			return '';
 		}
 		if ( ! is_file( "$carpeta/.htaccess" ) ) {
 			file_put_contents( "$carpeta/.htaccess", "Require all denied\nDeny from all\n" ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
@@ -109,9 +115,28 @@ class ZN_Participaciones {
 		return $carpeta;
 	}
 
+	/** Junto a la carpeta de WordPress, fuera de la web. Sin plan B dentro de uploads (R131). */
 	private static function carpeta_por_defecto(): string {
-		$fuera = wp_normalize_path( dirname( untrailingslashit( ABSPATH ) ) ) . '/zn-privado-tickets';
-		return ( is_dir( $fuera ) || wp_is_writable( dirname( $fuera ) ) ) ? $fuera : wp_normalize_path( wp_get_upload_dir()['basedir'] ) . '/zn-privado';
+		return wp_normalize_path( dirname( untrailingslashit( ABSPATH ) ) ) . '/zn-privado-tickets';
+	}
+
+	/** R131: aviso para wp-admin si no hay dónde guardar los tickets; '' si todo está bien. */
+	public static function aviso_carpeta(): string {
+		return '' === self::carpeta()
+			? 'Zona Náutico: no se pueden guardar las fotos de los tickets de los sorteos. Hace falta la carpeta «zn-privado-tickets» junto a la de WordPress (fuera de la web) y que se pueda escribir en ella. Mientras tanto, la app no deja participar.'
+			: '';
+	}
+
+	public static function avisar_en_admin(): void {
+		$aviso = current_user_can( 'manage_options' ) ? self::aviso_carpeta() : '';
+		if ( '' !== $aviso ) {
+			echo '<div class="notice notice-error"><p>' . esc_html( $aviso ) . '</p></div>';
+		}
+	}
+
+	/** Al desactivar el plugin (R137). */
+	public static function desprogramar(): void {
+		wp_clear_scheduled_hook( self::TAREA );
 	}
 
 	/** La carpeta que pide el filtro zn_carpeta_tickets (por defecto, la de siempre), sin comprobarla. */
@@ -142,10 +167,11 @@ class ZN_Participaciones {
 		return true;
 	}
 
-	/** Ruta del archivo de la foto de una fila; '' si no tiene. */
+	/** Ruta del archivo de la foto de una fila; '' si no tiene (o no hay carpeta). */
 	public static function ruta_ticket( ?array $fila ): string {
-		$nombre = (string) ( $fila['ticket'] ?? '' );
-		return preg_match( '/^[a-z0-9]{32}\.jpg$/', $nombre ) ? self::carpeta() . '/' . $nombre : '';
+		$nombre  = (string) ( $fila['ticket'] ?? '' );
+		$carpeta = preg_match( '/^[a-z0-9]{32}\.jpg$/', $nombre ) ? self::carpeta() : '';
+		return '' === $carpeta ? '' : "$carpeta/$nombre";
 	}
 
 	public static function registrar_rutas(): void {
@@ -271,6 +297,10 @@ class ZN_Participaciones {
 		if ( null !== $espera ) {
 			return ZN_Limite::demasiados( $espera );
 		}
+		// R131: sin carpeta privada fuera de la web no se guarda ningún ticket.
+		if ( '' === self::carpeta() ) {
+			return new WP_REST_Response( array( 'message' => 'Tickets cannot be saved right now: the private folder for tickets is missing.' ), 503 );
+		}
 		$cuerpo  = $peticion->get_body_params() ?: ZN_API::cuerpo( $peticion );
 		$valor   = $cuerpo['draw'] ?? $cuerpo['drawId'] ?? null;
 		$errores = array();
@@ -301,6 +331,10 @@ class ZN_Participaciones {
 		$yo = get_current_user_id();
 		if ( ! ZN_Roles::puede_crear( 'draw_participation:save', $yo ) ) {
 			return ZN_Errores::sin_permiso();
+		}
+		// R140: quien organiza el sorteo no participa en él.
+		if ( (int) ZN_API::campo( $sorteo->ID, 'user_id' ) === $yo ) {
+			return ZN_Errores::no_valido( array( 'draw' => 'You cannot take part in a draw you organise.' ) );
 		}
 		global $wpdb;
 		$existe = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . self::tabla() . ' WHERE draw_id = %d AND user_id = %d', $sorteo->ID, $yo ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
@@ -363,6 +397,11 @@ class ZN_Participaciones {
 		$fila = self::fila( (int) $peticion['id'] );
 		if ( ! $fila || ! self::organiza( self::sorteo( (int) $fila['draw_id'] ) ) ) {
 			return ZN_Errores::sin_permiso();
+		}
+		// R139: también cuenta en el límite de escrituras (cada «ganador» manda un correo).
+		$espera = ZN_API::limite_de_escritura();
+		if ( null !== $espera ) {
+			return ZN_Limite::demasiados( $espera );
 		}
 		$cuerpo  = ZN_API::cuerpo( $peticion );
 		$cambios = array();
@@ -436,10 +475,18 @@ class ZN_Participaciones {
 
 	/** Filtro rest_pre_serve_request: la foto y el CSV salen tal cual, no como JSON. */
 	public static function servir_archivo( $servido, $respuesta, $peticion, $servidor ) {
-		if ( $servido || ! $respuesta instanceof WP_HTTP_Response || 200 !== $respuesta->get_status() || ! self::es_archivo( $respuesta->get_data() ) ) {
+		if ( $servido || ! $respuesta instanceof WP_HTTP_Response ) {
 			return $servido;
 		}
 		$datos = $respuesta->get_data();
+		// R135: con ?_envelope, WordPress mete la respuesta en {body, status, headers}: nunca se enseña la ruta del archivo.
+		if ( is_array( $datos ) && isset( $datos['body'] ) && self::es_archivo( $datos['body'] ) ) {
+			echo wp_json_encode( array( 'message' => 'The _envelope parameter is not supported for files.' ) );
+			return true;
+		}
+		if ( 200 !== $respuesta->get_status() || ! self::es_archivo( $datos ) ) {
+			return $servido;
+		}
 		if ( isset( $datos['__zn_archivo'] ) ) {
 			header( 'Content-Length: ' . filesize( $datos['__zn_archivo'] ) );
 			readfile( $datos['__zn_archivo'] ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_readfile
@@ -498,29 +545,55 @@ class ZN_Participaciones {
 
 	/** Guarda la imagen en JPG nuevo (GD no copia ningún metadato: decisión 2) con nombre al azar. */
 	private static function guardar_imagen( $imagen ): string {
-		$nombre = strtolower( wp_generate_password( 32, false, false ) ) . '.jpg';
-		return imagejpeg( $imagen, self::carpeta() . "/$nombre", 85 ) ? $nombre : '';
+		$carpeta = self::carpeta();
+		$nombre  = strtolower( wp_generate_password( 32, false, false ) ) . '.jpg';
+		return '' !== $carpeta && imagejpeg( $imagen, "$carpeta/$nombre", 85 ) ? $nombre : '';
 	}
 
-	/** Borra una fila y su foto. */
-	public static function borrar_fila( array $fila ): void {
+	/**
+	 * Borra una fila y su foto. R136: si la foto no se puede borrar, la fila se queda (la tarea diaria lo reintenta)
+	 * para no dejar un archivo sin dueño. Devuelve si se ha borrado.
+	 */
+	public static function borrar_fila( array $fila ): bool {
 		global $wpdb;
-		self::quitar_foto( $fila );
+		if ( ! self::quitar_foto( $fila ) ) {
+			return false;
+		}
 		$wpdb->delete( self::tabla(), array( 'id' => (int) $fila['id'] ), array( '%d' ) );
+		return true;
 	}
 
-	private static function quitar_foto( array $fila ): void {
+	/** Quita la foto de una fila; true si ya no está (o no tenía). */
+	private static function quitar_foto( array $fila ): bool {
 		$ruta = self::ruta_ticket( $fila );
-		if ( '' !== $ruta && is_file( $ruta ) ) {
-			unlink( $ruta ); // phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink
+		if ( '' === $ruta || ! is_file( $ruta ) ) {
+			return true;
 		}
+		return @unlink( $ruta ); // phpcs:ignore
 	}
 
 	/** Ganador sin premio entregado: se queda la fila con nombre y correo, sin foto (decisión 7). */
 	private static function dejar_solo_datos_de_entrega( array $fila ): void {
 		global $wpdb;
-		self::quitar_foto( $fila );
-		$wpdb->update( self::tabla(), array( 'ticket' => '' ), array( 'id' => (int) $fila['id'] ) );
+		if ( self::quitar_foto( $fila ) ) {
+			$wpdb->update( self::tabla(), array( 'ticket' => '' ), array( 'id' => (int) $fila['id'] ) );
+		}
+	}
+
+	/** R136: fotos de la carpeta que ya no tienen fila (de más de un día, para no pisar una que se esté guardando). */
+	private static function barrer_huerfanas( int $ahora ): void {
+		global $wpdb;
+		$carpeta = self::carpeta();
+		if ( '' === $carpeta ) {
+			return;
+		}
+		$usadas = array_flip( $wpdb->get_col( 'SELECT ticket FROM ' . self::tabla() . " WHERE ticket <> ''" ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		foreach ( (array) scandir( $carpeta ) as $nombre ) {
+			$ruta = "$carpeta/$nombre";
+			if ( preg_match( '/^[a-z0-9]{32}\.jpg$/', (string) $nombre ) && ! isset( $usadas[ $nombre ] ) && is_file( $ruta ) && ! is_link( $ruta ) && filemtime( $ruta ) < $ahora - DAY_IN_SECONDS ) {
+				@unlink( $ruta ); // phpcs:ignore
+			}
+		}
 	}
 
 	private static function pendiente_de_entrega( array $fila ): bool {
@@ -553,26 +626,29 @@ class ZN_Participaciones {
 			$ganadores = array_filter( $filas, static fn( $f ) => '1' === (string) $f['ganador'] );
 			$entregas  = array_filter( array_column( $ganadores, 'entregado_en' ) );
 			$todos     = $ganadores && count( $entregas ) === count( $ganadores );
-			if ( $todos ) {
-				$limite = strtotime( max( $entregas ) . ' UTC' ) + self::DIAS_TRAS_ENTREGA * DAY_IN_SECONDS;
-			} else {
-				$fin    = self::sorteo( $sorteo_id ) ? ZN_API::campo( $sorteo_id, 'end_date' ) : null;
-				$base   = $fin ? ( new DateTimeImmutable( $fin, new DateTimeZone( 'Europe/Madrid' ) ) )->getTimestamp() : strtotime( max( array_column( $filas, 'date' ) ) . ' UTC' );
-				$limite = $base + self::DIAS_SIN_ENTREGA * DAY_IN_SECONDS;
-			}
+			$fin       = self::sorteo( $sorteo_id ) ? ZN_API::campo( $sorteo_id, 'end_date' ) : null;
+			$fin_ts    = $fin ? ( new DateTimeImmutable( $fin, new DateTimeZone( 'Europe/Madrid' ) ) )->getTimestamp() : strtotime( max( array_column( $filas, 'date' ) ) . ' UTC' );
+			// Decisión 1 y R138: 30 días desde que el sorteo está cerrado y entregado (lo que pase más tarde).
+			// Decisión b y R133: si no se entrega, a los 90 días del fin, también los datos de quien ganó.
+			$limite = $todos
+				? max( strtotime( max( $entregas ) . ' UTC' ), $fin_ts ) + self::DIAS_TRAS_ENTREGA * DAY_IN_SECONDS
+				: $fin_ts + self::DIAS_SIN_ENTREGA * DAY_IN_SECONDS;
 			if ( $ahora < $limite ) {
 				continue;
 			}
 			foreach ( $filas as $fila ) {
 				if ( '1' === (string) $fila['ganador'] ) {
-					// Solo queda que ganó (para el historial del sorteo); nada personal.
-					self::quitar_foto( $fila );
-					$wpdb->update( self::tabla(), array( 'ticket' => '', 'nombre' => '', 'correo' => '' ), array( 'id' => (int) $fila['id'] ) );
+					// R141: queda la fila con su user_id (que ganó); mientras exista la cuenta, winnerNames sigue dando su
+					// nombre de pila (decisión 4). Se quitan la foto, el nombre y el correo guardados.
+					if ( self::quitar_foto( $fila ) ) {
+						$wpdb->update( self::tabla(), array( 'ticket' => '', 'nombre' => '', 'correo' => '' ), array( 'id' => (int) $fila['id'] ) );
+					}
 				} else {
 					self::borrar_fila( $fila );
 				}
 			}
 		}
+		self::barrer_huerfanas( time() );
 	}
 
 	// --- RGPD (R65, decisión 7) ---

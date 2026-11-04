@@ -108,7 +108,7 @@ try {
 		$usada  = ZN_Participaciones::carpeta();
 		$borra  = ZN_Participaciones::borrar_carpeta();
 		remove_filter( 'zn_carpeta_tickets', $filtro );
-		$ok( "R134: $caso: no vale, no se usa y borrar_carpeta() no borra nada", ! $valida && untrailingslashit( wp_normalize_path( $usada ) ) !== untrailingslashit( wp_normalize_path( (string) $mala ) ) && false === $borra );
+		$ok( "R134: $caso: no vale, no se usa (sin carpeta: '') y borrar_carpeta() no borra nada", ! $valida && '' === $usada && false === $borra );
 	}
 	$ok( 'R134: lo que había en la carpeta ajena sigue ahí', is_file( "$ajena/no-borrar.txt" ) );
 	unlink( "$ajena/no-borrar.txt" ); // phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink
@@ -122,6 +122,21 @@ try {
 	}
 	$carpeta = ZN_Participaciones::carpeta();
 	$ok( 'R134: la carpeta de verdad sí vale', ZN_Participaciones::ruta_valida( $carpeta ) );
+	// R131: sin carpeta fuera de la web no se guarda ningún ticket (no hay plan B en uploads).
+	$ok( 'R131: la carpeta está fuera de la web (no en uploads)', 0 !== strpos( wp_normalize_path( $carpeta ), wp_normalize_path( ABSPATH ) ) );
+	$sin_carpeta = static fn() => wp_get_upload_dir()['basedir'] . '/zn-privado';
+	add_filter( 'zn_carpeta_tickets', $sin_carpeta );
+	$ok( 'R131: dentro de uploads ya no vale', '' === ZN_Participaciones::carpeta() );
+	$ok( 'R131: y wp-admin lo avisa', '' !== ZN_Participaciones::aviso_carpeta() );
+	$probar_sin = $cuenta( 'zn_usuario', 'Sin carpeta' );
+	$sorteo_sin = $sorteo( $cuenta( 'zn_comercio', 'Org sin carpeta' ) );
+	list( $estado, $cuerpo ) = $llamar( 'POST', '/draw-participation', $probar_sin, array( 'draw' => $sorteo_sin, 'adult' => '1' ), array( 'ticket' => $archivo( $foto() ) ) );
+	remove_filter( 'zn_carpeta_tickets', $sin_carpeta );
+	$ok( 'R131: sin carpeta privada, POST da un error claro (503) y no guarda nada', 503 === $estado && false !== stripos( (string) ( $cuerpo['message'] ?? '' ), 'ticket' ) && 0 === $filas( array( 'user_id' => $probar_sin ) ) );
+	$ok( 'R131: con la carpeta bien, wp-admin no avisa de nada', '' === ZN_Participaciones::aviso_carpeta() );
+	// R137: al desactivar el plugin se quita la tarea diaria.
+	$principal = plugin_basename( WP_PLUGIN_DIR . '/zona-nautico/zona-nautico.php' );
+	$ok( 'R137: hay un gancho de desactivación que quita la tarea', false !== has_action( "deactivate_$principal", array( 'ZN_Participaciones', 'desprogramar' ) ) || false !== has_action( 'deactivate_' . plugin_basename( dirname( __DIR__ ) . '/zona-nautico.php' ), array( 'ZN_Participaciones', 'desprogramar' ) ) );
 	$ok( 'las fotos van fuera de la carpeta pública de WordPress (o, si no se puede, protegidas)', is_dir( $carpeta ) && ( 0 !== strpos( wp_normalize_path( $carpeta ), wp_normalize_path( ABSPATH ) ) || ( is_file( "$carpeta/.htaccess" ) && is_file( "$carpeta/index.php" ) ) ) );
 	$ok( 'la carpeta no está dentro de la biblioteca de medios pública (uploads sin proteger)', 0 !== strpos( wp_normalize_path( $carpeta ), wp_normalize_path( wp_get_upload_dir()['basedir'] ) ) || is_file( "$carpeta/.htaccess" ) );
 
@@ -233,6 +248,34 @@ try {
 	list( $estado, $cuerpo ) = $llamar( 'PATCH', "/draw-participation/$id_ana", $admin, array( 'delivered' => true ) );
 	$ok( 'la administración marca la entrega: 200 y delivered true', 200 === $estado && true === ( $cuerpo['data']['delivered'] ?? null ) );
 
+	// R140: quien organiza no participa en su propio sorteo.
+	list( $estado, $cuerpo ) = $llamar( 'POST', '/draw-participation', $comercio, array( 'draw' => $abierto, 'adult' => '1' ), array( 'ticket' => $archivo( $foto() ) ) );
+	$ok( 'R140: quien organiza el sorteo no puede participar en él: 422 en draw', 422 === $estado && isset( $cuerpo['errors']['draw'] ) && 0 === $filas( array( 'user_id' => $comercio ) ) );
+
+	// R139: el PATCH cuenta en el límite de escrituras (no se puede mandar el aviso de ganador sin fin).
+	$organiza = $cuenta( 'zn_comercio', 'Organiza' );
+	$su_sorteo = $sorteo( $organiza );
+	$marta     = $cuenta( 'zn_usuario', 'Marta' );
+	list( , $cuerpo ) = $llamar( 'POST', '/draw-participation', $marta, array( 'draw' => $su_sorteo, 'adult' => '1' ), array( 'ticket' => $archivo( $foto() ) ) );
+	$id_marta = (int) ( $cuerpo['data']['_id'] ?? 0 );
+	$_SERVER['REMOTE_ADDR'] = '192.0.2.98';
+	wp_set_current_user( $organiza );
+	for ( $i = 0; $i < ZN_Limite::REGLAS['escritura']['cuenta'][0]; $i++ ) {
+		ZN_API::limite_de_escritura();
+	}
+	wp_set_current_user( 0 );
+	$correos = array();
+	list( $estado ) = $llamar( 'PATCH', "/draw-participation/$id_marta", $organiza, array( 'winner' => true ) );
+	$ok( 'R139: pasado el límite de escrituras, PATCH 429 y sin aviso', 429 === $estado && ! $correos );
+
+	// R135: con ?_envelope, /ticket no enseña la ruta del archivo en el servidor (por HTTP de verdad).
+	$t_ana = ZN_Tokens::emitir( $ana );
+	$sobre = wp_remote_get( rest_url( ZN_NAMESPACE . "/draw-participation/$id_ana/ticket" ) . '?_envelope=1', array( 'timeout' => 60, 'headers' => array( 'Authorization' => "Bearer $t_ana" ) ) );
+	$cuerpo_sobre = is_wp_error( $sobre ) ? '' : (string) wp_remote_retrieve_body( $sobre );
+	$ok( 'R135: con ?_envelope no sale la ruta del archivo', '' !== $cuerpo_sobre && false === strpos( $cuerpo_sobre, 'zn-privado' ) && false === strpos( $cuerpo_sobre, '__zn_archivo' ) );
+	$foto_http = wp_remote_get( rest_url( ZN_NAMESPACE . "/draw-participation/$id_ana/ticket" ), array( 'timeout' => 60, 'headers' => array( 'Authorization' => "Bearer $t_ana" ) ) );
+	$ok( 'HTTP: /ticket con su token da la foto (image/jpeg)', ! is_wp_error( $foto_http ) && 200 === wp_remote_retrieve_response_code( $foto_http ) && 0 === strpos( (string) wp_remote_retrieve_header( $foto_http, 'content-type' ), 'image/jpeg' ) && false !== @imagecreatefromstring( (string) wp_remote_retrieve_body( $foto_http ) ) ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
+
 	// --- Retirarse ---
 	$eva    = $cuenta( 'zn_usuario', 'Eva' );
 	list( , $cuerpo ) = $llamar( 'POST', '/draw-participation', $eva, array( 'draw' => $abierto, 'adult' => '1' ), array( 'ticket' => $archivo( $foto() ) ) );
@@ -257,11 +300,14 @@ try {
 	// --- Borrado automático (decisiones 1 y b) ---
 	$ok( 'hay una tarea diaria de limpieza', false !== wp_next_scheduled( ZN_Participaciones::TAREA ) );
 	$foto_luis = ZN_Participaciones::ruta_ticket( $wpdb->get_row( $wpdb->prepare( 'SELECT * FROM ' . ZN_Participaciones::tabla() . ' WHERE id = %d', $id_luis ), ARRAY_A ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-	ZN_Participaciones::limpiar( time() + 29 * DAY_IN_SECONDS );
-	$ok( 'a los 29 días de la entrega aún no se borra nada', 1 === $filas( array( 'id' => $id_luis ) ) && is_file( $guardada ) );
+	// R138: el sorteo acaba dentro de 7 días y se entregó hoy: los 30 días cuentan desde el fin (lo más tarde).
 	ZN_Participaciones::limpiar( time() + 31 * DAY_IN_SECONDS );
+	$ok( 'R138: entregado con el sorteo aún abierto: a los 31 días de la entrega no se borra (cuenta desde el fin)', 1 === $filas( array( 'id' => $id_luis ) ) && is_file( $guardada ) );
+	ZN_Participaciones::limpiar( time() + 36 * DAY_IN_SECONDS );
+	$ok( 'a los 29 días del fin aún no se borra nada', 1 === $filas( array( 'id' => $id_luis ) ) && is_file( $guardada ) );
+	ZN_Participaciones::limpiar( time() + 38 * DAY_IN_SECONDS );
 	$fila = $wpdb->get_row( $wpdb->prepare( 'SELECT * FROM ' . ZN_Participaciones::tabla() . ' WHERE id = %d', $id_ana ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-	$ok( 'decisión 1: entrega + 30 días: se borran todas las fotos del sorteo', ! is_file( $guardada ) && ! is_file( $foto_luis ) );
+	$ok( 'decisión 1: fin y entrega + 30 días: se borran todas las fotos del sorteo', ! is_file( $guardada ) && ! is_file( $foto_luis ) );
 	$ok( 'y las participaciones de quien no ganó', 0 === $filas( array( 'id' => $id_luis ) ) );
 	$ok( 'a la ganadora se le quitan nombre, correo y foto (solo queda que ganó)', $fila && '' === (string) $fila['nombre'] && '' === (string) $fila['correo'] && '' === (string) $fila['ticket'] );
 	$sin_entrega = $sorteo( $comercio, '-120 days', '-91 days' );
@@ -270,9 +316,19 @@ try {
 	$reciente = $sorteo( $comercio, '-60 days', '-89 days' );
 	$wpdb->insert( ZN_Participaciones::tabla(), array( 'draw_id' => $reciente, 'user_id' => $luis, 'ticket' => '', 'adulto_en' => current_time( 'mysql', true ), 'date' => current_time( 'mysql', true ) ) );
 	$reciente_id = (int) $wpdb->insert_id;
+	// R133: un ganador sin premio entregado a los 90 días del fin: también se borran su nombre y su correo.
+	$wpdb->insert( ZN_Participaciones::tabla(), array( 'draw_id' => $sin_entrega, 'user_id' => $ana, 'ticket' => '', 'adulto_en' => current_time( 'mysql', true ), 'date' => current_time( 'mysql', true ), 'ganador' => 1, 'nombre' => 'Ana María', 'correo' => 'ana-temporal-participa@ejemplo.invalid' ) );
+	$ganador_viejo = (int) $wpdb->insert_id;
+	// R136: una foto que se ha quedado sin fila (por un unlink que falló o un cambio de carpeta) se barre.
+	$huerfana = ZN_Participaciones::carpeta() . '/' . str_repeat( 'a', 32 ) . '.jpg';
+	file_put_contents( $huerfana, 'x' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+	touch( $huerfana, time() - 2 * DAY_IN_SECONDS );
 	ZN_Participaciones::limpiar();
 	$ok( 'decisión b: sin entrega, a los 90 días del fin se borra', 0 === $filas( array( 'id' => $sin_entrega_id ) ) );
 	$ok( '… pero a los 89, todavía no', 1 === $filas( array( 'id' => $reciente_id ) ) );
+	$fila = $wpdb->get_row( $wpdb->prepare( 'SELECT * FROM ' . ZN_Participaciones::tabla() . ' WHERE id = %d', $ganador_viejo ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+	$ok( 'R133: mandan los 90 días: al ganador sin premio se le borran también nombre y correo', ! $fila || ( '' === (string) $fila['nombre'] && '' === (string) $fila['correo'] ) );
+	$ok( 'R136: la tarea barre las fotos que no tienen fila', ! is_file( $huerfana ) );
 
 	// --- RGPD (R65, decisión 7) ---
 	$abierto2 = $sorteo( $comercio );
