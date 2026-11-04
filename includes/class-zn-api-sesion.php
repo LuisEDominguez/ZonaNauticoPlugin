@@ -104,10 +104,16 @@ class ZN_API_Sesion {
 
 	public static function renovar( WP_REST_Request $peticion ): WP_REST_Response {
 		$cuerpo = self::cuerpo( $peticion );
-		if ( array_key_exists( 'refreshToken', $cuerpo ) ) {
+		// H3: {"refreshToken": null} es como no mandarlo: va por la ruta de antes.
+		if ( isset( $cuerpo['refreshToken'] ) ) {
 			$uso    = is_string( $cuerpo['refreshToken'] ) ? ZN_Tokens::usar_renovacion( $cuerpo['refreshToken'] ) : null;
 			$cuenta = $uso ? get_userdata( $uso['user_id'] ) : false;
-			return $cuenta ? self::con_token( $cuenta, $uso['origen'], $uso['cadena'], true ) : ZN_Errores::no_autenticado();
+			if ( ! $cuenta ) {
+				return ZN_Errores::no_autenticado();
+			}
+			$respuesta = self::con_token( $cuenta, $uso['origen'], $uso['cadena'], true );
+			// R157: si otra petición ha reusado el refresh mientras tanto, lo recién emitido también se anula.
+			return ZN_Tokens::confirmar_renovacion( $uso['id'], $uso['cadena'] ) ? $respuesta : ZN_Errores::no_autenticado();
 		}
 		// Sin refreshToken, como antes (R86, R87).
 		$token = ZN_API::con_sesion_de_la_app() ? self::token_de_la_sesion() : null;

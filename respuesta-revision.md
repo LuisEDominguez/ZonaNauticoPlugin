@@ -71,7 +71,8 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Ronda 47 | 04-11-2026 | `bece42f` (v0.30.0) | `3db3ef0` (v0.30.1) | R147 (sello por acción y fila) y R148 (foto del sorteo de la dirección) |
 | Tanda C, parte 2 | 04-11-2026 | `3db3ef0` (v0.30.1) | `dff6625` (v0.30.2) | R50 y R109: sin permiso, 401 también cuando el id no existe |
 | Tanda C, parte 3 | 04-11-2026 | `dff6625` (v0.30.2) | `f878bde` y `6bdde6d` (v0.30.3) | Preparar la subida: paquete (R55), lista «Día de la subida» y prueba de que sin `ZN_CORREO_REAL` no sale correo |
-| Refresh token (opción C) | 04-11-2026 | `c4ba8c4` (v0.30.3) | (este commit, v0.31.0) | `refreshToken` de un solo uso, ligado al login, 14 días; reuso anula la cadena |
+| Refresh token (opción C) | 04-11-2026 | `c4ba8c4` (v0.30.3) | `bae96a2` (v0.31.0) | `refreshToken` de un solo uso, ligado al login, 14 días; reuso anula la cadena |
+| Ronda 57 | 04-11-2026 | `bae96a2` (v0.31.0) | (este commit, v0.31.1) | R157 (carrera al renovar) y H3 (`refreshToken: null`) |
 
 ---
 
@@ -102,6 +103,15 @@ traspaso. Diff: `git diff a6e3ab4 HEAD`. Pruebas escritas antes (`tests/portada.
 | **Quién edita** | hecho | `ZN_Roles::actualizar` da al administrador los permisos de los dos tipos nuevos; `ZN_Instalacion::es_del_plugin` los reconoce para `uninstall.php` (R68). Panel R40 sin cambios. |
 | **Carga inicial** | hecho | `wp zona-nautico portada-inicial <carpeta de la app>`: 60 Novedades ZN (`zn_origen` = id de Adalo, fecha UTC de Adalo) y 6 slides con sus fotos subidas a medios. Repetirla no duplica. **Ejecutada en el Local** (60 y 6). |
 | **Pruebas** | hecho | `tests/portada.php` 36; sin regresiones en `instalacion` 28, `roles` 90, `panel` 177, `seguridad` 84, `esquema` 65, `contrato-negocios`, `contrato-muestras` y `puertas`. |
+
+## Ronda 57 (R157, H3)
+
+Los pidió la maestra. Diff: `git diff bae96a2 HEAD`. Pruebas escritas antes en `tests/renovacion.php` (ahora 45; fallaban las 2 nuevas).
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **R157** Carrera | hecho | `ZN_Tokens::confirmar_renovacion()`: después de emitir token y refresh nuevos, se mira si el refresh gastado sigue sin anular. Si otra petición lo ha reusado y ha anulado la cadena antes de que se insertara lo nuevo, se anula la cadena otra vez (con lo recién insertado) y 401. Si la otra llega después, su anulación ya alcanza lo nuevo. Prueba: con el filtro `query` se anula la cadena justo antes del `INSERT`: 401 y ninguna fila viva de esa cadena. |
+| **H3** `null` | hecho | `isset()`: `{"refreshToken": null}` va por la ruta de antes (con el token de acceso, 200 sin refresh), como si no viniera. |
 
 ## Refresh token (opción C)
 

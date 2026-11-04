@@ -253,7 +253,22 @@ class ZN_Tokens {
 			return null;
 		}
 		$wpdb->query( $wpdb->prepare( 'UPDATE ' . self::tabla() . " SET anulado = %s WHERE cadena = %s AND tipo = 'acceso' AND anulado IS NULL", $ahora, (string) $fila->cadena ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-		return array( 'user_id' => (int) $fila->user_id, 'origen' => (int) strtotime( $fila->origen . ' UTC' ), 'cadena' => (string) $fila->cadena );
+		return array( 'id' => (int) $fila->id, 'user_id' => (int) $fila->user_id, 'origen' => (int) strtotime( $fila->origen . ' UTC' ), 'cadena' => (string) $fila->cadena );
+	}
+
+	/**
+	 * R157: después de emitir los tokens nuevos, ¿sigue sin anular el refresh que se gastó? Si otra petición lo ha reusado
+	 * mientras tanto (y ha anulado la cadena antes de que se insertara lo nuevo), se anula otra vez la cadena, con lo
+	 * recién insertado, y false. Si la otra llega después, su anulación ya alcanza lo nuevo.
+	 */
+	public static function confirmar_renovacion( int $id_usado, string $cadena ): bool {
+		global $wpdb;
+		$anulado = $wpdb->get_var( $wpdb->prepare( 'SELECT anulado FROM ' . self::tabla() . ' WHERE id = %d', $id_usado ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		if ( null === $anulado ) {
+			return true;
+		}
+		self::anular_cadena( $cadena );
+		return false;
 	}
 
 	/** Cadena de un refresh token que no esté anulado ni caducado (para /logout sin token de acceso); null si no. */

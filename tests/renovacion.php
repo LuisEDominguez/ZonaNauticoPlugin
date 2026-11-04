@@ -124,6 +124,30 @@ try {
 	$ok( 'R87: el mismo refresh dos veces: el primero 200, el segundo 401', 200 === $e1 && 401 === $e2 && ! isset( $c2['token'] ) );
 	$ok( 'R87: …y no queda ninguna sesión de esa cadena', 0 === ZN_Tokens::validar( (string) $c1['token'] ) && ! $vivo( (string) $c1['refreshToken'] ) );
 
+	// R157: la carrera. Mientras una petición gasta el refresh, otra lo reusa y anula la cadena justo antes de que la
+	// primera inserte los tokens nuevos. Lo recién insertado tampoco puede quedar vivo.
+	$l          = $entrar();
+	$cadena_157 = $fila_de( (string) $l['refreshToken'] )->cadena;
+	$hecho_157  = false;
+	$carrera    = static function ( $consulta ) use ( $cadena_157, &$hecho_157 ) {
+		if ( ! $hecho_157 && 0 === strpos( $consulta, 'INSERT INTO `' . ZN_Tokens::tabla() . '`' ) && false !== strpos( $consulta, $cadena_157 ) ) {
+			$hecho_157 = true;
+			ZN_Tokens::anular_cadena( $cadena_157 ); // el reuso de la otra petición, justo ahora
+		}
+		return $consulta;
+	};
+	add_filter( 'query', $carrera );
+	list( $estado, $cuerpo ) = $llamar( '/refresh', array( 'refreshToken' => $l['refreshToken'] ) );
+	remove_filter( 'query', $carrera );
+	$vivos_157 = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . ZN_Tokens::tabla() . ' WHERE cadena = %s AND anulado IS NULL', $cadena_157 ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+	$ok( 'R157: (la prueba llegó a la carrera)', $hecho_157 );
+	$ok( 'R157: si otra petición anula la cadena mientras se renueva, 401 y nada de esa cadena queda vivo', 401 === $estado && ! isset( $cuerpo['token'] ) && 0 === $vivos_157 );
+
+	// H3: {"refreshToken": null} va por la ruta de antes (como si no viniera), no es un refresh malo.
+	$l = $entrar();
+	list( $estado, $cuerpo ) = $http( 'POST', '/refresh', array( 'refreshToken' => null ), (string) $l['token'] );
+	$ok( 'H3: HTTP: refreshToken null con un token de acceso que vale: 200 por la ruta de antes', 200 === $estado && array( 'status', 'token', 'id', 'role' ) === array_keys( (array) $cuerpo ) );
+
 	// --- 14 días ---
 	$l      = $entrar();
 	$cadena = $fila_de( (string) $l['refreshToken'] )->cadena;
