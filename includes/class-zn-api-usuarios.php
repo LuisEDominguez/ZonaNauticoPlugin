@@ -21,8 +21,10 @@
  *   «The current password field is required.»; mala, 422 «The password is incorrect.» (los textos del Laravel).
  *   Primero el formato (422, sin gastar intentos), luego ZN_Limite 'datos' (429) y luego la contraseña actual. Que
  *   el correo nuevo ya es de otra cuenta solo se dice con la contraseña actual buena.
- * - La contraseña cambia al momento con wp_set_password(): se anulan los demás tokens de la cuenta (no el de quien
- *   la cambia, R56), el código de recuperación y el cambio de correo pendiente, y se avisa por correo.
+ * - La contraseña cambia al momento con wp_set_password(): se anulan el código de recuperación y el cambio de correo
+ *   pendiente, y se avisa por correo. R158: con contraseña o correo nuevos se anulan todas las sesiones de la cuenta,
+ *   también la de quien hace el cambio, y la respuesta añade `token` y `refreshToken` nuevos (de una cadena nueva)
+ *   para que esa siga dentro.
  * - El correo nuevo no vale hasta confirmarlo con el enlace que le llega (ZN_API_Cuenta::pedir_cambio_de_correo);
  *   al viejo le llega un aviso. Hasta entonces se entra con el viejo y la respuesta lo sigue dando. Como mucho 3
  *   correos nuevos pedidos al día por cuenta (R105, 429). Mandar su correo de siempre cancela el pendiente (R106).
@@ -225,7 +227,17 @@ class ZN_API_Usuarios {
 		}
 
 		clean_user_cache( $cuenta->ID );
-		$respuesta = new WP_REST_Response( array( 'data' => self::formatear( get_userdata( $cuenta->ID ) ) ) );
+		$datos = array( 'data' => self::formatear( get_userdata( $cuenta->ID ) ) );
+		// R158 (Luis: «Sí, renovarla»): con contraseña o correo nuevos se anulan TODAS las sesiones, también la de quien
+		// hace el cambio, y esta sigue con un token y un refresh de una cadena nueva (origen: ahora). Así una llave
+		// copiada se queda fuera. Solo se añaden campos: {data} sigue igual.
+		if ( isset( $valores['user_pass'] ) || null !== $email ) {
+			ZN_Tokens::anular_todos( $cuenta->ID );
+			$cadena                = ZN_Tokens::nueva_cadena();
+			$datos['token']        = ZN_Tokens::emitir( $cuenta->ID, null, $cadena );
+			$datos['refreshToken'] = ZN_Tokens::emitir_renovacion( $cuenta->ID, $cadena, time() );
+		}
+		$respuesta = new WP_REST_Response( $datos );
 		$respuesta->header( 'Cache-Control', 'no-store, private' );
 		return $respuesta;
 	}

@@ -185,8 +185,8 @@ token y refresh nuevos de la misma cadena y gasta el usado. Los 14 días cuentan
 ese login (sus tokens de acceso y su refresh) y 401; así, de dos `/refresh` a la vez con el mismo solo uno da sesión (R87).
 Sin `refreshToken`, como antes: `POST /refresh` con un token de acceso que vale da uno nuevo (sin refresh) y anula el anterior;
 con uno caducado o pasados 14 días, hay que entrar. **Nunca se renueva un token de acceso caducado.** `POST /logout` anula la
-cadena del token de la petición (los otros móviles de la cuenta siguen); con el token de acceso ya caducado vale `{refreshToken}` en el cuerpo. Sin ninguno, `401 «Unauthenticated.»`. Cambiar la contraseña o el correo anula los refresh de los
-demás logins (no el de quien hace el cambio, R56); el cambio de rol, la baja en el panel y el borrado, todos. Como mucho
+cadena del token de la petición (los otros móviles de la cuenta siguen); con el token de acceso ya caducado vale `{refreshToken}` en el cuerpo. Sin ninguno, `401 «Unauthenticated.»`. Cambiar la contraseña o el correo con `PATCH /user` anula todos
+(R158; la respuesta trae token y refresh nuevos); por otro camino (wp-admin, recuperación), los de los demás logins (R56); el cambio de rol, la baja en el panel y el borrado, todos. Como mucho
 `MAX_ACTIVOS` logins con refresh a la vez (R59): uno nuevo anula el más antiguo. Las respuestas con token llevan `Cache-Control: no-store`.
 
 **Alta, verificación y recuperación (R30, R53, R62).** `includes/class-zn-api-cuenta.php`, con las respuestas
@@ -207,8 +207,10 @@ propia cuenta. Nombre y teléfono cambian al momento; el correo y la contraseña
 (`currentPassword`): sin ella, `422` «The current password field is required.»; mala, `422` «The password is
 incorrect.». Primero el formato (422), luego el límite de intentos `datos` (5 por cuenta e IP cada 15 minutos,
 429) y luego la contraseña actual; que el correo nuevo ya es de otra cuenta solo se dice con la actual buena. La
-contraseña nueva anula los demás tokens (no el de la app que la cambia), el código de recuperación y el cambio
-de correo pendiente, y avisa por correo. El correo nuevo queda pendiente (`zn_email_nuevo`) hasta que se pulsa
+contraseña nueva anula el código de recuperación y el cambio de correo pendiente, y avisa por correo. **R158:** con
+contraseña o correo nuevos se anulan todas las sesiones de la cuenta, también la de quien hace el cambio, y la respuesta
+añade `token` y `refreshToken` nuevos (de una cadena nueva, con el origen de ahora): esa sigue dentro y cualquier llave
+copiada se queda fuera. `{data}` no cambia. El correo nuevo queda pendiente (`zn_email_nuevo`) hasta que se pulsa
 el botón del enlace `GET /verify-email?id=…&token=…` que le llega (48 horas, una vez); al viejo le llega un
 aviso. Como mucho 3 correos nuevos pedidos al día por cuenta (R105, 429); mandar su correo de siempre cancela el
 cambio pendiente (R106). Al confirmar se anulan todos los tokens de la cuenta, se entra con el correo nuevo y al

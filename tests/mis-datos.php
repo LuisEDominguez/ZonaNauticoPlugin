@@ -224,7 +224,8 @@ try {
 	$confirmado = $ultimo_a( $viejo );
 	$ok( 'R107: al confirmar, al correo viejo le llega otro aviso de que ya ha cambiado', $confirmado && $confirmado !== $al_viejo && false !== stripos( $confirmado['subject'], 'ha cambiado' ) );
 	$ok( 'el pendiente se borra y la cuenta sigue verificada','' === get_user_meta( $marta, 'zn_email_nuevo', true ) && '1' === get_user_meta( $marta, 'zn_verificado', true ) );
-	$ok( 'al cambiar el correo se anulan todos sus tokens', 0 === (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . ZN_Tokens::tabla() . ' WHERE user_id = %d AND anulado IS NULL', $marta ) ) && 0 === $tokens_antes ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+	// $tokens_antes: los que dio el PATCH del correo (R158) más el emitido aquí; al confirmar no queda ninguno.
+	$ok( 'al cambiar el correo se anulan todos sus tokens', 0 === (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . ZN_Tokens::tabla() . ' WHERE user_id = %d AND anulado IS NULL', $marta ) ) && $tokens_antes >= 0 ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 	list( $estado ) = $llamar( 'POST', '/verify-email', $datos );
 	$ok( 'el enlace vale una sola vez', 400 === $estado );
 	list( $estado ) = $llamar( 'POST', '/login', array( 'email' => $nuevo, 'password' => $clave ), 0, '192.0.2.81' );
@@ -345,17 +346,27 @@ try {
 	$t2   = ZN_Tokens::emitir( $rosa );
 	list( $estado, $cuerpo ) = $http( 'PATCH', "/user/$rosa", array( 'name' => 'Rosa (prueba)' ), $t1 );
 	$ok( 'HTTP: PATCH del nombre con el token: 200', 200 === $estado && 'Rosa (prueba)' === ( $cuerpo['data']['name'] ?? null ) );
+	$ok( 'R158: cambiar solo el nombre no renueva nada (la respuesta es solo {data})', array( 'data' ) === array_keys( (array) $cuerpo ) && $rosa === ZN_Tokens::validar( $t1 ) );
 	list( $estado ) = $http( 'POST', "/user/$rosa?_method=PATCH", array( 'name' => 'Rosa Bis (prueba)' ), $t1 );
 	$ok( 'HTTP: POST con ?_method=PATCH (como Adalo) también vale', 200 === $estado && 'Rosa Bis (prueba)' === get_user_meta( $fresco(), 'first_name', true ) );
-	list( $estado ) = $http( 'PATCH', "/user/$rosa", array( 'password' => 'Nueva-misdatos-7', 'currentPassword' => $clave ), $t1 );
-	$ok( 'HTTP: cambiar la contraseña: 200', 200 === $estado );
-	$ok( 'HTTP: el token de quien la cambia sigue valiendo (R56)', 200 === $http( 'GET', "/user/$rosa", null, $t1 )[0] );
+	$fila_de = static fn( string $secreto ) => $wpdb->get_row( $wpdb->prepare( 'SELECT * FROM ' . ZN_Tokens::tabla() . ' WHERE hash = %s', hash( 'sha256', $secreto ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+	list( $estado, $cuerpo ) = $http( 'PATCH', "/user/$rosa", array( 'password' => 'Nueva-misdatos-7', 'currentPassword' => $clave ), $t1 );
+	$t_nuevo = (string) ( $cuerpo['token'] ?? '' );
+	$r_nuevo = (string) ( $cuerpo['refreshToken'] ?? '' );
+	$ok( 'HTTP: cambiar la contraseña: 200, con {data} como antes y además token y refreshToken nuevos (R158)', 200 === $estado && array( 'data', 'token', 'refreshToken' ) === array_keys( (array) $cuerpo ) && $rosa === ( $cuerpo['data']['id'] ?? null ) );
+	$ok( 'R158: el token de quien la cambia también deja de valer (una llave copiada se queda fuera)', 401 === $http( 'GET', "/user/$rosa", null, $t1 )[0] );
+	$ok( 'R158: …y con el token nuevo sigue dentro', 200 === $http( 'GET', "/user/$rosa", null, $t_nuevo )[0] );
 	$ok( 'HTTP: los demás tokens de la cuenta dejan de valer', 401 === $http( 'GET', "/user/$rosa", null, $t2 )[0] );
+	$f = $r_nuevo ? $fila_de( $r_nuevo ) : null;
+	$ok( 'R158: el refresh nuevo vale, es de una cadena nueva (la del token nuevo) y su origen es ahora', $f && 'renovar' === $f->tipo && null === $f->anulado && null === $f->usado && $f->cadena === ZN_Tokens::cadena_de( $t_nuevo ) && abs( strtotime( $f->origen . ' UTC' ) - time() ) < 300 );
+	$ok( 'R158: no queda ninguna otra sesión viva de la cuenta', 2 === (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . ZN_Tokens::tabla() . ' WHERE user_id = %d AND anulado IS NULL', $rosa ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 	$nueva_rosa = 'rosa-' . wp_rand( 1000, 9999 ) . '-temporal-misdatos@ejemplo.invalid';
 	$usados[]   = $nueva_rosa;
-	list( $estado ) = $http( 'PATCH', "/user/$rosa", array( 'email' => $nueva_rosa, 'currentPassword' => 'Nueva-misdatos-7' ), $t1 );
+	list( $estado, $cuerpo ) = $http( 'PATCH', "/user/$rosa", array( 'email' => $nueva_rosa, 'currentPassword' => 'Nueva-misdatos-7' ), $t_nuevo );
+	$t_correo = (string) ( $cuerpo['token'] ?? '' );
 	// Los correos de una petición HTTP no pasan por esta prueba: el enlace se fabrica aquí, con un token nuevo.
 	$ok( 'HTTP: pedir el cambio de correo: 200 y queda pendiente', 200 === $estado && $nueva_rosa === get_user_meta( $fresco(), 'zn_email_nuevo', true ) );
+	$ok( 'R158: pedir el cambio de correo también renueva: token y refresh nuevos, y el de antes ya no vale', '' !== $t_correo && isset( $cuerpo['refreshToken'] ) && 401 === $http( 'GET', "/user/$rosa", null, $t_nuevo )[0] && 200 === $http( 'GET', "/user/$rosa", null, $t_correo )[0] );
 	$token_correo = rtrim( strtr( base64_encode( random_bytes( 32 ) ), '+/', '-_' ), '=' );
 	update_user_meta( $rosa, 'zn_email_nuevo_token', hash( 'sha256', $token_correo ) );
 	$url = add_query_arg( array( 'id' => $rosa, 'token' => $token_correo ), rest_url( ZN_NAMESPACE . '/verify-email' ) );
@@ -364,7 +375,7 @@ try {
 	$ok( 'HTTP: la página no enseña el correo nuevo', false === strpos( $html, $nueva_rosa ) );
 	list( $estado, , $html ) = $http( 'POST', rest_url( ZN_NAMESPACE . '/verify-email' ), array( 'id' => $rosa, 'token' => $token_correo ), null, true );
 	$ok( 'HTTP: el botón confirma el correo', 200 === $estado && false !== strpos( $html, 'Correo cambiado' ) && $nueva_rosa === get_userdata( $fresco() )->user_email );
-	$ok( 'HTTP: tras confirmar, tampoco vale el token de la app (hay que entrar con el correo nuevo)', 401 === $http( 'GET', "/user/$rosa", null, $t1 )[0] );
+	$ok( 'HTTP: tras confirmar, tampoco vale el token de la app (hay que entrar con el correo nuevo)', 401 === $http( 'GET', "/user/$rosa", null, $t_correo )[0] );
 
 	// Ningún correo a una dirección de verdad (el interruptor de R57 sigue en medio).
 	$ok( 'todos los correos de la prueba iban a @ejemplo.invalid', array() === array_filter( $correos, static fn( $c ) => (bool) array_filter( ZN_Puertas::destinatarios( $c ), static fn( $d ) => ! preg_match( '/@ejemplo\.invalid$/', $d ) ) ) );

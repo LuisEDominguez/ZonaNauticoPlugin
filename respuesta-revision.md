@@ -72,7 +72,8 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Tanda C, parte 2 | 04-11-2026 | `3db3ef0` (v0.30.1) | `dff6625` (v0.30.2) | R50 y R109: sin permiso, 401 también cuando el id no existe |
 | Tanda C, parte 3 | 04-11-2026 | `dff6625` (v0.30.2) | `f878bde` y `6bdde6d` (v0.30.3) | Preparar la subida: paquete (R55), lista «Día de la subida» y prueba de que sin `ZN_CORREO_REAL` no sale correo |
 | Refresh token (opción C) | 04-11-2026 | `c4ba8c4` (v0.30.3) | `bae96a2` (v0.31.0) | `refreshToken` de un solo uso, ligado al login, 14 días; reuso anula la cadena |
-| Ronda 57 | 04-11-2026 | `bae96a2` (v0.31.0) | (este commit, v0.31.1) | R157 (carrera al renovar) y H3 (`refreshToken: null`) |
+| Ronda 57 | 04-11-2026 | `bae96a2` (v0.31.0) | `17ccc9b` (v0.31.1) | R157 (carrera al renovar) y H3 (`refreshToken: null`) |
+| R158 | 04-11-2026 | `17ccc9b` (v0.31.1) | (este commit, v0.31.2) | Contraseña o correo: se renuevan todas las sesiones, también la propia |
 
 ---
 
@@ -103,6 +104,15 @@ traspaso. Diff: `git diff a6e3ab4 HEAD`. Pruebas escritas antes (`tests/portada.
 | **Quién edita** | hecho | `ZN_Roles::actualizar` da al administrador los permisos de los dos tipos nuevos; `ZN_Instalacion::es_del_plugin` los reconoce para `uninstall.php` (R68). Panel R40 sin cambios. |
 | **Carga inicial** | hecho | `wp zona-nautico portada-inicial <carpeta de la app>`: 60 Novedades ZN (`zn_origen` = id de Adalo, fecha UTC de Adalo) y 6 slides con sus fotos subidas a medios. Repetirla no duplica. **Ejecutada en el Local** (60 y 6). |
 | **Pruebas** | hecho | `tests/portada.php` 36; sin regresiones en `instalacion` 28, `roles` 90, `panel` 177, `seguridad` 84, `esquema` 65, `contrato-negocios`, `contrato-muestras` y `puertas`. |
+
+## R158 (Luis: «Sí, renovarla»)
+
+Diff: `git diff 17ccc9b HEAD`. Pruebas escritas antes en `tests/mis-datos.php` (ahora 83; fallaban 9).
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **PATCH /user** | hecho | Con contraseña nueva o correo nuevo pedido: `anular_todos()` sin excepción (también la cadena de quien hace el cambio) y la respuesta añade `token` y `refreshToken` de una cadena nueva con el origen de ahora. `{data}` sigue igual; cambiar solo el nombre o el teléfono no renueva nada (la respuesta sigue siendo solo `{data}`). |
+| **Pruebas** | hecho | `mis-datos` 83: por HTTP, el token de antes da 401, el nuevo 200, el refresh nuevo vale y es de la cadena del token nuevo, y no queda ninguna otra sesión viva; pedir el cambio de correo también renueva. `renovacion` 45 y `tokens` 60 siguen bien. Por otros caminos (wp-admin, recuperación) sigue R56. |
 
 ## Ronda 57 (R157, H3)
 
