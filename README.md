@@ -290,6 +290,13 @@ borra todo, salvo quien ganó y aún no tiene el premio (se guardan su nombre y 
 de exportar y borrar datos personales incluyen las participaciones (sin la foto). En `/draw/{id}?includesWinners=1`,
 `winnerNames` con el nombre de pila de quien ganó (`winners` sigue siendo el número de premios, como el Laravel).
 
+**Gestionar participantes (parte 3).** Quien organiza (asociación o federación, en «Mi zona», enlace «Participantes de
+tus sorteos») y la administración (en la ficha del sorteo de wp-admin, caja «Participantes») ven la lista de SU sorteo
+con el nombre de pila, la fecha y la miniatura del ticket, marcan ganador o entrega y descargan el CSV (nombre y
+correo). La miniatura y el CSV salen por direcciones con sello (en el panel, la propia página de «Mi zona», sin
+`action`, R97; en wp-admin, `admin-post.php?action=zn_participantes`), nunca la del archivo. Mismas reglas que la
+API (`ZN_Participaciones::marcar_fila`): R43 (sin herencia por el padre), R45, R139 y el aviso privado al ganador.
+
 ## Favoritos (bloque 2)
 
 `includes/class-zn-favoritos.php`. Tabla propia `{prefijo}zn_favoritos` (`user_id`, `business_id`, como
@@ -341,6 +348,7 @@ un enlace de carpeta en `wp-content/plugins/zona-nautico`.
 - Reseñas y preguntas desde la app (crea y borra cuentas, negocios y comentarios; también por HTTP): `wp eval-file tests/opiniones.php`
 - Novedades y sorteos desde la app (crea y borra cuentas, negocios, novedades y sorteos; también por HTTP): `wp eval-file tests/novedades-sorteos.php`
 - Datos personales: borrar cuenta, exportar y borrar (crea y borra cuentas, negocios y comentarios): `wp eval-file tests/privacidad.php`
+- Gestionar participantes desde «Mi zona» y wp-admin (crea y borra cuentas, sorteos y fotos; los correos se recogen y no salen): `wp eval-file tests/participaciones-admin.php`
 - Participaciones en sorteos: fotos privadas sin EXIF, export, ganadores, borrado automático y RGPD (crea y borra cuentas, sorteos y fotos; los correos se recogen y no salen): `wp eval-file tests/participaciones.php`
 - Favoritos y su RGPD (crea y borra cuentas, negocios, tokens, favoritos e intentos; también por HTTP): `wp eval-file tests/favoritos.php`
 - Portada: `/news`, `/home-slides`, `/business-category`, `includesCategory` y la carga inicial con datos inventados (crea y borra novedades, slides, negocios y una cuenta): `wp eval-file tests/portada.php`

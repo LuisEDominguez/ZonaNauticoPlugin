@@ -50,6 +50,8 @@ class ZN_Participaciones {
 		add_action( 'wpmu_delete_user', array( __CLASS__, 'al_borrar_cuenta' ) );
 		add_action( 'before_delete_post', array( __CLASS__, 'al_borrar_sorteo' ) );
 		add_action( 'admin_notices', array( __CLASS__, 'avisar_en_admin' ) );
+		// Parte 3: foto, CSV y marcas desde la ficha del sorteo en wp-admin (la administración).
+		add_action( 'admin_post_zn_participantes', array( __CLASS__, 'atender_admin' ) );
 	}
 
 	public static function tabla(): string {
@@ -398,31 +400,50 @@ class ZN_Participaciones {
 		if ( ! $fila || ! self::organiza( self::sorteo( (int) $fila['draw_id'] ) ) ) {
 			return ZN_Errores::sin_permiso();
 		}
-		// R139: también cuenta en el límite de escrituras (cada «ganador» manda un correo).
+		$cuerpo = ZN_API::cuerpo( $peticion );
+		$entrada = array();
+		foreach ( array( 'winner' => 'ganador', 'delivered' => 'entregado' ) as $api => $clave ) {
+			if ( array_key_exists( $api, $cuerpo ) ) {
+				$entrada[ $clave ] = in_array( $cuerpo[ $api ], array( true, 1, '1', 'true' ), true );
+			}
+		}
+		$hecho = self::marcar_fila( $fila, $entrada );
+		if ( 429 === $hecho['estado'] ) {
+			return ZN_Limite::demasiados( (int) $hecho['espera'] );
+		}
+		if ( 422 === $hecho['estado'] ) {
+			return ZN_Errores::no_valido( array( 'delivered' => 'Only a winner can be marked as delivered.' ) );
+		}
+		return new WP_REST_Response( array( 'data' => self::formatear( self::fila( (int) $fila['id'] ) ) ) );
+	}
+
+	/**
+	 * Ganador y entrega de una fila (la API, el panel y wp-admin; quien llama ya ha mirado el permiso).
+	 * $entrada: ganador y/o entregado (bool). R139: cuenta en el límite de escrituras. Al marcar ganador, aviso
+	 * privado (decisión 4). Devuelve estado (200, 422 si se entrega a quien no ha ganado, 429) y espera.
+	 */
+	public static function marcar_fila( array $fila, array $entrada ): array {
 		$espera = ZN_API::limite_de_escritura();
 		if ( null !== $espera ) {
-			return ZN_Limite::demasiados( $espera );
+			return array( 'estado' => 429, 'espera' => $espera );
 		}
-		$cuerpo  = ZN_API::cuerpo( $peticion );
 		$cambios = array();
-		if ( array_key_exists( 'winner', $cuerpo ) ) {
-			$ganador = in_array( $cuerpo['winner'], array( true, 1, '1', 'true' ), true );
-			$cambios['ganador'] = $ganador ? 1 : 0;
-			if ( ! $ganador ) {
+		if ( array_key_exists( 'ganador', $entrada ) ) {
+			$cambios['ganador'] = $entrada['ganador'] ? 1 : 0;
+			if ( ! $entrada['ganador'] ) {
 				$cambios += array( 'entregado_en' => null, 'nombre' => '', 'correo' => '' );
 			} elseif ( '1' !== (string) $fila['ganador'] ) {
 				$cuenta  = get_userdata( (int) $fila['user_id'] );
 				$cambios += array( 'nombre' => $cuenta ? (string) ZN_API::nombre_publico( $cuenta ) : '', 'correo' => $cuenta ? $cuenta->user_email : '' );
 			}
 		}
-		if ( array_key_exists( 'delivered', $cuerpo ) ) {
-			$entregado = in_array( $cuerpo['delivered'], array( true, 1, '1', 'true' ), true );
-			if ( $entregado && 1 !== ( $cambios['ganador'] ?? (int) $fila['ganador'] ) ) {
-				return ZN_Errores::no_valido( array( 'delivered' => 'Only a winner can be marked as delivered.' ) );
+		if ( array_key_exists( 'entregado', $entrada ) ) {
+			if ( $entrada['entregado'] && 1 !== ( $cambios['ganador'] ?? (int) $fila['ganador'] ) ) {
+				return array( 'estado' => 422, 'espera' => 0 );
 			}
-			$cambios['entregado_en'] = $entregado ? current_time( 'mysql', true ) : null;
+			$cambios['entregado_en'] = $entrada['entregado'] ? current_time( 'mysql', true ) : null;
 			// Entregado a una cuenta que ya no existe: ya no hace falta guardar sus datos (decisión 7).
-			if ( $entregado && ! get_userdata( (int) $fila['user_id'] ) ) {
+			if ( $entrada['entregado'] && ! get_userdata( (int) $fila['user_id'] ) ) {
 				$cambios += array( 'nombre' => '', 'correo' => '' );
 			}
 		}
@@ -433,7 +454,7 @@ class ZN_Participaciones {
 		if ( 1 === ( $cambios['ganador'] ?? null ) && '1' !== (string) $fila['ganador'] ) {
 			self::avisar_ganador( $fila );
 		}
-		return new WP_REST_Response( array( 'data' => self::formatear( self::fila( (int) $fila['id'] ) ) ) );
+		return array( 'estado' => 200, 'espera' => 0 );
 	}
 
 	public static function exportar( WP_REST_Request $peticion ): WP_REST_Response {
@@ -444,20 +465,174 @@ class ZN_Participaciones {
 		if ( 'csv' !== $peticion['format'] ) {
 			return ZN_Errores::no_valido( array( 'format' => 'The selected format is invalid.' ) );
 		}
-		global $wpdb;
-		$filas = $wpdb->get_results( $wpdb->prepare( 'SELECT * FROM ' . self::tabla() . ' WHERE draw_id = %d ORDER BY id ASC', $sorteo->ID ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$respuesta = new WP_REST_Response( array( '__zn_texto' => self::csv( $sorteo ) ) );
+		$respuesta->header( 'Content-Type', 'text/csv; charset=utf-8' );
+		$respuesta->header( 'Content-Disposition', 'attachment; filename="participantes-' . $sorteo->ID . '.csv"' );
+		$respuesta->header( 'Cache-Control', 'no-store, private' );
+		return $respuesta;
+	}
+
+	/** CSV de un sorteo (R45, decisión 5): nombre y correo, UTF-8 con BOM y «;». Quien llama mira el permiso. */
+	public static function csv( WP_Post $sorteo ): string {
 		$lineas = array( 'Nombre;Correo' );
-		foreach ( $filas as $fila ) {
+		foreach ( self::de_sorteo( $sorteo->ID ) as $fila ) {
 			$cuenta   = get_userdata( (int) $fila['user_id'] );
 			$nombre   = $cuenta ? (string) ZN_API::nombre_publico( $cuenta ) : (string) $fila['nombre'];
 			$correo   = $cuenta ? $cuenta->user_email : (string) $fila['correo'];
 			$lineas[] = self::celda( $nombre ) . ';' . self::celda( $correo );
 		}
-		$respuesta = new WP_REST_Response( array( '__zn_texto' => "\xEF\xBB\xBF" . implode( "\r\n", $lineas ) . "\r\n" ) );
-		$respuesta->header( 'Content-Type', 'text/csv; charset=utf-8' );
-		$respuesta->header( 'Content-Disposition', 'attachment; filename="participantes-' . $sorteo->ID . '.csv"' );
-		$respuesta->header( 'Cache-Control', 'no-store, private' );
-		return $respuesta;
+		return "\xEF\xBB\xBF" . implode( "\r\n", $lineas ) . "\r\n";
+	}
+
+	private static function de_sorteo( int $sorteo ): array {
+		global $wpdb;
+		return $wpdb->get_results( $wpdb->prepare( 'SELECT * FROM ' . self::tabla() . ' WHERE draw_id = %d ORDER BY id ASC', $sorteo ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+	}
+
+	// --- Gestión desde wp-admin y «Mi zona» (parte 3) ---
+
+	/** ¿Puede gestionar sus participantes? Quien organiza (R43, sin herencia) o la administración de WordPress. */
+	public static function puede_gestionar( WP_Post $sorteo, int $usuario ): bool {
+		return ZN_Sorteos::TIPO === $sorteo->post_type
+			&& ( ZN_Roles::puede( 'draw_participation:read', $sorteo, $usuario ) || user_can( $usuario, 'edit_others_zn_sorteos' ) );
+	}
+
+	/** Ruta de la foto de una participación para esa cuenta (quien participa o quien gestiona); '' si no. */
+	public static function ticket_para( int $id, int $usuario ): string {
+		$fila   = self::fila( $id );
+		$sorteo = $fila ? self::sorteo( (int) $fila['draw_id'] ) : null;
+		if ( ! $fila || ! ( (int) $fila['user_id'] === $usuario || ( $sorteo && self::puede_gestionar( $sorteo, $usuario ) ) ) ) {
+			return '';
+		}
+		$ruta = self::ruta_ticket( $fila );
+		return '' !== $ruta && is_file( $ruta ) ? $ruta : '';
+	}
+
+	/**
+	 * Marca desde el panel o wp-admin. $hacer: ganador, no_ganador, entregado o no_entregado. La participación tiene
+	 * que ser de ese sorteo. Devuelve '' si se ha hecho; si no, el aviso para enseñar.
+	 */
+	public static function marcar_desde_gestion( WP_Post $sorteo, int $id, string $hacer, int $usuario ): string {
+		$fila = self::fila( $id );
+		if ( ! self::puede_gestionar( $sorteo, $usuario ) || ! $fila || (int) $fila['draw_id'] !== $sorteo->ID ) {
+			return 'No puedes cambiar esta participación.';
+		}
+		$entrada = array(
+			'ganador'      => array( 'ganador' => true ),
+			'no_ganador'   => array( 'ganador' => false ),
+			'entregado'    => array( 'entregado' => true ),
+			'no_entregado' => array( 'entregado' => false ),
+		)[ $hacer ] ?? null;
+		if ( null === $entrada ) {
+			return 'No se ha hecho nada.';
+		}
+		$hecho = self::marcar_fila( $fila, $entrada );
+		if ( 429 === $hecho['estado'] ) {
+			return 'Demasiados cambios seguidos: espera unos minutos y vuelve a probar.';
+		}
+		return 422 === $hecho['estado'] ? 'Solo se puede marcar la entrega de quien ha ganado.' : '';
+	}
+
+	/**
+	 * Lista de participantes de un sorteo (HTML escapado) para quien gestiona: nombre de pila, fecha, miniatura del
+	 * ticket (por $urls['ticket'], nunca la dirección del archivo), estado, enlaces con sello para marcar y el CSV.
+	 * $urls: ticket( id ), accion( id, hacer ) y csv (dirección).
+	 */
+	public static function html_lista( WP_Post $sorteo, array $urls ): string {
+		if ( ! self::puede_gestionar( $sorteo, get_current_user_id() ) ) {
+			return '<p>No puedes ver los participantes de este sorteo.</p>';
+		}
+		$filas = self::de_sorteo( $sorteo->ID );
+		ob_start();
+		?>
+		<p><?php echo esc_html( sprintf( '%d participantes.', count( $filas ) ) ); ?> <?php if ( $filas ) : ?><a class="button" href="<?php echo esc_url( $urls['csv'] ); ?>">Descargar CSV (nombre y correo)</a><?php endif; ?></p>
+		<?php if ( $filas ) : ?>
+			<table class="widefat striped">
+				<thead><tr><th scope="col">Nombre</th><th scope="col">Fecha</th><th scope="col">Ticket</th><th scope="col">Estado</th><th scope="col">Acciones</th></tr></thead>
+				<tbody>
+					<?php foreach ( $filas as $fila ) : ?>
+						<?php
+						$id        = (int) $fila['id'];
+						$ganador   = '1' === (string) $fila['ganador'];
+						$entregado = null !== $fila['entregado_en'];
+						$nombre    = ZN_API::usuario_publico( (int) $fila['user_id'] )['name'] ?? ( ZN_API::nombre_de_pila( (string) $fila['nombre'] ) ?? '—' );
+						$enlaces   = $ganador
+							? array( 'no_ganador' => 'Quitar ganador', $entregado ? 'no_entregado' : 'entregado' => $entregado ? 'Quitar entrega' : 'Marcar entregado' )
+							: array( 'ganador' => 'Marcar ganador' );
+						?>
+						<tr>
+							<td><?php echo esc_html( $nombre ); ?></td>
+							<td><?php echo esc_html( (string) ZN_API::hora_madrid( (string) $fila['date'] ) ); ?></td>
+							<td><?php if ( '' !== (string) $fila['ticket'] ) : ?><a href="<?php echo esc_url( $urls['ticket']( $id ) ); ?>" target="_blank" rel="noopener"><img src="<?php echo esc_url( $urls['ticket']( $id ) ); ?>" alt="Ticket de <?php echo esc_attr( $nombre ); ?>" width="80" height="60" style="object-fit:cover" loading="lazy"></a><?php else : ?>—<?php endif; ?></td>
+							<td><?php echo esc_html( $ganador ? ( $entregado ? 'Ganador · entregado' : 'Ganador' ) : 'Participa' ); ?></td>
+							<td>
+								<?php foreach ( $enlaces as $hacer => $texto ) : ?>
+									<a href="<?php echo esc_url( $urls['accion']( $id, $hacer ) ); ?>"><?php echo esc_html( $texto ); ?></a><br>
+								<?php endforeach; ?>
+							</td>
+						</tr>
+					<?php endforeach; ?>
+				</tbody>
+			</table>
+		<?php endif; ?>
+		<?php
+		return (string) ob_get_clean();
+	}
+
+	/** Direcciones de wp-admin (admin-post.php, con sello por sorteo) para html_lista(). */
+	public static function urls_admin( int $sorteo ): array {
+		$base = static fn( array $mas ) => wp_nonce_url( add_query_arg( array( 'action' => 'zn_participantes', 'sorteo' => $sorteo ) + $mas, admin_url( 'admin-post.php' ) ), 'zn_participantes_' . $sorteo );
+		return array(
+			'ticket' => static fn( int $id ) => $base( array( 'ticket' => $id ) ),
+			'accion' => static fn( int $id, string $hacer ) => $base( array( 'fila' => $id, 'hacer' => $hacer ) ),
+			'csv'    => $base( array( 'csv' => 1 ) ),
+		);
+	}
+
+	/**
+	 * Atiende foto, CSV o marca (GET con sello). La usan admin-post.php (wp-admin) y el panel. $volver: adónde ir
+	 * tras marcar. Siempre termina (exit).
+	 */
+	public static function atender( WP_Post $sorteo, array $get, string $volver, string $clave_avisos ): void {
+		$yo = get_current_user_id();
+		if ( ! self::puede_gestionar( $sorteo, $yo ) ) {
+			wp_die( 'No puedes ver los participantes de este sorteo.', 403 );
+		}
+		if ( ! empty( $get['ticket'] ) ) {
+			$ruta = self::ticket_para( absint( $get['ticket'] ), $yo );
+			if ( '' === $ruta ) {
+				wp_die( 'No encontrado.', 404 );
+			}
+			nocache_headers();
+			header( 'Content-Type: image/jpeg' );
+			header( 'X-Content-Type-Options: nosniff' );
+			header( 'Content-Length: ' . filesize( $ruta ) );
+			readfile( $ruta ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_readfile
+			exit;
+		}
+		if ( ! empty( $get['csv'] ) ) {
+			nocache_headers();
+			header( 'Content-Type: text/csv; charset=utf-8' );
+			header( 'Content-Disposition: attachment; filename="participantes-' . $sorteo->ID . '.csv"' );
+			echo self::csv( $sorteo ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+			exit;
+		}
+		$aviso = self::marcar_desde_gestion( $sorteo, absint( $get['fila'] ?? 0 ), sanitize_key( (string) ( $get['hacer'] ?? '' ) ), $yo );
+		if ( '' !== $aviso ) {
+			set_transient( $clave_avisos . $yo, array( $aviso ), 60 );
+		}
+		wp_safe_redirect( $volver );
+		exit;
+	}
+
+	/** admin-post.php?action=zn_participantes (wp-admin): comprueba el sello y atiende. */
+	public static function atender_admin(): void {
+		$sorteo = self::sorteo( absint( $_GET['sorteo'] ?? 0 ) ); // phpcs:ignore WordPress.Security.NonceVerification
+		if ( ! $sorteo ) {
+			wp_die( 'No encontrado.', 404 );
+		}
+		check_admin_referer( 'zn_participantes_' . $sorteo->ID );
+		self::atender( $sorteo, wp_unslash( $_GET ), (string) get_edit_post_link( $sorteo->ID, 'url' ), 'zn_avisos_' );
 	}
 
 	/** Celda de CSV entre comillas; sin fórmulas (un nombre que empiece por = + - @ no se ejecuta en Excel). */

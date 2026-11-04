@@ -558,8 +558,62 @@ class ZN_Panel {
 		return add_query_arg( 'cuenta', $id, self::url() );
 	}
 
+	// --- Participantes de sus sorteos (sorteos, parte 3) ---
+
+	/** Página de participantes de un sorteo (sin «action»: R97). */
+	public static function url_participantes( int $sorteo ): string {
+		return add_query_arg( 'participantes', $sorteo, self::url() );
+	}
+
+	/** Direcciones del panel para ZN_Participaciones::html_lista(), con sello por sorteo. */
+	public static function urls_participantes( int $sorteo ): array {
+		$base = static fn( array $mas ) => wp_nonce_url( add_query_arg( $mas, self::url_participantes( $sorteo ) ), 'zn_panel_participantes_' . $sorteo );
+		return array(
+			'ticket' => static fn( int $id ) => $base( array( 'ticket' => $id ) ),
+			'accion' => static fn( int $id, string $hacer ) => $base( array( 'fila' => $id, 'hacer' => $hacer ) ),
+			'csv'    => $base( array( 'csv' => 1 ) ),
+		);
+	}
+
+	/** Lista de participantes de un sorteo que organiza (R43: solo los suyos, sin herencia por el padre). */
+	public static function html_participantes( WP_User $yo, int $sorteo ): string {
+		$entrada = get_post( $sorteo );
+		if ( ! self::puede_entrar( $yo ) || ! $entrada || ! ZN_Participaciones::puede_gestionar( $entrada, $yo->ID ) ) {
+			return '<p>No puedes ver los participantes de este sorteo.</p>';
+		}
+		return '<h2>' . esc_html( 'Participantes: ' . get_the_title( $entrada ) ) . '</h2>'
+			. ZN_Participaciones::html_lista( $entrada, self::urls_participantes( $sorteo ) );
+	}
+
+	/** Marcar ganador o entrega desde el panel; '' si se ha hecho, o el aviso. */
+	public static function marcar_participante( WP_User $yo, int $sorteo, int $fila, string $hacer ): string {
+		$entrada = get_post( $sorteo );
+		if ( ! self::puede_entrar( $yo ) || ! $entrada ) {
+			return 'No puedes cambiar esta participación.';
+		}
+		return ZN_Participaciones::marcar_desde_gestion( $entrada, $fila, $hacer, $yo->ID );
+	}
+
+	/** Foto, CSV o marca pedidos desde la página de participantes (GET con sello); termina con exit. */
+	private static function procesar_participantes(): void {
+		$sorteo = absint( $_GET['participantes'] ); // phpcs:ignore WordPress.Security.NonceVerification
+		if ( ! isset( $_GET['ticket'] ) && ! isset( $_GET['csv'] ) && ! isset( $_GET['hacer'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+			return;
+		}
+		check_admin_referer( 'zn_panel_participantes_' . $sorteo );
+		$entrada = get_post( $sorteo );
+		if ( ! $entrada || ! self::puede_entrar( wp_get_current_user() ) ) {
+			wp_die( 'No puedes ver los participantes de este sorteo.', 403 );
+		}
+		ZN_Participaciones::atender( $entrada, wp_unslash( $_GET ), self::url_participantes( $sorteo ), 'zn_panel_avisos_' );
+	}
+
 	/** Al enviar el formulario (antes de pintar nada): comprueba el sello, guarda o borra y vuelve con GET. */
 	public static function procesar(): void {
+		if ( isset( $_GET['participantes'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+			self::procesar_participantes();
+			return;
+		}
 		if ( 'POST' !== ( $_SERVER['REQUEST_METHOD'] ?? '' ) || ! isset( $_POST['zn_hacer'] ) ) { // phpcs:ignore WordPress.Security
 			return;
 		}
@@ -669,6 +723,12 @@ class ZN_Panel {
 				</div>
 				<?php return; ?>
 			<?php endif; ?>
+			<?php if ( isset( $_GET['participantes'] ) ) : // phpcs:ignore WordPress.Security.NonceVerification ?>
+				<p><a href="<?php echo esc_url( self::url() ); ?>">← Volver a Mi zona</a></p>
+				<?php echo self::html_participantes( $yo, absint( $_GET['participantes'] ) ); // phpcs:ignore WordPress.Security.NonceVerification, WordPress.Security.EscapeOutput.OutputNotEscaped -- html_lista() lo escapa todo. ?>
+				</div>
+				<?php return; ?>
+			<?php endif; ?>
 			<p><?php echo esc_html( sprintf( '%s (%s). Aquí ves lo tuyo y lo de las cuentas que dependen de ti. Puedes editar lo mismo que en la app; lo demás, solo verlo.', $nombre( $yo ), ZN_Roles::NOMBRES[ $yo->roles[0] ] ?? '' ) ); ?></p>
 			<?php if ( self::puede_dar_de_alta( $yo ) ) : ?>
 				<p><a class="button" href="<?php echo esc_url( self::url_cuenta( 'nueva' ) ); ?>"><?php echo esc_html( 'zn_comercio' === self::ROL_HIJO[ ZN_Roles::rol_app( $yo ) ] ? 'Dar de alta un comercio' : 'Dar de alta una asociación' ); ?></a></p>
@@ -712,6 +772,13 @@ class ZN_Panel {
 				array_map( static fn( WP_Post $e ) => array( $e->post_title, $dueno( $e ), (string) get_post_meta( $e->ID, 'start_date', true ), (string) get_post_meta( $e->ID, 'end_date', true ), $estado( $e ) ), $sorteos ),
 				$editar( $sorteos )
 			);
+			// Participantes: solo de los sorteos que organiza él (R43), no los de sus cuentas.
+			$propios = array_filter( $sorteos, static fn( WP_Post $e ) => ZN_Participaciones::puede_gestionar( $e, $yo->ID ) );
+			if ( $propios ) {
+				echo '<p>Participantes de tus sorteos: ';
+				echo implode( ' · ', array_map( static fn( WP_Post $e ) => '<a href="' . esc_url( self::url_participantes( $e->ID ) ) . '">' . esc_html( $e->post_title ) . '</a>', $propios ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+				echo '</p>';
+			}
 			?>
 		</div>
 		<?php

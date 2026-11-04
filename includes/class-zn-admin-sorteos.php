@@ -19,6 +19,19 @@ class ZN_Admin_Sorteos {
 		add_meta_box( 'zn-fotos-sorteo', 'Fotos (hasta 3)', array( 'ZN_Admin_Campos', 'caja_fotos' ), ZN_Sorteos::TIPO, 'normal', 'default' );
 		add_meta_box( 'zn-videos-sorteo', 'Vídeos (opcional)', array( 'ZN_Admin_Campos', 'caja_videos' ), ZN_Sorteos::TIPO, 'normal', 'low' );
 		add_meta_box( 'zn-estado-sorteo', 'Estado en la app', array( __CLASS__, 'caja_estado' ), ZN_Sorteos::TIPO, 'side', 'default' );
+		add_meta_box( 'zn-participantes-sorteo', 'Participantes', array( __CLASS__, 'caja_participantes' ), ZN_Sorteos::TIPO, 'normal', 'low' );
+	}
+
+	/**
+	 * Participantes (sorteos, parte 3): nombre, miniatura del ticket por admin-post.php (nunca la dirección del
+	 * archivo), ganador y entrega con enlaces con sello (no hay formularios dentro del de la ficha) y el CSV.
+	 */
+	public static function caja_participantes( WP_Post $entrada ): void {
+		if ( 'auto-draft' === $entrada->post_status ) {
+			echo '<p>Guarda el sorteo para ver aquí sus participantes.</p>';
+			return;
+		}
+		echo ZN_Participaciones::html_lista( $entrada, ZN_Participaciones::urls_admin( $entrada->ID ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- html_lista() lo escapa todo.
 	}
 
 	public static function caja_datos( WP_Post $entrada ): void {
