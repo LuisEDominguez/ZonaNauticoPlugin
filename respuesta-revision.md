@@ -58,8 +58,21 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Cambio de equipo (ronda 31) | 03-11-2026 | `7549f32` (v0.21.1) | `3013a0b` (v0.21.1) | Pruebas independientes del PC (solo `tests/`): rutas de Local, puerto y dueño. Revisada sin fallos |
 | Eliminar cuenta (ronda 32) | 04-11-2026 | `3013a0b` (v0.21.1) | `a7332e4` (v0.22.0) | `DELETE /user/{id}` (D1: la app lo llamaba y no existía) |
 | Eliminar cuenta-bis | 04-11-2026 | `a7332e4` (v0.22.0) | `09fac02` (v0.23.0) | R110 (contraseña actual para borrar) y R111 (correo de aviso) |
+| Bloque 1, parte B | 04-11-2026 | `89521b9` (v0.23.0) | (este commit, v0.24.0) | R66: solo el nombre de pila en lo público y `/review?user=` con token |
 
 ---
+
+## Solo el nombre de pila (R66)
+
+Luis (vía la maestra, 04-11): bloque 1, «R66, R68 y D4, D6». Diff: `git diff 89521b9 HEAD`. Pruebas escritas antes
+(`tests/nombre-de-pila.php`, 22). **Toca datos personales: revisor principal + uno de seguridad, solo el diff.**
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **Nombre de pila** | hecho | `ZN_API::usuario_publico()` (la única salida pública de cuentas: `includesUser` de reseñas, preguntas, negocios, novedades y sorteos): si el rol es `user`, `nombre_de_pila()` (primera palabra; «Ana María López» → «Ana»); también el nombre guardado en comentarios sin cuenta. `nombre_publico()` sigue entero para `/user/{id}` y el panel. |
+| **Comercio, asociación, federación** | decisión para Luis | Salen enteros: su «nombre» es el del negocio o entidad («Bar do Porto»; cortarlo daría «Bar»). `tests/seguridad.php` ya lo esperaba así. Si Luis quiere cortar también estos, es una línea. |
+| **`/review?user=`** | hecho | Solo con el token de esa misma cuenta («Mis reseñas», `da70e6a`): sin sesión 401 «Unauthenticated.»; otra cuenta (o una que no existe) 401 «This action is unauthorized.». Con `Cache-Control: no-store, private`. Sin `?user=`, sigue público. La app manda ya el token en esa lectura (`Zona-Nautico`, mismo bloque). |
+| **Pruebas** | hecho | `tests/nombre-de-pila.php` (22, también por HTTP); `contrato-resenas.mjs`: `?user=` sin token da 401 (antes, lista vacía). |
 
 ## Cambio de equipo (ronda 31)
 
@@ -548,7 +561,7 @@ cinco recomendaciones de decisión (30-10). El segundo bloque (R58, R59) y el lo
 | **R64** Contraseñas del Laravel | hecho | `Requires at least: 6.8`. Prueba en `tests/tokens.php`: un hash `$2y$10$` escrito tal cual con `$wpdb` vale con `wp_check_password` (buena sí, mala no). El importador deberá copiar el hash sin tocarlo. |
 | **R58, R59** | hecho (después) | Segundo bloque, `100e42b` (v0.13.0); ver «Segundo bloque». |
 | **R62, R65** | hecho (después) | R62 con el registro (Login B, `f1722fd`); R65 con «Escrituras y RGPD» (`3e598f5`). |
-| **R66** | pendiente | Solo el nombre de pila en lo público: bloque 1, parte B (aprobado por Luis el 04-11). |
+| **R66** | hecho (después) | Bloque 1, parte B (v0.24.0); ver «Solo el nombre de pila (R66)». |
 
 ### Resultado de las pruebas (código de la revisión global, 30-10)
 

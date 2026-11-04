@@ -114,10 +114,12 @@ class ZN_API {
 	 * Usuario como lo da el UserResource del Laravel a quien no ha iniciado sesión (H27): solo _id, name,
 	 * role y avatar. Solo cuentas de la app (ver ZN_Roles): una cuenta de wp-admin nunca sale (R1).
 	 * Sin cuenta (datos de prueba, $id = 0) sale con _id null y el nombre guardado en el comentario.
+	 * R66: de una persona (rol user) solo el nombre de pila; comercio, asociación y federación son el nombre del
+	 * negocio o la entidad y salen enteros.
 	 */
 	public static function usuario_publico( int $id, string $nombre = '' ): ?array {
 		if ( ! $id ) {
-			return '' === $nombre ? null : array( '_id' => null, 'name' => $nombre, 'role' => 'user', 'avatar' => null );
+			return '' === $nombre ? null : array( '_id' => null, 'name' => self::nombre_de_pila( $nombre ), 'role' => 'user', 'avatar' => null );
 		}
 		$usuario = get_userdata( $id );
 		$rol     = $usuario ? ZN_Roles::rol_app( $usuario ) : null;
@@ -127,14 +129,20 @@ class ZN_API {
 		}
 		return array(
 			'_id'    => (string) $usuario->ID,
-			'name'   => self::nombre_publico( $usuario ),
+			'name'   => 'user' === $rol ? self::nombre_de_pila( (string) self::nombre_publico( $usuario ) ) : self::nombre_publico( $usuario ),
 			'role'   => $rol,
 			// Sin Gravatar: delataría el correo (su huella) a cualquiera.
 			'avatar' => null,
 		);
 	}
 
-	/** Nombre y apellidos de la cuenta; nunca el nombre de acceso ni el correo (R10). */
+	/** Primera palabra de un nombre (R66: «Ana María López» → «Ana»); vacío → null. */
+	public static function nombre_de_pila( string $nombre ): ?string {
+		$palabras = preg_split( '/\s+/u', trim( $nombre ), 2 );
+		return '' === ( $palabras[0] ?? '' ) ? null : $palabras[0];
+	}
+
+	/** Nombre y apellidos de la cuenta, para /user/{id} y el panel; nunca el nombre de acceso ni el correo (R10). */
 	public static function nombre_publico( WP_User $usuario ): ?string {
 		$nombre = trim( $usuario->first_name . ' ' . $usuario->last_name );
 		return '' === $nombre ? null : $nombre;

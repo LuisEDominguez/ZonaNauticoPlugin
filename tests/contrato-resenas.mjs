@@ -62,7 +62,11 @@ const pruebas = {
   'orden y filtros raros se rechazan': async () => {
     assert.equal((await pedir('/review?orderby=score')).estado, 422);
     assert.equal((await pedir('/review?business=abc')).estado, 422);
-    assert.equal((await pedir('/review?user=99999')).cuerpo.data.length, 0);
+  },
+  'R66: ?user= sin token (las reseñas de una persona) da 401': async () => {
+    const { estado, cuerpo } = await pedir('/review?user=99999');
+    assert.equal(estado, 401);
+    assert.deepEqual(cuerpo, { message: 'Unauthenticated.' });
   },
   'paginación y tope de 50': async () => {
     const { cuerpo } = await pedir('/review?perPage=1&page=2');

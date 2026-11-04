@@ -16,7 +16,7 @@ Base de la API: `<sitio>/wp-json/zonanautico/v1`
 | `GET /event/{id}` | público | mismas inclusiones |
 | `GET /draw` | público | `page`, `perPage` (máx. 50), `controlParticipar=1` (solo abiertos), `orderby` (`id`, `title`, `start_date`, `end_date`), `order`, `includesUser` |
 | `GET /draw/{id}` | público | `includesUser` |
-| `GET /review` | público | `page`, `perPage` (máx. 50), `business`, `user`, `orderby` (`id`, `datetime`, `user_id`, `business_id`), `order`, `includesUser`, `includesBusiness` |
+| `GET /review` | público (`user`, **con token**) | `page`, `perPage` (máx. 50), `business`, `user` (solo la propia cuenta, con su token: «Mis reseñas», R66), `orderby` (`id`, `datetime`, `user_id`, `business_id`), `order`, `includesUser`, `includesBusiness` |
 | `GET /review/{id}` | público | mismas inclusiones |
 | `GET /faq` | público | `page`, `perPage` (máx. 50), `user` (el comercio), `published`, `order`, `includesUser` (`user` y `publisher`). Las no publicadas no salen nunca (H20) |
 | `GET /faq/{id}` | público | `includesUser` |
@@ -97,6 +97,11 @@ WordPress están cerrados (sin formulario, sin `/wp/v2/comments` y fuera de feed
 **Límite de escrituras (R94).** Crear reseñas, responderlas, hacer o modificar preguntas y crear o modificar
 novedades y sorteos: 20 por hora y cuenta
 (cuentan también las que no valen); al pasarse, `429 «Too Many Attempts.»`.
+
+**Solo el nombre de pila en lo público (R66).** En `includesUser` (reseñas, preguntas, negocios, novedades y sorteos)
+una persona (rol `user`) sale solo con la primera palabra de su nombre («Ana María López» → «Ana»); comercio,
+asociación y federación salen enteros, porque son el nombre del negocio o la entidad. El nombre entero solo en
+`GET /user/{id}` (con token) y en el panel. `GET /review?user=<id>` solo con el token de esa misma cuenta (si no, 401).
 
 **Datos personales (R65).** Reseñas y preguntas no guardan la IP, el navegador ni el correo de quien escribe.
 Al borrar una cuenta se borran sus reseñas y preguntas (y las que le hicieron, si es un comercio) y se recalculan
@@ -253,6 +258,7 @@ un enlace de carpeta en `wp-content/plugins/zona-nautico`.
 - Reseñas y preguntas desde la app (crea y borra cuentas, negocios y comentarios; también por HTTP): `wp eval-file tests/opiniones.php`
 - Novedades y sorteos desde la app (crea y borra cuentas, negocios, novedades y sorteos; también por HTTP): `wp eval-file tests/novedades-sorteos.php`
 - Datos personales: borrar cuenta, exportar y borrar (crea y borra cuentas, negocios y comentarios): `wp eval-file tests/privacidad.php`
+- Solo el nombre de pila en lo público y `/review?user=` con token (R66; crea y borra cuentas, un negocio y reseñas; también por HTTP): `wp eval-file tests/nombre-de-pila.php`
 - Eliminar cuenta desde la app, `DELETE /user/{id}` (crea y borra cuentas, negocios, comentarios, tokens y sus intentos; también por HTTP; los correos se recogen y no salen): `wp eval-file tests/borrar-cuenta.php`
 - Panel de asociación y federación (crea y borra cuentas, entradas y sus intentos): `wp eval-file tests/panel.php`
 - Formato de los errores: `node tests/contrato-errores.mjs` y `wp eval-file tests/errores.php` (los dos solo leen)

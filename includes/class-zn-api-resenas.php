@@ -6,7 +6,8 @@
  * Responde igual que el ReviewResource del Laravel: _id, title, description, response, score y
  * datetime ("Y-m-d H:i:s", hora de Madrid), más user (?includesUser=1, solo los 4 campos públicos, H27) y
  * business (?includesBusiness=1). Filtros business y user. Solo salen las reseñas aprobadas
- * de negocios visibles (ver ZN_Comentarios).
+ * de negocios visibles (ver ZN_Comentarios). Del autor (una persona), solo el nombre de pila (R66). ?user=<id>
+ * («Mis reseñas») solo con el token de esa cuenta: sin sesión 401 «Unauthenticated.»; otra cuenta, 401 (R66).
  *
  * Escrituras, como el ReviewController del Laravel con sus fallos arreglados:
  * - POST /review {businessId, score, description?, title?}: el autor es siempre la cuenta del token (el userId
@@ -190,6 +191,15 @@ class ZN_API_Resenas {
 	}
 
 	public static function listar( WP_REST_Request $peticion ): WP_REST_Response {
+		// R66: ?user= («Mis reseñas») solo con el token de esa misma cuenta; si no, se podría sacar todo lo que ha
+		// opinado una persona. Una cuenta que no existe da lo mismo que una ajena.
+		$propias = ! empty( $peticion['user'] );
+		if ( $propias && ! ZN_API::con_sesion_de_la_app() ) {
+			return ZN_Errores::no_autenticado();
+		}
+		if ( $propias && get_current_user_id() !== (int) $peticion['user'] ) {
+			return ZN_Errores::sin_permiso();
+		}
 		$sentido    = 'desc' === $peticion['order'] ? 'DESC' : 'ASC';
 		$argumentos = array(
 			'type'      => ZN_Comentarios::RESENA,
@@ -205,13 +215,17 @@ class ZN_API_Resenas {
 			$argumentos['user_id'] = (int) $peticion['user'];
 		}
 
-		$opciones = self::inclusiones( $peticion );
-		return ZN_API::listado_comentarios(
+		$opciones  = self::inclusiones( $peticion );
+		$respuesta = ZN_API::listado_comentarios(
 			$peticion,
 			$argumentos,
 			'review',
 			static fn( WP_Comment $resena ) => self::formatear( $resena, ...$opciones )
 		);
+		if ( $propias ) {
+			$respuesta->header( 'Cache-Control', 'no-store, private' );
+		}
+		return $respuesta;
 	}
 
 	public static function ficha( WP_REST_Request $peticion ): WP_REST_Response {
