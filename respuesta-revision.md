@@ -13,7 +13,7 @@ el sí de Luis.
 |---|---|
 | Todas a la vez (hilo que desarrolla) | `node tests/todas.mjs` |
 | Revisores (solo lectura, todas las que necesiten) | `node tests/contrato-negocios.mjs`, `contrato-eventos.mjs`, `contrato-sorteos.mjs`, `contrato-resenas.mjs`, `contrato-preguntas.mjs`, `contrato-muestras.mjs`, `contrato-errores.mjs`, `wp eval-file tests/admin-fichas.php`, `tests/esquema.php` y `tests/errores.php` (no guardan nada; `errores.php` registra rutas de prueba solo en memoria), además de peticiones GET y lectura de código |
-| Hilo que desarrolla (pasa el resultado a los revisores) | `wp eval-file tests/seguridad.php`, `tests/comentarios.php`, `tests/roles.php`, `tests/tokens.php`, `tests/limite.php`, `tests/escrituras.php`, `tests/login.php`, `tests/registro.php`, `tests/mis-datos.php`, `tests/opiniones.php`, `tests/privacidad.php` y `tests/panel.php` (crean datos, cuentas o filas temporales y los borran) y `node tests/puertas.mjs` (no guarda nada, pero envía una petición a XML-RPC) |
+| Hilo que desarrolla (pasa el resultado a los revisores) | `wp eval-file tests/seguridad.php`, `tests/comentarios.php`, `tests/roles.php`, `tests/tokens.php`, `tests/limite.php`, `tests/escrituras.php`, `tests/login.php`, `tests/registro.php`, `tests/mis-datos.php`, `tests/borrar-cuenta.php`, `tests/opiniones.php`, `tests/privacidad.php` y `tests/panel.php` (crean datos, cuentas o filas temporales y los borran) y `node tests/puertas.mjs` (no guarda nada, pero envía una petición a XML-RPC) |
 
 Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** · **espera decisión** ·
 **se propone descartar**.
@@ -55,10 +55,18 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Panel R40, parte 2b-bis | 02-11-2026 | `1611c4f` (v0.20.0) | `2864e30` (v0.20.1) | R102 = A, R103 (correo de contacto pendiente), R104 |
 | Cambiar mis datos | 02-11-2026 | `6a197c2` (v0.20.1) | `2fa7c1d` (v0.21.0) | R69: `PATCH /user/{id}` con la contraseña actual y confirmación del correo nuevo |
 | Cambiar mis datos-bis | 02-11-2026 | `2fa7c1d` (v0.21.0) | `75fc042` (v0.21.1) | R105, R106, R107, R108 |
-| Eliminar cuenta | 04-11-2026 | `3013a0b` (v0.21.1) | `a7332e4` (v0.22.0) | `DELETE /user/{id}` (D1: la app lo llamaba y no existía) |
-| Eliminar cuenta-bis | 04-11-2026 | `a7332e4` (v0.22.0) | (este commit, v0.23.0) | R110 (contraseña actual para borrar) y R111 (correo de aviso) |
+| Cambio de equipo (ronda 31) | 03-11-2026 | `7549f32` (v0.21.1) | `3013a0b` (v0.21.1) | Pruebas independientes del PC (solo `tests/`): rutas de Local, puerto y dueño. Revisada sin fallos |
+| Eliminar cuenta (ronda 32) | 04-11-2026 | `3013a0b` (v0.21.1) | `a7332e4` (v0.22.0) | `DELETE /user/{id}` (D1: la app lo llamaba y no existía) |
+| Eliminar cuenta-bis | 04-11-2026 | `a7332e4` (v0.22.0) | `09fac02` (v0.23.0) | R110 (contraseña actual para borrar) y R111 (correo de aviso) |
 
 ---
+
+## Cambio de equipo (ronda 31)
+
+Commit `3013a0b`, solo `tests/`: `todas.mjs` lee de `sites.json` de Local el PHP, la carpeta `run`, el puerto de
+MySQL y la ruta del sitio, y pregunta la dirección al propio WordPress (`ZN_URL` y `ZN_SITIO_LOCAL` para
+cambiarlos); las `.mjs` aceptan `ZN_URL`; `tokens.php` simula la subcarpeta sobre la portada real; `comentarios.php`
+toma el dueño de `user_id`. En el PC nuevo, 1074 bien en 24 juegos. El revisor la dio por buena sin fallos.
 
 ## Eliminar cuenta-bis (R110, R111)
 
@@ -538,8 +546,9 @@ cinco recomendaciones de decisión (30-10). El segundo bloque (R58, R59) y el lo
 | **R61** Pruebas | hecho | Las que crean datos (`seguridad`, `comentarios`, `roles`, `tokens`) solo en `WP_ENVIRONMENT_TYPE = local`; contraseñas al azar (ya no `Clave-de-prueba-1`). Orden única `node tests/todas.mjs`, con pausas y resumen. Las de `/login` se escribirán antes que la ruta. |
 | **R63** Dueño de novedades y sorteos | hecho | `user_id` en `ZN_Eventos::CAMPOS` y `ZN_Sorteos::CAMPOS`; casilla «Dueño» en sus fichas (`ZN_Admin_Campos::fila_dueno` / `limpiar_dueno`) con cuentas de comercio, asociación, federación o administración de la app (`ZN_Roles::ORGANIZADORES`); `includesUser` devuelve el organizador. Pruebas en `tests/seguridad.php`. |
 | **R64** Contraseñas del Laravel | hecho | `Requires at least: 6.8`. Prueba en `tests/tokens.php`: un hash `$2y$10$` escrito tal cual con `$wpdb` vale con `wp_check_password` (buena sí, mala no). El importador deberá copiar el hash sin tocarlo. |
-| **R58, R59** | pendiente | Segundo bloque, antes de la primera escritura. Regla del PATCH: decisión a. |
-| **R62, R65, R66** | pendiente | Con el registro y la migración; decisiones b-e ya tomadas. |
+| **R58, R59** | hecho (después) | Segundo bloque, `100e42b` (v0.13.0); ver «Segundo bloque». |
+| **R62, R65** | hecho (después) | R62 con el registro (Login B, `f1722fd`); R65 con «Escrituras y RGPD» (`3e598f5`). |
+| **R66** | pendiente | Solo el nombre de pila en lo público: bloque 1, parte B (aprobado por Luis el 04-11). |
 
 ### Resultado de las pruebas (código de la revisión global, 30-10)
 
