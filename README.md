@@ -310,7 +310,9 @@ para Local).
 
 **9. La app (R112).** Cuando el plugin funcione en el servidor, cambiar `EXPO_PUBLIC_API_URL` de la app a
 `https://<servidor>/wp-json/zonanautico/v1` (hoy apunta al Laravel; en este PC, `.env.local` apunta a Local) y quitar
-lo provisional de la portada.
+lo provisional de la portada. **R152:** probar en un iPhone real que la foto del ticket se borra de la caché del
+móvil al enviarla (en iOS la caché puede salir como `/var/…` o `/private/var/…`; si no coinciden, la foto no se
+borraría, sin borrar nada de más).
 
 ## Portada: Novedades ZN, slides y categorías (bloque 2)
 
