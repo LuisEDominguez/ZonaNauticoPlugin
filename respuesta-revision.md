@@ -70,7 +70,7 @@ Luis (vía la maestra, 04-11): bloque 1, «R66, R68 y D4, D6». Diff: `git diff 
 | Punto | Estado | Qué se hizo |
 |---|---|---|
 | **Nombre de pila** | hecho | `ZN_API::usuario_publico()` (la única salida pública de cuentas: `includesUser` de reseñas, preguntas, negocios, novedades y sorteos): si el rol es `user`, `nombre_de_pila()` (primera palabra; «Ana María López» → «Ana»); también el nombre guardado en comentarios sin cuenta. `nombre_publico()` sigue entero para `/user/{id}` y el panel. |
-| **Comercio, asociación, federación** | decisión para Luis | Salen enteros: su «nombre» es el del negocio o entidad («Bar do Porto»; cortarlo daría «Bar»). `tests/seguridad.php` ya lo esperaba así. Si Luis quiere cortar también estos, es una línea. |
+| **Comercio, asociación, federación** | hecho (Luis: «Sí, nombre completo») | Salen enteros: su «nombre» es el del negocio o entidad («Bar do Porto»; cortarlo daría «Bar»). `tests/seguridad.php` ya lo esperaba así. |
 | **`/review?user=`** | hecho | Solo con el token de esa misma cuenta («Mis reseñas», `da70e6a`): sin sesión 401 «Unauthenticated.»; otra cuenta (o una que no existe) 401 «This action is unauthorized.». Con `Cache-Control: no-store, private`. Sin `?user=`, sigue público. La app manda ya el token en esa lectura (`Zona-Nautico`, mismo bloque). |
 | **Pruebas** | hecho | `tests/nombre-de-pila.php` (22, también por HTTP); `contrato-resenas.mjs`: `?user=` sin token da 401 (antes, lista vacía). |
 
