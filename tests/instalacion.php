@@ -77,6 +77,10 @@ try {
 	update_user_meta( $vieja, 'longitude', '-8.7' );
 	$ajena = $cuenta( 'subscriber' );
 	update_user_meta( $ajena, 'phone', 'de otro plugin' );
+	// R120: una cuenta con dos roles (uno de la app) no es de la app (R37): su phone puede ser de otro plugin.
+	$mixta = $cuenta( 'zn_usuario' );
+	( new WP_User( $mixta ) )->add_role( 'subscriber' );
+	update_user_meta( $mixta, 'phone', 'de otro plugin (mixta)' );
 	$conflicto = $cuenta( 'zn_comercio' );
 	update_user_meta( $conflicto, 'phone', 'viejo' );
 	update_user_meta( $conflicto, 'zn_phone', 'nuevo' );
@@ -86,6 +90,7 @@ try {
 	$ok( 'R68: los datos de una cuenta de la app pasan a zn_phone, zn_latitude y zn_longitude', '+34 600 000 009' === get_user_meta( $vieja, 'zn_phone', true ) && '42.2' === get_user_meta( $vieja, 'zn_latitude', true ) && '-8.7' === get_user_meta( $vieja, 'zn_longitude', true ) );
 	$ok( 'R68: …y las claves viejas desaparecen', '' === get_user_meta( $vieja, 'phone', true ) && '' === get_user_meta( $vieja, 'latitude', true ) && '' === get_user_meta( $vieja, 'longitude', true ) );
 	$ok( 'una cuenta que no es de la app no se toca', 'de otro plugin' === get_user_meta( $ajena, 'phone', true ) && '' === get_user_meta( $ajena, 'zn_phone', true ) );
+	$ok( 'R120: una cuenta con un rol de la app y otro de WordPress tampoco se toca (R37)', 'de otro plugin (mixta)' === get_user_meta( $mixta, 'phone', true ) && '' === get_user_meta( $mixta, 'zn_phone', true ) );
 	$ok( 'si ya había un zn_phone, gana el nuevo y el viejo se quita', 'nuevo' === get_user_meta( $conflicto, 'zn_phone', true ) && '' === get_user_meta( $conflicto, 'phone', true ) );
 	$ok( 'los negocios conservan phone y latitude', '986 000 000' === get_post_meta( $tienda, 'phone', true ) && '42.24' === get_post_meta( $tienda, 'latitude', true ) );
 	ZN_Instalacion::migrar_meta_cuentas();

@@ -59,9 +59,20 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Eliminar cuenta (ronda 32) | 04-11-2026 | `3013a0b` (v0.21.1) | `a7332e4` (v0.22.0) | `DELETE /user/{id}` (D1: la app lo llamaba y no existía) |
 | Eliminar cuenta-bis | 04-11-2026 | `a7332e4` (v0.22.0) | `09fac02` (v0.23.0) | R110 (contraseña actual para borrar) y R111 (correo de aviso) |
 | Bloque 1, parte B | 04-11-2026 | `89521b9` (v0.23.0) | `f889285` (v0.24.0) | R66: solo el nombre de pila en lo público y `/review?user=` con token |
-| Bloque 1, parte C | 04-11-2026 | `237719b` (v0.24.0) | (este commit, v0.25.0) | R68: instalación en un solo sitio, `uninstall.php` y prefijo `zn_` en las cuentas |
+| Bloque 1, parte C | 04-11-2026 | `237719b` (v0.24.0) | `6b39aa8` (v0.25.0) | R68: instalación en un solo sitio, `uninstall.php` y prefijo `zn_` en las cuentas |
+| Ronda 37, notas | 04-11-2026 | `6b39aa8` (v0.25.0) | (este commit, v0.25.1) | R119 y R121 (README) y R120 (migración solo de cuentas de la app); R122, a la espera de Luis |
 
 ---
+
+## Notas de la ronda 37 (R119-R121)
+
+Luis (vía la maestra, 04-11): «Notas R119-R122». R122 (CLAUDE.md de la app) espera su aclaración.
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **R119** Cuentas sin rol al desinstalar | hecho | README, «Instalar, actualizar y desinstalar»: las cuentas de la app se quedan sin un rol que exista (no pueden hacer nada) hasta reinstalar, cuando lo recuperan solas; en el servidor real no se desinstala, se desactiva. |
+| **R120** Cuentas con dos roles | hecho | `migrar_meta_cuentas()` salta las cuentas cuyo `ZN_Roles::rol_app()` es nulo (un rol de la app y otro de WordPress no es una cuenta de la app, R37): su `phone` se queda como está. Prueba escrita antes (fallaba): `tests/instalacion.php`, ahora 28. |
+| **R121** Puerto de Local | hecho | README: `http://localhost:10004` en este PC (lo saca `todas.mjs` de Local). Las `.mjs` siguen con `10010` como valor por defecto si no se les pasa `ZN_URL` ni la dirección; `todas.mjs` siempre se la pasa. |
 
 ## Instalación, desinstalación y prefijo zn_ (R68)
 

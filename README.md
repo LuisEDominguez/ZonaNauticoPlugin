@@ -244,9 +244,15 @@ opciones del plugin (también `zn_huella_relleno`), sus avisos temporales, los 5
 que dio a otros roles. **No** borra contenido ni cuentas: negocios, novedades, sorteos, reseñas, preguntas y
 usuarios se quedan. Desactivar el plugin no borra nada.
 
+**Ojo antes de desinstalar (R119):** las cuentas de la app se quedan sin un rol que exista (su `wp_capabilities` sigue
+diciendo `zn_usuario`, `zn_comercio`…), así que no pueden hacer nada: ni entrar en la app ni en el panel. Si se
+vuelve a instalar, `ZN_Roles::actualizar` crea otra vez los roles y las cuentas los recuperan solas. **En el servidor
+real no se desinstala**: para quitar el plugin un tiempo, desactivarlo (no borra nada). Desinstalar solo en un sitio
+de pruebas.
+
 ## Desarrollo en local
 
-El sitio de Local `zonanautico-local` (http://localhost:10010) enlaza esta carpeta mediante
+El sitio de Local `zonanautico-local` (en este PC, http://localhost:10004; `tests/todas.mjs` lo saca de Local) enlaza esta carpeta mediante
 un enlace de carpeta en `wp-content/plugins/zona-nautico`.
 
 - **Todas las pruebas de una vez:** `node tests/todas.mjs` (con pausas; dice al final cuántas van bien).

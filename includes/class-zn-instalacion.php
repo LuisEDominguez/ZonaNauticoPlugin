@@ -45,7 +45,8 @@ class ZN_Instalacion {
 
 	/**
 	 * phone, latitude y longitude de las cuentas de la app pasan a zn_phone, zn_latitude y zn_longitude. Solo las
-	 * de la app: en otras cuentas esas claves pueden ser de otro plugin. Si ya hay valor nuevo, gana el nuevo.
+	 * de la app (un único rol, y de la app: R37, R120): en otras cuentas esas claves pueden ser de otro plugin. Si
+	 * ya hay valor nuevo, gana el nuevo.
 	 */
 	public static function migrar_meta_cuentas(): void {
 		$ids = get_users(
@@ -60,6 +61,11 @@ class ZN_Instalacion {
 			)
 		);
 		foreach ( array_map( 'intval', $ids ) as $id ) {
+			// R120: role__in también trae cuentas con otro rol además del de la app; esas no son de la app (R37).
+			$cuenta = get_userdata( $id );
+			if ( ! $cuenta || ! ZN_Roles::rol_app( $cuenta ) ) {
+				continue;
+			}
 			foreach ( self::META_CUENTA as $vieja => $nueva ) {
 				$valor = get_user_meta( $id, $vieja, true );
 				if ( '' !== $valor && '' === get_user_meta( $id, $nueva, true ) ) {
