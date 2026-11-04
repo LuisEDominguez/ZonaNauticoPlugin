@@ -135,13 +135,13 @@ try {
 	$ok( 'el nombre va en first_name y los apellidos vacíos (R53)', 'Ana María (prueba)' === get_user_meta( $ana, 'first_name', true ) && '' === get_user_meta( $ana, 'last_name', true ) );
 	$ok( 'respuesta sin caché (Cache-Control: no-store)', false !== strpos( (string) ( $cabeceras['Cache-Control'] ?? '' ), 'no-store' ) );
 	list( $estado, $cuerpo ) = $patch( $ana, array( 'phone' => '+34 600 000 000' ) );
-	$ok( 'teléfono: 200 y guardado', 200 === $estado && '+34 600 000 000' === get_user_meta( $ana, 'phone', true ) );
+	$ok( 'teléfono: 200 y guardado', 200 === $estado && '+34 600 000 000' === get_user_meta( $ana, 'zn_phone', true ) );
 	list( $estado ) = $patch( $ana, array() );
-	$ok( 'sin nada: 200 y nada cambia (ausente = no tocar)', 200 === $estado && 'Ana María (prueba)' === get_user_meta( $ana, 'first_name', true ) && '+34 600 000 000' === get_user_meta( $ana, 'phone', true ) );
+	$ok( 'sin nada: 200 y nada cambia (ausente = no tocar)', 200 === $estado && 'Ana María (prueba)' === get_user_meta( $ana, 'first_name', true ) && '+34 600 000 000' === get_user_meta( $ana, 'zn_phone', true ) );
 	list( $estado, $cuerpo ) = $patch( $ana, array( 'phone' => '' ) );
-	$ok( 'teléfono "": 422 y no se borra', 422 === $estado && isset( $cuerpo['errors']['phone'] ) && '+34 600 000 000' === get_user_meta( $ana, 'phone', true ) );
+	$ok( 'teléfono "": 422 y no se borra', 422 === $estado && isset( $cuerpo['errors']['phone'] ) && '+34 600 000 000' === get_user_meta( $ana, 'zn_phone', true ) );
 	list( $estado ) = $patch( $ana, array( 'phone' => null ) );
-	$ok( 'teléfono null: 200 y se borra (decisión a)', 200 === $estado && '' === get_user_meta( $ana, 'phone', true ) );
+	$ok( 'teléfono null: 200 y se borra (decisión a)', 200 === $estado && '' === get_user_meta( $ana, 'zn_phone', true ) );
 	list( $estado, $cuerpo ) = $patch( $ana, array( 'name' => '' ) );
 	$ok( 'nombre "": 422 «The name field is required.»', 422 === $estado && array( 'The name field is required.' ) === ( $cuerpo['errors']['name'] ?? null ) );
 	list( $estado, $cuerpo ) = $patch( $ana, array( 'name' => null ) );
@@ -149,7 +149,7 @@ try {
 	list( $estado, $cuerpo ) = $patch( $ana, array( 'name' => str_repeat( 'a', 256 ) ) );
 	$ok( 'nombre de 256: 422 max', 422 === $estado && isset( $cuerpo['errors']['name'] ) && 'Ana María (prueba)' === get_user_meta( $ana, 'first_name', true ) );
 	list( $estado, $cuerpo ) = $patch( $ana, array( 'name' => 'Ana <b>(prueba)</b>', 'phone' => '+34 611 111 111', 'latitude' => 42.2, 'longitude' => -8.7, 'code' => '123456', 'verified' => false ) );
-	$ok( 'nombre sin etiquetas; ubicación, código y verified se ignoran', 200 === $estado && 'Ana (prueba)' === get_user_meta( $ana, 'first_name', true ) && '' === get_user_meta( $ana, 'latitude', true ) && '1' === get_user_meta( $ana, 'zn_verificado', true ) );
+	$ok( 'nombre sin etiquetas; ubicación, código y verified se ignoran', 200 === $estado && 'Ana (prueba)' === get_user_meta( $ana, 'first_name', true ) && '' === get_user_meta( $ana, 'zn_latitude', true ) && '1' === get_user_meta( $ana, 'zn_verificado', true ) );
 
 	// --- Contraseña ---
 	$pedro = $cuenta( 'zn_usuario', 'Pedro' );

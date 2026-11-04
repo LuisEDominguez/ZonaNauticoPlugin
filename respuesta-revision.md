@@ -13,7 +13,7 @@ el sí de Luis.
 |---|---|
 | Todas a la vez (hilo que desarrolla) | `node tests/todas.mjs` |
 | Revisores (solo lectura, todas las que necesiten) | `node tests/contrato-negocios.mjs`, `contrato-eventos.mjs`, `contrato-sorteos.mjs`, `contrato-resenas.mjs`, `contrato-preguntas.mjs`, `contrato-muestras.mjs`, `contrato-errores.mjs`, `wp eval-file tests/admin-fichas.php`, `tests/esquema.php` y `tests/errores.php` (no guardan nada; `errores.php` registra rutas de prueba solo en memoria), además de peticiones GET y lectura de código |
-| Hilo que desarrolla (pasa el resultado a los revisores) | `wp eval-file tests/seguridad.php`, `tests/comentarios.php`, `tests/roles.php`, `tests/tokens.php`, `tests/limite.php`, `tests/escrituras.php`, `tests/login.php`, `tests/registro.php`, `tests/mis-datos.php`, `tests/borrar-cuenta.php`, `tests/opiniones.php`, `tests/privacidad.php` y `tests/panel.php` (crean datos, cuentas o filas temporales y los borran) y `node tests/puertas.mjs` (no guarda nada, pero envía una petición a XML-RPC) |
+| Hilo que desarrolla (pasa el resultado a los revisores) | `wp eval-file tests/seguridad.php`, `tests/comentarios.php`, `tests/roles.php`, `tests/tokens.php`, `tests/limite.php`, `tests/escrituras.php`, `tests/login.php`, `tests/registro.php`, `tests/mis-datos.php`, `tests/borrar-cuenta.php`, `tests/nombre-de-pila.php`, `tests/instalacion.php`, `tests/opiniones.php`, `tests/privacidad.php` y `tests/panel.php` (crean datos, cuentas o filas temporales y los borran) y `node tests/puertas.mjs` (no guarda nada, pero envía una petición a XML-RPC) |
 
 Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** · **espera decisión** ·
 **se propone descartar**.
@@ -58,9 +58,23 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Cambio de equipo (ronda 31) | 03-11-2026 | `7549f32` (v0.21.1) | `3013a0b` (v0.21.1) | Pruebas independientes del PC (solo `tests/`): rutas de Local, puerto y dueño. Revisada sin fallos |
 | Eliminar cuenta (ronda 32) | 04-11-2026 | `3013a0b` (v0.21.1) | `a7332e4` (v0.22.0) | `DELETE /user/{id}` (D1: la app lo llamaba y no existía) |
 | Eliminar cuenta-bis | 04-11-2026 | `a7332e4` (v0.22.0) | `09fac02` (v0.23.0) | R110 (contraseña actual para borrar) y R111 (correo de aviso) |
-| Bloque 1, parte B | 04-11-2026 | `89521b9` (v0.23.0) | (este commit, v0.24.0) | R66: solo el nombre de pila en lo público y `/review?user=` con token |
+| Bloque 1, parte B | 04-11-2026 | `89521b9` (v0.23.0) | `f889285` (v0.24.0) | R66: solo el nombre de pila en lo público y `/review?user=` con token |
+| Bloque 1, parte C | 04-11-2026 | `237719b` (v0.24.0) | (este commit, v0.25.0) | R68: instalación en un solo sitio, `uninstall.php` y prefijo `zn_` en las cuentas |
 
 ---
+
+## Instalación, desinstalación y prefijo zn_ (R68)
+
+Luis (vía la maestra, 04-11): bloque 1, parte C. Diff: `git diff 237719b HEAD`. Pruebas escritas antes
+(`tests/instalacion.php`, 27). **Toca la instalación y datos de cuentas: revisor principal + uno de seguridad, solo el diff.**
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **Una sola rutina** | hecho | `ZN_Instalacion::instalar()` en `plugins_loaded` y al activar: tablas de tokens y de intentos (cada una con su versión de tabla, como antes) y, una vez por versión (`zn_version`), los cambios de datos. `ZN_Tokens` y `ZN_Limite` ya no se enganchan cada uno por su cuenta. Los roles siguen en `init` (`ZN_Roles::actualizar`, con `zn_roles_version`): necesitan los tipos de entrada registrados. |
+| **`uninstall.php`** | hecho | Solo al borrar el plugin desde wp-admin (`WP_UNINSTALL_PLUGIN`); no carga el plugin, solo roles, tokens, límite e instalación. `desinstalar()`: `DROP TABLE` de las dos tablas, `delete_option` de `OPCIONES` (`zn_version`, `zn_tokens_tabla`, `zn_limites_tabla`, `zn_roles_version`, `zn_huella_relleno`), avisos temporales `zn_avisos_*` y `zn_panel_avisos_*`, `remove_role` de los 5 roles y, en todos los roles, las capacidades del plugin (`zn:…`, `zn_panel_ver` y las de `zn_negocio(s)`, `zn_evento(s)`, `zn_sorteo(s)`). No borra contenido ni cuentas. Une R26 y R52 (instalación y limpieza). |
+| **Prefijo `zn_`** | hecho | Cuentas: `phone`, `latitude`, `longitude` → `zn_phone`, `zn_latitude`, `zn_longitude` (esquema `cuenta`, registro, `PATCH` y `GET /user/{id}`, exportar y borrar datos personales). `migrar_meta_cuentas()` las pasa una vez (solo cuentas con rol de la app; si ya hay valor nuevo, gana el nuevo; la vieja se quita). Los negocios conservan `phone`/`latitude`/`longitude` (columnas del Laravel). |
+| **Pruebas** | hecho | `tests/instalacion.php` (27): no desinstala de verdad (borraría el Local); comprueba que las listas de `desinstalar()` cubren todo lo que escribe el plugin (busca `update_option`/`add_option` y `set_transient` en el código), que `uninstall.php` tiene la guarda y la migración. `mis-datos`, `registro` y `privacidad` usan ya las claves `zn_`; `tokens` y `limite` miran el gancho de `ZN_Instalacion`. |
+| **Probar el `uninstall.php` de verdad** | pendiente de Luis | Solo se puede borrando el plugin en un WordPress (en el Local, perdería tokens, intentos y roles hasta reactivar). Propuesta: hacerlo en un sitio de Local nuevo y vacío, o al montar el servidor de pruebas. |
 
 ## Solo el nombre de pila (R66)
 

@@ -116,8 +116,8 @@ try {
 	$cuenta = get_user_by( 'email', $email );
 	$ok( 'registro: la cuenta existe con el rol «user» y ninguno más (el rol que mande la app se ignora)', $cuenta && array( 'zn_usuario' ) === array_values( $cuenta->roles ) );
 	$ok( 'R53: el nombre entero va en first_name y los apellidos vacíos', $cuenta && 'Ana María López' === $cuenta->first_name && '' === $cuenta->last_name );
-	$ok( 'registro: guarda el teléfono', $cuenta && '+34 600 000 000' === get_user_meta( $cuenta->ID, 'phone', true ) );
-	$ok( 'R91: no guarda la ubicación (está sin decidir, RGPD)', $cuenta && '' === get_user_meta( $cuenta->ID, 'latitude', true ) && '' === get_user_meta( $cuenta->ID, 'longitude', true ) );
+	$ok( 'registro: guarda el teléfono', $cuenta && '+34 600 000 000' === get_user_meta( $cuenta->ID, 'zn_phone', true ) );
+	$ok( 'R91: no guarda la ubicación (está sin decidir, RGPD)', $cuenta && '' === get_user_meta( $cuenta->ID, 'zn_latitude', true ) && '' === get_user_meta( $cuenta->ID, 'zn_longitude', true ) );
 	$ok( 'registro: la contraseña buena vale', $cuenta && wp_check_password( $clave, $cuenta->user_pass, $cuenta->ID ) );
 	$ok( 'registro: el nombre de acceso no lleva ni el correo ni el nombre', $cuenta && false === stripos( $cuenta->user_login, 'temporal' ) && false === stripos( $cuenta->user_login, 'ana' ) );
 	$ok( 'registro: sin verificar', $cuenta && '1' !== get_user_meta( $cuenta->ID, 'zn_verificado', true ) );

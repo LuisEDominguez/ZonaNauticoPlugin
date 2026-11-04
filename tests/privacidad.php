@@ -44,9 +44,9 @@ try {
 	$otro_com = $cuenta( 'zn_comercio', 'Otro' );
 	$ana      = $cuenta( 'zn_usuario', 'Ana' );
 	$luis     = $cuenta( 'zn_usuario', 'Luis' );
-	update_user_meta( $ana, 'phone', '+34 600 000 001' );
-	update_user_meta( $ana, 'latitude', '42.2' );
-	update_user_meta( $ana, 'longitude', '-8.7' );
+	update_user_meta( $ana, 'zn_phone', '+34 600 000 001' );
+	update_user_meta( $ana, 'zn_latitude', '42.2' );
+	update_user_meta( $ana, 'zn_longitude', '-8.7' );
 	$tienda = $negocio( $comercio );
 	$ajena  = $negocio( $otro_com );
 
@@ -100,7 +100,7 @@ try {
 	$ok( 'borrar: se van sus reseñas y su pregunta', ! $existe( $r_ana ) && ! $existe( $r_ana_ajena ) && ! $existe( $p_ana ) );
 	$ok( 'borrar: lo de Luis sigue', $existe( $r_luis ) && $existe( $p_luis ) && $existe( $p_al_otro ) );
 	$ok( 'borrar: se recalcula la nota (solo queda el 5 de Luis; la otra tienda, 0)', 5.0 === (float) get_post_meta( $tienda, 'score', true ) && 0.0 === (float) get_post_meta( $ajena, 'score', true ) );
-	$ok( 'borrar: se quitan teléfono y ubicación de la cuenta', '' === get_user_meta( $ana, 'phone', true ) && '' === get_user_meta( $ana, 'latitude', true ) && '' === get_user_meta( $ana, 'longitude', true ) );
+	$ok( 'borrar: se quitan teléfono y ubicación de la cuenta', '' === get_user_meta( $ana, 'zn_phone', true ) && '' === get_user_meta( $ana, 'zn_latitude', true ) && '' === get_user_meta( $ana, 'zn_longitude', true ) );
 	$otra_vez = isset( $borradores['zona-nautico'] ) ? call_user_func( $borradores['zona-nautico']['callback'], $email_ana, 1 ) : array();
 	$ok( 'borrar otra vez: nada que quitar', false === ( $otra_vez['items_removed'] ?? null ) && true === ( $otra_vez['done'] ?? null ) );
 

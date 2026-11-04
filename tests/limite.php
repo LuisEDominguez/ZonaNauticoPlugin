@@ -35,7 +35,7 @@ $victima = 'victima-temporal@ejemplo.invalid';
 
 try {
 	$ok( 'existe la tabla de intentos', $tabla === $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $tabla ) ) );
-	$ok( 'la tabla se instala en plugins_loaded', false !== has_action( 'plugins_loaded', array( 'ZN_Limite', 'instalar' ) ) );
+	$ok( 'la tabla se instala en plugins_loaded (ZN_Instalacion, R68)', false !== has_action( 'plugins_loaded', array( 'ZN_Instalacion', 'instalar' ) ) );
 
 	// --- R75: nadie bloquea a otra persona ---
 	list( $max_cuenta_ip ) = ZN_Limite::REGLAS['login']['cuenta_ip'];

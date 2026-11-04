@@ -34,8 +34,7 @@ class ZN_Tokens {
 
 	public static function iniciar(): void {
 		// La tabla tiene que existir antes de que WordPress mire quién es el usuario (WP::init va antes que el
-		// gancho init, R48): al activar el plugin y, por si se actualiza sin reactivar, en plugins_loaded.
-		add_action( 'plugins_loaded', array( __CLASS__, 'instalar' ) );
+		// gancho init, R48): la crea ZN_Instalacion al activar el plugin y en plugins_loaded (R68).
 		add_filter( 'determine_current_user', array( __CLASS__, 'usuario_del_token' ), 30 );
 		add_filter( 'rest_pre_dispatch', array( __CLASS__, 'solo_en_nuestra_ruta' ), 0, 3 );
 

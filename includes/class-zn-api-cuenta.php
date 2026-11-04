@@ -103,8 +103,8 @@ class ZN_API_Cuenta {
 			// Lo traduce ZN_Errores (p. ej. un email repetido entre la comprobación y el alta → 422).
 			return $id;
 		}
-		if ( isset( $valores['phone'] ) ) {
-			update_user_meta( $id, 'phone', $valores['phone'] );
+		if ( isset( $valores['zn_phone'] ) ) {
+			update_user_meta( $id, 'zn_phone', $valores['zn_phone'] );
 		}
 		self::mandar_verificacion( get_userdata( $id ) );
 		return new WP_REST_Response( array( 'status' => 'success' ), 201 );

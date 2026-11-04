@@ -236,7 +236,7 @@ try {
 	$ok( 'R59: el tope de una cuenta no toca los tokens de otra', $vecina === ZN_Tokens::validar( $de_la_vecina ) );
 
 	// --- R48 y R51 ---
-	$ok( 'R48: la tabla se instala en plugins_loaded (antes de mirar el usuario)', false !== has_action( 'plugins_loaded', array( 'ZN_Tokens', 'instalar' ) ) );
+	$ok( 'R48: la tabla se instala en plugins_loaded (antes de mirar el usuario; ZN_Instalacion, R68)', false !== has_action( 'plugins_loaded', array( 'ZN_Instalacion', 'instalar' ) ) );
 	$ok( 'R48: índice en caduca', (bool) $wpdb->get_row( "SHOW INDEX FROM " . ZN_Tokens::tabla() . " WHERE Key_name = 'caduca'" ) );
 	$ruta = rest_get_server()->get_routes( ZN_NAMESPACE )[ '/' . ZN_NAMESPACE . '/user/(?P<id>\\d+)' ][0] ?? array();
 	$ok( 'R51: GET /user/{id} comprueba la sesión en la entrada', array( 'ZN_API', 'con_sesion_de_la_app' ) === ( $ruta['permission_callback'] ?? null ) );

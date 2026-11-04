@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Zona Náutico
  * Description: API de la app Zona Náutico. Imita el contrato de la API Laravel actual ({data, links, meta}) para no rehacer la app.
- * Version:     0.24.0
+ * Version:     0.25.0
  * Author:      Visual Publinet
  * Text Domain: zona-nautico
  * Requires at least: 6.8
@@ -11,7 +11,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-const ZN_VERSION   = '0.24.0';
+const ZN_VERSION   = '0.25.0';
 const ZN_NAMESPACE = 'zonanautico/v1';
 
 require_once __DIR__ . '/includes/class-zn-api.php';
@@ -36,6 +36,7 @@ require_once __DIR__ . '/includes/class-zn-api-entradas.php';
 require_once __DIR__ . '/includes/class-zn-api-usuarios.php';
 require_once __DIR__ . '/includes/class-zn-api-sesion.php';
 require_once __DIR__ . '/includes/class-zn-api-cuenta.php';
+require_once __DIR__ . '/includes/class-zn-instalacion.php';
 
 add_action( 'init', array( 'ZN_Negocios', 'registrar' ) );
 add_action( 'init', array( 'ZN_Eventos', 'registrar' ) );
@@ -47,7 +48,6 @@ ZN_Errores::iniciar();
 ZN_Roles::iniciar();
 ZN_Panel::iniciar();
 ZN_Tokens::iniciar();
-ZN_Limite::iniciar();
 add_action( 'rest_api_init', array( 'ZN_API_Negocios', 'registrar_rutas' ) );
 add_action( 'rest_api_init', array( 'ZN_API_Eventos', 'registrar_rutas' ) );
 add_action( 'rest_api_init', array( 'ZN_API_Sorteos', 'registrar_rutas' ) );
@@ -58,15 +58,10 @@ add_action( 'rest_api_init', array( 'ZN_API_Usuarios', 'registrar_rutas' ) );
 add_action( 'rest_api_init', array( 'ZN_API_Sesion', 'registrar_rutas' ) );
 ZN_API_Cuenta::iniciar();
 
-// Las tablas de tokens y de intentos se crean al activar el plugin (y se comprueban en cada carga por si se
-// actualiza sin reactivar).
-register_activation_hook(
-	__FILE__,
-	static function () {
-		ZN_Tokens::instalar();
-		ZN_Limite::instalar();
-	}
-);
+// Instalación y versión en un solo sitio (R68): al activar y en cada carga, por si se actualiza sin reactivar.
+// Al borrar el plugin, uninstall.php.
+ZN_Instalacion::iniciar();
+register_activation_hook( __FILE__, array( 'ZN_Instalacion', 'instalar' ) );
 
 if ( is_admin() ) {
 	require_once __DIR__ . '/includes/class-zn-admin-campos.php';

@@ -221,7 +221,7 @@ comercio, asociación, federación o administración de la app; sale como `user`
 
 ## Subir al servidor
 
-Solo `zona-nautico.php`, `includes/`, `assets/` y `.htaccess` (nada de pruebas ni documentación). El
+Solo `zona-nautico.php`, `uninstall.php`, `includes/`, `assets/` y `.htaccess` (nada de pruebas ni documentación). El
 paquete se hace con git, que ya excluye lo demás (`.gitattributes`):
 
     git archive --format=zip --prefix=zona-nautico/ -o zona-nautico.zip HEAD
@@ -232,6 +232,17 @@ Pendiente de comprobar en el servidor: que llega la cabecera `Authorization`, qu
 (entonces, `ZN_PROXIES` con sus IPs, R59). En `wp-config.php`, `define( 'ZN_CORREO_CONTACTO', '…' );` con el
 correo que diga Luis: lo usan el correo de alta del panel (R103) y el de «tu cuenta se ha borrado» (R111); sin él,
 ese correo sale sin la frase «Si no has sido tú, escríbenos a …».
+
+## Instalar, actualizar y desinstalar (R68)
+
+`includes/class-zn-instalacion.php`, en un solo sitio. Al activar y en cada carga (`plugins_loaded`) crea o pone al
+día las tablas `{prefijo}zn_tokens` y `{prefijo}zn_limites` y, una vez por versión (opción `zn_version`), los
+cambios de datos (en la 0.25.0: el teléfono y la ubicación de las cuentas de la app pasan de `phone`, `latitude` y
+`longitude` a `zn_phone`, `zn_latitude` y `zn_longitude`; los negocios no cambian). Los roles se ponen al día en
+`init` (`ZN_Roles::actualizar`). Al **borrar** el plugin desde wp-admin, `uninstall.php` quita las dos tablas, las
+opciones del plugin (también `zn_huella_relleno`), sus avisos temporales, los 5 roles de la app y las capacidades
+que dio a otros roles. **No** borra contenido ni cuentas: negocios, novedades, sorteos, reseñas, preguntas y
+usuarios se quedan. Desactivar el plugin no borra nada.
 
 ## Desarrollo en local
 
@@ -258,6 +269,7 @@ un enlace de carpeta en `wp-content/plugins/zona-nautico`.
 - Reseñas y preguntas desde la app (crea y borra cuentas, negocios y comentarios; también por HTTP): `wp eval-file tests/opiniones.php`
 - Novedades y sorteos desde la app (crea y borra cuentas, negocios, novedades y sorteos; también por HTTP): `wp eval-file tests/novedades-sorteos.php`
 - Datos personales: borrar cuenta, exportar y borrar (crea y borra cuentas, negocios y comentarios): `wp eval-file tests/privacidad.php`
+- Instalación, versión, lo que borra `uninstall.php` y el prefijo `zn_` de las cuentas (R68; no desinstala de verdad; crea y borra cuentas y un negocio): `wp eval-file tests/instalacion.php`
 - Solo el nombre de pila en lo público y `/review?user=` con token (R66; crea y borra cuentas, un negocio y reseñas; también por HTTP): `wp eval-file tests/nombre-de-pila.php`
 - Eliminar cuenta desde la app, `DELETE /user/{id}` (crea y borra cuentas, negocios, comentarios, tokens y sus intentos; también por HTTP; los correos se recogen y no salen): `wp eval-file tests/borrar-cuenta.php`
 - Panel de asociación y federación (crea y borra cuentas, entradas y sus intentos): `wp eval-file tests/panel.php`

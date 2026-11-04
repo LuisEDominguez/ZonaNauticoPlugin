@@ -176,11 +176,11 @@ class ZN_API_Usuarios {
 			update_user_meta( $cuenta->ID, 'first_name', $valores['first_name'] );
 			update_user_meta( $cuenta->ID, 'last_name', '' );
 		}
-		if ( array_key_exists( 'phone', $valores ) ) {
-			if ( null === $valores['phone'] ) {
-				delete_user_meta( $cuenta->ID, 'phone' );
+		if ( array_key_exists( 'zn_phone', $valores ) ) {
+			if ( null === $valores['zn_phone'] ) {
+				delete_user_meta( $cuenta->ID, 'zn_phone' );
 			} else {
-				update_user_meta( $cuenta->ID, 'phone', $valores['phone'] );
+				update_user_meta( $cuenta->ID, 'zn_phone', $valores['zn_phone'] );
 			}
 		}
 		// Primero la contraseña (anula el cambio de correo pendiente) y luego el correo nuevo, si viene.
@@ -251,9 +251,9 @@ class ZN_API_Usuarios {
 				: null;
 		}
 		$datos['avatar']    = null;
-		$datos['latitude']  = ZN_API::numero( $campo( 'latitude' ) );
-		$datos['longitude'] = ZN_API::numero( $campo( 'longitude' ) );
-		$datos['phone']     = $campo( 'phone' );
+		$datos['latitude']  = ZN_API::numero( $campo( 'zn_latitude' ) );
+		$datos['longitude'] = ZN_API::numero( $campo( 'zn_longitude' ) );
+		$datos['phone']     = $campo( 'zn_phone' );
 		return $datos;
 	}
 }

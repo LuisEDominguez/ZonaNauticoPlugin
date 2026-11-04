@@ -177,9 +177,10 @@ class ZN_Esquema {
 					// La columna user_email de WordPress es de 100.
 					'email'     => array( 'guardado' => 'user_email', 'tipo' => 'email', 'max' => 100, 'obligatorio' => true, 'unico' => true, 'etiqueta' => 'El email' ),
 					'password'  => array( 'guardado' => 'user_pass', 'tipo' => 'contrasena', 'min' => 8, 'max' => 255, 'obligatorio' => true, 'etiqueta' => 'La contraseña' ),
-					'phone'     => array( 'guardado' => 'phone', 'tipo' => 'telefono', 'max' => 20, 'etiqueta' => 'El teléfono' ),
-					'latitude'  => $lat,
-					'longitude' => $lon,
+					// Con prefijo zn_ en las cuentas (R68); en los negocios son las columnas del Laravel, sin prefijo.
+					'phone'     => array( 'guardado' => 'zn_phone', 'tipo' => 'telefono', 'max' => 20, 'etiqueta' => 'El teléfono' ),
+					'latitude'  => array( 'guardado' => 'zn_latitude' ) + $lat,
+					'longitude' => array( 'guardado' => 'zn_longitude' ) + $lon,
 					// Código de 6 cifras de la recuperación (obligatorio solo en esa ruta: lo exige ella).
 					'code'      => array( 'guardado' => 'code', 'tipo' => 'codigo', 'etiqueta' => 'El código' ),
 				);

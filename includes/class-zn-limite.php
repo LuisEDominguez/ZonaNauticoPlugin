@@ -46,9 +46,7 @@ class ZN_Limite {
 		'escritura' => array( 'cuenta' => array( 20, HOUR_IN_SECONDS ) ),
 	);
 
-	public static function iniciar(): void {
-		add_action( 'plugins_loaded', array( __CLASS__, 'instalar' ) );
-	}
+	// La tabla la crea ZN_Instalacion (al activar y en plugins_loaded, R68).
 
 	public static function tabla(): string {
 		global $wpdb;
