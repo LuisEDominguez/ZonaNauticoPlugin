@@ -214,6 +214,15 @@ class ZN_API {
 		return new WP_REST_Response( array( 'message' => 'Not found.' ), 404 );
 	}
 
+	/**
+	 * R50, R109: en las rutas con permiso sobre un elemento, lo que no existe responde como lo ajeno (401 «This action
+	 * is unauthorized.»), para que nadie adivine qué ids existen. Solo la administración de la app con ese permiso, que
+	 * lo ve todo, recibe el 404.
+	 */
+	public static function no_existe( string $permiso ): WP_REST_Response {
+		return 'administrator' === ZN_Roles::rol_app( wp_get_current_user() ) && ZN_Roles::puede( $permiso ) ? self::no_encontrado() : ZN_Errores::sin_permiso();
+	}
+
 	/** Cláusula de meta_query para ordenar por un campo sin perder las entradas que no lo tienen. */
 	public static function orden_por_campo( string $nombre, string $clave, string $tipo ): array {
 		return array(

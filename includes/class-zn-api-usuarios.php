@@ -7,7 +7,8 @@
  * parent, avatar, latitude, longitude, phone } }, con `id` numérico (src/api/user.ts).
  * - Sin sesión o con un token que no vale: 401 «Unauthenticated.» (la app cierra la sesión).
  * - Con sesión pero sin permiso para ver esa cuenta: 401 «This action is unauthorized.».
- * - Cuenta que no existe o que no es de la app: 404.
+ * - Cuenta que no existe o que no es de la app: el mismo 401 que una ajena (R50, R109: no se adivina qué ids
+ *   existen); solo la administración de la app, que puede verlas todas, recibe 404. En PATCH y DELETE, siempre 401.
  * Quién ve a quién: ZN_Roles::puede( 'user:read', $cuenta ) (uno mismo, la administración de la app o
  * la cuenta padre con user:read_<rol>).
  *
@@ -98,11 +99,9 @@ class ZN_API_Usuarios {
 
 	public static function borrar( WP_REST_Request $peticion ): WP_REST_Response {
 		$cuenta = get_userdata( (int) $peticion['id'] );
-		if ( ! $cuenta || ! ZN_Roles::rol_app( $cuenta ) ) {
-			return ZN_API::no_encontrado();
-		}
 		// Solo uno mismo y solo con user:delete_self: el user:delete general de la administración no vale aquí (R44).
-		if ( get_current_user_id() !== (int) $cuenta->ID || ! in_array( 'zn:user:delete_self', ZN_Roles::permisos( ZN_Roles::rol_app( $cuenta ) ), true ) ) {
+		// Una cuenta que no existe da el mismo 401 que una ajena (R50, R109).
+		if ( ! $cuenta || ! ZN_Roles::rol_app( $cuenta ) || get_current_user_id() !== (int) $cuenta->ID || ! in_array( 'zn:user:delete_self', ZN_Roles::permisos( ZN_Roles::rol_app( $cuenta ) ), true ) ) {
 			return ZN_Errores::sin_permiso();
 		}
 		$espera = ZN_API::limite_de_escritura();
@@ -140,11 +139,9 @@ class ZN_API_Usuarios {
 
 	public static function cambiar( WP_REST_Request $peticion ): WP_REST_Response {
 		$cuenta = get_userdata( (int) $peticion['id'] );
-		if ( ! $cuenta || ! ZN_Roles::rol_app( $cuenta ) ) {
-			return ZN_API::no_encontrado();
-		}
 		$cuerpo = ZN_API::cuerpo( $peticion );
-		if ( get_current_user_id() !== (int) $cuenta->ID || array_key_exists( 'roleId', $cuerpo ) ) {
+		// Solo la propia cuenta: una que no existe da el mismo 401 que una ajena (R50, R109).
+		if ( ! $cuenta || ! ZN_Roles::rol_app( $cuenta ) || get_current_user_id() !== (int) $cuenta->ID || array_key_exists( 'roleId', $cuerpo ) ) {
 			return ZN_Errores::sin_permiso();
 		}
 		$espera = ZN_API::limite_de_escritura();
@@ -249,7 +246,7 @@ class ZN_API_Usuarios {
 		}
 		$cuenta = get_userdata( (int) $peticion['id'] );
 		if ( ! $cuenta || ! ZN_Roles::rol_app( $cuenta ) ) {
-			return ZN_API::no_encontrado();
+			return ZN_API::no_existe( 'user:read' );
 		}
 		if ( ! ZN_Roles::puede( 'user:read', $cuenta ) ) {
 			return ZN_Errores::sin_permiso();

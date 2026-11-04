@@ -102,6 +102,15 @@ unauthorized."}` sin permiso, `404`/`405` y `500` solo con `{message}`. Los erro
 (`{code, message, data}`) se traducen al salir (`includes/class-zn-errores.php`); las rutas nuevas usan
 `ZN_Errores::no_valido()`, `no_autenticado()` y `sin_permiso()`.
 
+**Sin adivinar ids (R50, R109).** En las rutas que actúan sobre un elemento con permiso (`GET`, `PATCH` y
+`DELETE /user/{id}`, `PATCH` y `DELETE /event/{id}` y `/draw/{id}`, `DELETE /review/{id}`,
+`PATCH /review/reply/{id}` y `PATCH /faq/{id}`), un id que no existe responde el mismo 401 «This action is
+unauthorized.» que uno que existe y no es suyo (un borrador ajeno, una reseña oculta, una cuenta de otro): así nadie
+sabe qué ids existen. Solo la administración de la app, que lo ve todo, recibe el 404 (`ZN_API::no_existe()`). En
+`PATCH` y `DELETE /user/{id}` solo vale la propia cuenta, así que es siempre 401. Las fichas públicas
+(`GET /business/{id}`, `/event/{id}`…) siguen con 404: solo enseñan lo publicado. En wp-admin, el enlace de
+participantes de un sorteo que no existe da lo mismo que un sello malo (403).
+
 Las reseñas y las preguntas son comentarios de WordPress sobre el negocio (tipos `zn_resena` y
 `zn_pregunta`). Solo salen las aprobadas; en las preguntas, «aprobada» es `published` y el comercio
 destinatario se guarda en la propia pregunta (`user_id`), como en el Laravel. La puntuación
@@ -351,6 +360,7 @@ un enlace de carpeta en `wp-content/plugins/zona-nautico`.
 - Novedades y sorteos desde la app (crea y borra cuentas, negocios, novedades y sorteos; también por HTTP): `wp eval-file tests/novedades-sorteos.php`
 - Datos personales: borrar cuenta, exportar y borrar (crea y borra cuentas, negocios y comentarios): `wp eval-file tests/privacidad.php`
 - Gestionar participantes desde «Mi zona» y wp-admin (crea y borra cuentas, sorteos y fotos; los correos se recogen y no salen): `wp eval-file tests/participaciones-admin.php`
+- Sin adivinar ids (R50, R109: lo que no existe da el mismo 401 que lo ajeno; crea y borra cuentas, un negocio, borradores, una reseña y una pregunta): `wp eval-file tests/sin-adivinar.php`
 - Participaciones en sorteos: fotos privadas sin EXIF, export, ganadores, borrado automático y RGPD (crea y borra cuentas, sorteos y fotos; los correos se recogen y no salen): `wp eval-file tests/participaciones.php`
 - Favoritos y su RGPD (crea y borra cuentas, negocios, tokens, favoritos e intentos; también por HTTP): `wp eval-file tests/favoritos.php`
 - Portada: `/news`, `/home-slides`, `/business-category`, `includesCategory` y la carga inicial con datos inventados (crea y borra novedades, slides, negocios y una cuenta): `wp eval-file tests/portada.php`

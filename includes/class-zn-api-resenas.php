@@ -139,7 +139,7 @@ class ZN_API_Resenas {
 	public static function borrar( WP_REST_Request $peticion ): WP_REST_Response {
 		$resena = self::resena( (int) $peticion['id'] );
 		if ( ! $resena ) {
-			return ZN_API::no_encontrado();
+			return ZN_API::no_existe( 'review:delete' );
 		}
 		if ( ! ZN_Roles::puede( 'review:delete', $resena ) ) {
 			return ZN_Errores::sin_permiso();
@@ -153,7 +153,7 @@ class ZN_API_Resenas {
 	public static function responder( WP_REST_Request $peticion ): WP_REST_Response {
 		$resena = self::resena( (int) $peticion['id'] );
 		if ( ! $resena ) {
-			return ZN_API::no_encontrado();
+			return ZN_API::no_existe( 'review:reply' );
 		}
 		if ( ! ZN_Roles::puede( 'review:reply', $resena ) ) {
 			return ZN_Errores::sin_permiso();

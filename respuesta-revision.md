@@ -68,7 +68,8 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Ronda 45 (sorteos) | 04-11-2026 | `dda1515` (v0.29.0) | `d649d33` (R132, R134) y `cf983a8` (v0.29.1) | R131-R141 |
 | Ronda 45-bis | 04-11-2026 | `cf983a8` (v0.29.1) | `93f4d0c` (v0.29.2) | R144 (escalar antes de girar); R142 y R143 anotados para «Al subir» |
 | Sorteos, parte 3 | 04-11-2026 | `93f4d0c` (v0.29.2) | `bece42f` (v0.30.0) | Gestionar participantes desde «Mi zona» y wp-admin |
-| Ronda 47 | 04-11-2026 | `bece42f` (v0.30.0) | (este commit, v0.30.1) | R147 (sello por acción y fila) y R148 (foto del sorteo de la dirección) |
+| Ronda 47 | 04-11-2026 | `bece42f` (v0.30.0) | `3db3ef0` (v0.30.1) | R147 (sello por acción y fila) y R148 (foto del sorteo de la dirección) |
+| Tanda C, parte 2 | 04-11-2026 | `3db3ef0` (v0.30.1) | (este commit, v0.30.2) | R50 y R109: sin permiso, 401 también cuando el id no existe |
 
 ---
 
@@ -99,6 +100,18 @@ traspaso. Diff: `git diff a6e3ab4 HEAD`. Pruebas escritas antes (`tests/portada.
 | **Quién edita** | hecho | `ZN_Roles::actualizar` da al administrador los permisos de los dos tipos nuevos; `ZN_Instalacion::es_del_plugin` los reconoce para `uninstall.php` (R68). Panel R40 sin cambios. |
 | **Carga inicial** | hecho | `wp zona-nautico portada-inicial <carpeta de la app>`: 60 Novedades ZN (`zn_origen` = id de Adalo, fecha UTC de Adalo) y 6 slides con sus fotos subidas a medios. Repetirla no duplica. **Ejecutada en el Local** (60 y 6). |
 | **Pruebas** | hecho | `tests/portada.php` 36; sin regresiones en `instalacion` 28, `roles` 90, `panel` 177, `seguridad` 84, `esquema` 65, `contrato-negocios`, `contrato-muestras` y `puertas`. |
+
+## Tanda C, parte 2 (R50, R109)
+
+Aprobado por Luis (vía la maestra, 04-11). Diff: `git diff 3db3ef0 HEAD`. Pruebas escritas antes en `tests/sin-adivinar.php` (35; fallaban 15).
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **Regla** | hecho | `ZN_API::no_existe( permiso )`: lo que no existe responde como lo ajeno, 401 «This action is unauthorized.»; solo la administración de la app con ese permiso (lo ve todo) recibe 404. |
+| **R50** `/user/{id}` | hecho | `GET`: una cuenta que no existe o que no es de la app (wp-admin) → el mismo 401 que una ajena. `PATCH` y `DELETE`: solo la propia cuenta, así que siempre 401 (también para la administración). |
+| **R109** y el resto | hecho | Revisadas todas las rutas con id. Cambian las que pueden encontrar algo no público: `PATCH`/`DELETE /event/{id}` y `/draw/{id}` (borradores), `DELETE /review/{id}` y `PATCH /review/reply/{id}` (reseñas ocultas), `PATCH /faq/{id}` (preguntas sin publicar). En wp-admin, `admin-post.php?action=zn_participantes` con un sorteo que no existe da el mismo 403 que un sello malo. |
+| **Sin cambios** | revisado | Fichas públicas (`GET /business`, `/event`, `/draw`, `/review`, `/faq`, `/news/{id}`): solo ven lo publicado, el 404 no descubre nada. `/draw-participation/{id}` (borrar, marcar, ticket) y el export ya daban 401 antes de mirar si existe. `POST /favorite` y `POST /draw-participation`: solo negocios y sorteos publicados. `DELETE /favorite/{id}`: siempre 200. El panel ya daba lo mismo con un sorteo que no existe. |
+| **Pruebas** | hecho | `sin-adivinar` 35 (cada ruta: lo ajeno y lo que no existe dan la misma respuesta; la administración sigue con 404). Cambiadas a 401 las que esperaban 404 con cuentas sin permiso: `borrar-cuenta` 39, `mis-datos` 78, `tokens` 60, `novedades-sorteos` 58, `opiniones` 78. Sin cambios: `participaciones-admin` 38, `seguridad` 84, `roles` 90. |
 
 ## Ronda 47 (R147, R148)
 

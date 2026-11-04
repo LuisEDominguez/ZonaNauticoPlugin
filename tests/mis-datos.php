@@ -125,7 +125,7 @@ try {
 	$ok( 'con la sesión de otra cuenta (aunque sea la administración): 401 «This action is unauthorized.»', 401 === $estado && $sin_permiso === $cuerpo );
 	$ok( '…y el nombre no cambia', 'Ana' === get_user_meta( $ana, 'first_name', true ) );
 	list( $estado ) = $patch( 999999999, array( 'name' => 'Nadie (prueba)' ), $ana );
-	$ok( 'cuenta que no existe: 404', 404 === $estado );
+	$ok( 'R50: cuenta que no existe: 401, como una ajena', 401 === $estado );
 	list( $estado, $cuerpo ) = $patch( $ana, array( 'roleId' => 1 ) );
 	$ok( 'roleId (cambiar el rol): 401, no se cambia desde aquí', 401 === $estado && $sin_permiso === $cuerpo && 'user' === ZN_Roles::rol_app( get_userdata( $ana ) ) );
 

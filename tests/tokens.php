@@ -89,9 +89,9 @@ try {
 	list( $estado, $cuerpo ) = $pedir( "/user/$otro", $token );
 	$ok( 'R32: token válido, cuenta ajena: 401 «This action is unauthorized.» (la app no cierra la sesión)', 401 === $estado && $sin_permiso === $cuerpo );
 	list( $estado ) = $pedir( '/user/999999', $token );
-	$ok( 'cuenta que no existe: 404', 404 === $estado );
+	$ok( 'R50: cuenta que no existe: 401, como una ajena', 401 === $estado );
 	list( $estado ) = $pedir( "/user/$wp_admin", $token );
-	$ok( 'una cuenta de wp-admin no se puede pedir: 404', 404 === $estado );
+	$ok( 'R50: una cuenta de wp-admin no se puede pedir: 401', 401 === $estado );
 
 	// --- Padre e hija ---
 	$asociacion = $cuenta( 'zn_asociacion' );

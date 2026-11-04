@@ -83,7 +83,7 @@ class ZN_API_Entradas {
 		$recurso = self::recursos()[ $ruta ];
 		$entrada = self::entrada( $recurso['tipo'], (int) $peticion['id'] );
 		if ( ! $entrada ) {
-			return ZN_API::no_encontrado();
+			return ZN_API::no_existe( "{$recurso['permiso']}:save" );
 		}
 		if ( ! ZN_Roles::puede( "{$recurso['permiso']}:save", $entrada ) ) {
 			return ZN_Errores::sin_permiso();
@@ -113,7 +113,7 @@ class ZN_API_Entradas {
 		$recurso = self::recursos()[ $ruta ];
 		$entrada = self::entrada( $recurso['tipo'], (int) $peticion['id'] );
 		if ( ! $entrada ) {
-			return ZN_API::no_encontrado();
+			return ZN_API::no_existe( "{$recurso['permiso']}:delete" );
 		}
 		if ( ! ZN_Roles::puede( "{$recurso['permiso']}:delete", $entrada ) ) {
 			return ZN_Errores::sin_permiso();

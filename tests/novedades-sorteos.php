@@ -156,7 +156,7 @@ try {
 	list( $estado, $cuerpo ) = $llamar( 'PATCH', "/event/$id_nov", array( 'userId' => $asociacion ), $admin_app );
 	$ok( 'la administración de la app cambia el dueño a la asociación del comercio (200)', 200 === $estado && (string) $asociacion === get_post_meta( $id_nov, 'user_id', true ) );
 	list( $estado ) = $llamar( 'PATCH', '/event/999999999', array( 'name' => 'X' ), $comercio );
-	$ok( 'PATCH /event de una que no existe → 404', 404 === $estado );
+	$ok( 'R109: PATCH /event de una que no existe → 401, como una ajena', 401 === $estado );
 	list( $estado ) = $llamar( 'PATCH', "/event/$tienda", array( 'name' => 'X' ), $admin_app );
 	$ok( 'PATCH /event con el id de un negocio → 404', 404 === $estado );
 
@@ -168,7 +168,7 @@ try {
 	list( $estado, $cuerpo ) = $llamar( 'DELETE', "/event/$id_nov", array(), $asociacion );
 	$ok( 'DELETE /event: su dueña (ahora la asociación) la borra del todo, 200 {status: «success»}', 200 === $estado && $exito === $cuerpo && null === get_post( $id_nov ) );
 	list( $estado ) = $llamar( 'DELETE', "/event/$id_nov", array(), $asociacion );
-	$ok( 'borrarla otra vez → 404', 404 === $estado );
+	$ok( 'R109: borrarla otra vez → 401, como una ajena', 401 === $estado );
 
 	// Esta prueba escribe mucho con las mismas cuentas: sin esto llegarían al límite de 20 por hora (R94, se prueba abajo).
 	global $wpdb;

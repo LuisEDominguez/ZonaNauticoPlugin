@@ -130,11 +130,11 @@ try {
 	list( $estado ) = $borrar( $admin, $admin );
 	$ok( 'R44: ni la administración de la app: 401 y sigue', 401 === $estado && get_userdata( $admin ) );
 	list( $estado, $cuerpo ) = $borrar( 999999999, $ana );
-	$ok( 'cuenta que no existe: 404 «Not found.»', 404 === $estado && array( 'message' => 'Not found.' ) === $cuerpo );
+	$ok( 'R50: cuenta que no existe: el mismo 401 que una ajena', 401 === $estado && $sin_permiso === $cuerpo );
 	$de_wp = (int) ( get_users( array( 'role' => 'administrator', 'number' => 1, 'fields' => 'ID' ) )[0] ?? 0 );
 	if ( $de_wp ) {
 		list( $estado ) = $borrar( $de_wp, $ana );
-		$ok( 'una cuenta de WordPress que no es de la app: 404 y sigue', 404 === $estado && get_userdata( $de_wp ) );
+		$ok( 'R50: una cuenta de WordPress que no es de la app: 401 y sigue', 401 === $estado && get_userdata( $de_wp ) );
 	}
 
 	// --- Contraseña actual (R110, como R69) ---

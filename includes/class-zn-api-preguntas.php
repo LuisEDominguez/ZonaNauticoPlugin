@@ -117,7 +117,7 @@ class ZN_API_Preguntas {
 	public static function modificar( WP_REST_Request $peticion ): WP_REST_Response {
 		$pregunta = get_comment( (int) $peticion['id'] );
 		if ( ! $pregunta || ZN_Comentarios::PREGUNTA !== $pregunta->comment_type ) {
-			return ZN_API::no_encontrado();
+			return ZN_API::no_existe( 'faq:save' );
 		}
 		$campos = ZN_Roles::campos_editables_de_pregunta( $pregunta );
 		if ( ! $campos ) {

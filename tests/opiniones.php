@@ -190,7 +190,7 @@ try {
 	list( $estado, $cuerpo ) = $llamar( 'PATCH', "/review/reply/$id_resena", array( 'response' => null ), $admin_app );
 	$ok( 'la administración de la app responde en cualquiera; con null se borra la respuesta', 200 === $estado && null === $cuerpo['data']['response'] && '' === get_comment_meta( $id_resena, 'response', true ) );
 	list( $estado ) = $llamar( 'PATCH', '/review/reply/999999999', array( 'response' => 'x' ), $comercio );
-	$ok( 'responder una reseña que no existe → 404', 404 === $estado );
+	$ok( 'R109: responder una reseña que no existe → 401, como una ajena', 401 === $estado );
 
 	// --- DELETE /review/{id} ---
 	list( $estado, $cuerpo ) = $llamar( 'DELETE', "/review/$id_resena" );
@@ -203,7 +203,7 @@ try {
 	$ok( 'borrar: la autora sí, 200 {status: «success»} y desaparece del todo (sin papelera)', 200 === $estado && $exito === $cuerpo && null === get_comment( $id_resena ) );
 	$ok( 'al borrarla, la puntuación del negocio vuelve a 0', 0.0 === (float) get_post_meta( $tienda, 'score', true ) );
 	list( $estado ) = $llamar( 'DELETE', "/review/$id_resena", array(), $usuaria );
-	$ok( 'borrarla otra vez → 404', 404 === $estado );
+	$ok( 'R109: borrarla otra vez → 401, como una ajena', 401 === $estado );
 	list( $estado, $cuerpo ) = $llamar( 'POST', '/review', array( 'businessId' => $tienda, 'score' => 3 ), $usuaria );
 	$ok( 'H13: tras borrar la suya puede escribir otra (201)', 201 === $estado && $usuaria === (int) get_comment( (int) ( $cuerpo['data']['_id'] ?? 0 ) )->user_id );
 	list( $estado, $cuerpo ) = $llamar( 'DELETE', "/review/$id_resena2", array(), $admin_app );
@@ -253,7 +253,7 @@ try {
 	list( $estado, $cuerpo ) = $llamar( 'PATCH', "/faq/$id_pregunta", array( 'question' => '' ), $comercio );
 	$ok( 'pregunta vacía → 422', 422 === $estado && isset( $cuerpo['errors']['question'] ) );
 	list( $estado ) = $llamar( 'PATCH', '/faq/999999999', array( 'answer' => 'x' ), $comercio );
-	$ok( 'PATCH /faq de una que no existe → 404', 404 === $estado );
+	$ok( 'R109: PATCH /faq de una que no existe → 401, como una ajena', 401 === $estado );
 
 	// --- Por HTTP, con un token de verdad ---
 	$token                   = ZN_Tokens::emitir( $usuario2 );

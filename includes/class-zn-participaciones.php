@@ -664,10 +664,8 @@ class ZN_Participaciones {
 	/** admin-post.php?action=zn_participantes (wp-admin): comprueba el sello y atiende. */
 	public static function atender_admin(): void {
 		$sorteo = self::sorteo( absint( $_GET['sorteo'] ?? 0 ) ); // phpcs:ignore WordPress.Security.NonceVerification
-		if ( ! $sorteo ) {
-			wp_die( 'No encontrado.', 404 );
-		}
-		if ( ! self::sello_valido( $sorteo, wp_unslash( $_GET ) ) ) { // phpcs:ignore WordPress.Security.NonceVerification -- sello_valido() lo comprueba.
+		// Un sorteo que no existe da lo mismo que un sello malo (R109: no se adivina qué ids existen).
+		if ( ! $sorteo || ! self::sello_valido( $sorteo, wp_unslash( $_GET ) ) ) { // phpcs:ignore WordPress.Security.NonceVerification -- sello_valido() lo comprueba.
 			wp_die( 'El enlace ha caducado. Vuelve a la ficha del sorteo y prueba otra vez.', 403 );
 		}
 		self::atender( $sorteo, wp_unslash( $_GET ), (string) get_edit_post_link( $sorteo->ID, 'url' ), 'zn_avisos_' );
