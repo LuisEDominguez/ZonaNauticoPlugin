@@ -61,9 +61,25 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Bloque 1, parte B | 04-11-2026 | `89521b9` (v0.23.0) | `f889285` (v0.24.0) | R66: solo el nombre de pila en lo público y `/review?user=` con token |
 | Bloque 1, parte C | 04-11-2026 | `237719b` (v0.24.0) | `6b39aa8` (v0.25.0) | R68: instalación en un solo sitio, `uninstall.php` y prefijo `zn_` en las cuentas |
 | Ronda 37, notas | 04-11-2026 | `6b39aa8` (v0.25.0) | `63c01aa` (v0.25.1) y `d579bd6` (puerto en las `.mjs`) | R119 y R121 (README) y R120 (migración solo de cuentas de la app); R122, a la espera de Luis |
-| Bloque 2, parte A | 04-11-2026 | `d579bd6` (v0.25.1) | (este commit, v0.26.0) | `GET /me` con los permisos de la cuenta |
+| Bloque 2, parte A | 04-11-2026 | `d579bd6` (v0.25.1) | `c6713e7` (v0.26.0) | `GET /me` con los permisos de la cuenta |
+| Bloque 2, parte B | 04-11-2026 | `a6e3ab4` (v0.26.0) | (este commit, v0.27.0) | Portada: `/news`, `/home-slides`, `/business-category` e `includesCategory` |
 
 ---
+
+## Portada (bloque 2, parte B)
+
+Luis (vía la maestra, 04-11): «Sí, apruebo»; slides y Novedades ZN solo las edita la administración en wp-admin;
+categorías fijas con `sort_order`; carga inicial solo con las 60 novedades y las 6 slides de la app; nombres del
+traspaso. Diff: `git diff a6e3ab4 HEAD`. Pruebas escritas antes (`tests/portada.php`, 36).
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **Novedades ZN** | hecho | Tipo `zn_noticia` (permisos `zn_noticia(s)`, solo el administrador; sin página pública ni `/wp/v2`). `GET /news` paginado como el resto, por fecha descendente; `GET /news/{id}` (borrador u otro tipo, 404). `description` pasa por `wp_kses` con `br`, `p`, `strong`, `em`, `a[href]` e `img[src,alt]`; vacía → null. `date` desde `post_date_gmt` en hora de Madrid. |
+| **Slides** | hecho | Tipo `zn_slide` (`zn_slide(s)`); `GET /home-slides`: publicadas con foto, por `menu_order` (= `sort_order`), sin paginar. `link` opcional (la app de hoy no lo usa). |
+| **Categorías** | hecho | `GET /business-category`: las 7 de `ZN_Negocios::CATEGORIAS` con `sort_order` 1-7 (el orden de Adalo, el mismo que ya tenía la lista). `/business` y `/business/{id}` admiten `includesCategory` → `category {_id, name}` (o null). Sin él, la respuesta no cambia (contrato-negocios y contrato-muestras siguen bien). |
+| **Quién edita** | hecho | `ZN_Roles::actualizar` da al administrador los permisos de los dos tipos nuevos; `ZN_Instalacion::es_del_plugin` los reconoce para `uninstall.php` (R68). Panel R40 sin cambios. |
+| **Carga inicial** | hecho | `wp zona-nautico portada-inicial <carpeta de la app>`: 60 Novedades ZN (`zn_origen` = id de Adalo, fecha UTC de Adalo) y 6 slides con sus fotos subidas a medios. Repetirla no duplica. **Ejecutada en el Local** (60 y 6). |
+| **Pruebas** | hecho | `tests/portada.php` 36; sin regresiones en `instalacion` 28, `roles` 90, `panel` 177, `seguridad` 84, `esquema` 65, `contrato-negocios`, `contrato-muestras` y `puertas`. |
 
 ## Decisiones de Luis para las participaciones en sorteos (04-11, vía la maestra; sin programar)
 

@@ -31,6 +31,7 @@ class ZN_API_Negocios {
 						'orderby'      => array( 'type' => 'string', 'enum' => self::ORDENABLES, 'default' => '_id' ),
 						'order'        => array( 'type' => 'string', 'enum' => array( 'asc', 'desc' ), 'default' => 'asc' ),
 						'includesUser' => array( 'type' => 'boolean', 'default' => false ),
+						'includesCategory' => array( 'type' => 'boolean', 'default' => false ),
 					)
 				),
 			)
@@ -44,7 +45,8 @@ class ZN_API_Negocios {
 				'callback'            => array( __CLASS__, 'ficha' ),
 				'permission_callback' => '__return_true',
 				'args'                => array(
-					'includesUser' => array( 'type' => 'boolean', 'default' => false ),
+					'includesUser'     => array( 'type' => 'boolean', 'default' => false ),
+					'includesCategory' => array( 'type' => 'boolean', 'default' => false ),
 				),
 			)
 		);
@@ -78,12 +80,13 @@ class ZN_API_Negocios {
 				$argumentos['orderby'] = array( 'ID' => $sentido );
 		}
 
-		$incluir_usuario = (bool) $peticion['includesUser'];
+		$incluir_usuario   = (bool) $peticion['includesUser'];
+		$incluir_categoria = (bool) $peticion['includesCategory'];
 		return ZN_API::listado(
 			$peticion,
 			$argumentos,
 			'business',
-			static fn( WP_Post $entrada ) => self::formatear( $entrada, $incluir_usuario )
+			static fn( WP_Post $entrada ) => self::formatear( $entrada, $incluir_usuario, $incluir_categoria )
 		);
 	}
 
@@ -92,11 +95,11 @@ class ZN_API_Negocios {
 		if ( ! $entrada ) {
 			return ZN_API::no_encontrado();
 		}
-		return new WP_REST_Response( array( 'data' => self::formatear( $entrada, (bool) $peticion['includesUser'] ) ) );
+		return new WP_REST_Response( array( 'data' => self::formatear( $entrada, (bool) $peticion['includesUser'], (bool) $peticion['includesCategory'] ) ) );
 	}
 
 	/** Entrada `negocio` → objeto con los mismos campos y tipos que el BusinessResource del Laravel. */
-	public static function formatear( WP_Post $entrada, bool $incluir_usuario = false ): array {
+	public static function formatear( WP_Post $entrada, bool $incluir_usuario = false, bool $incluir_categoria = false ): array {
 		$id = $entrada->ID;
 
 		// Los campos que salen tal cual, del esquema común (R58): name, description, coordenadas, dirección,
@@ -107,6 +110,10 @@ class ZN_API_Negocios {
 		// El dueño (cuenta Comercio elegida en la ficha), solo con sus datos públicos (H27). La app lo usa para pedir sus preguntas.
 		if ( $incluir_usuario ) {
 			$negocio['user'] = ZN_API::usuario_publico( ZN_Negocios::dueno( $id ) );
+		}
+		// category {_id, name}, como en el traspaso (bloque 2); el orden sale de GET /business-category.
+		if ( $incluir_categoria ) {
+			$negocio['category'] = ZN_Portada::categoria_de( $id );
 		}
 		return $negocio;
 	}

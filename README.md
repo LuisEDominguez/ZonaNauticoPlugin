@@ -30,6 +30,10 @@ Base de la API: `<sitio>/wp-json/zonanautico/v1`
 | `DELETE /event/{id}` | **con token** | Los mismos. Borrado definitivo. `200 {status: "success"}` |
 | `POST /draw` | **con token** | `title`*, `userId`*, `startDate`*, `endDate`*, `winners`* (≥ 1), `description`, `legalUrl`, `photos[]`. `201 {data}` |
 | `PUT\|PATCH /draw/{id}`, `DELETE /draw/{id}` | **con token** | Solo su dueño o la administración de la app. Un PATCH sin `legalUrl` no lo borra |
+| `GET /news` | público | Novedades ZN, la más reciente primero: `_id`, `title`, `description` (HTML sencillo), `image`, `url`, `date` (`Y-m-d H:i:s`, Madrid). `page`, `perPage` (máx. 50) |
+| `GET /news/{id}` | público | Una Novedad ZN publicada; si no, 404 |
+| `GET /home-slides` | público | Slides de portada publicadas y con foto, por `sort_order`: `_id`, `name`, `image`, `link`, `sort_order`. Sin paginar |
+| `GET /business-category` | público | Las 7 categorías de negocio (fijas, `ZN_Negocios::CATEGORIAS`) con `_id`, `name` y `sort_order` (el «Orden» de Adalo). En `/business`, `?includesCategory=1` añade `category {_id, name}` |
 | `GET /me` | **con token** | La cuenta del token, como `GET /user/{id}`, más `permissions`: los permisos del Laravel de su rol, sin `zn:` (la app enseña u oculta botones con ellos; cada ruta sigue decidiendo). Sin sesión, `401 «Unauthenticated.»`; `no-store` |
 | `GET /user/{id}` | **con token** | La propia cuenta, o la que pueda ver (`user:read`…). Formato del UserResource del Laravel con `id` numérico |
 | `PUT\|PATCH /user/{id}` | **con token** | Solo la propia cuenta: `name`, `phone`, `email`, `password`. El correo y la contraseña piden `currentPassword` (R69). null borra solo el teléfono; "" es 422. `roleId` → 401. `200 {data}` como `GET /user/{id}` |
@@ -234,6 +238,19 @@ Pendiente de comprobar en el servidor: que llega la cabecera `Authorization`, qu
 correo que diga Luis: lo usan el correo de alta del panel (R103) y el de «tu cuenta se ha borrado» (R111); sin él,
 ese correo sale sin la frase «Si no has sido tú, escríbenos a …».
 
+## Portada: Novedades ZN, slides y categorías (bloque 2)
+
+`includes/class-zn-portada.php`. Dos tipos de entrada nuevos en wp-admin, **solo para la administración** (permisos
+propios, R3; ni la asociación ni la federación los tienen): «Novedades ZN» (`zn_noticia`: título, texto, foto,
+enlace a la publicación original y fecha de la entrada) y «Slides de portada» (`zn_slide`: título, foto, enlace
+opcional y «Atributos › Orden» = `sort_order`). La app enseña al azar una de las slides publicadas con foto. Las
+categorías de negocio siguen fijas en el código, con el orden de Adalo. La fecha de una Novedad ZN es la de la
+entrada (la zona horaria del sitio debería ser Madrid; la API la da siempre en hora de Madrid).
+
+Carga inicial (solo una vez; repetirla no duplica): `wp zona-nautico portada-inicial <carpeta de la app>` mete las
+60 Novedades ZN de `src/data/provisional/noticias.json` (ya sin ganadores) y las 6 slides con sus fotos de
+`assets/img/slides/`, que se suben a la biblioteca de medios. Nada del export de Adalo.
+
 ## Instalar, actualizar y desinstalar (R68)
 
 `includes/class-zn-instalacion.php`, en un solo sitio. Al activar y en cada carga (`plugins_loaded`) crea o pone al
@@ -276,6 +293,7 @@ un enlace de carpeta en `wp-content/plugins/zona-nautico`.
 - Reseñas y preguntas desde la app (crea y borra cuentas, negocios y comentarios; también por HTTP): `wp eval-file tests/opiniones.php`
 - Novedades y sorteos desde la app (crea y borra cuentas, negocios, novedades y sorteos; también por HTTP): `wp eval-file tests/novedades-sorteos.php`
 - Datos personales: borrar cuenta, exportar y borrar (crea y borra cuentas, negocios y comentarios): `wp eval-file tests/privacidad.php`
+- Portada: `/news`, `/home-slides`, `/business-category`, `includesCategory` y la carga inicial con datos inventados (crea y borra novedades, slides, negocios y una cuenta): `wp eval-file tests/portada.php`
 - `GET /me` con sus permisos (crea y borra cuentas y tokens; también por HTTP): `wp eval-file tests/me.php`
 - Instalación, versión, lo que borra `uninstall.php` y el prefijo `zn_` de las cuentas (R68; no desinstala de verdad; crea y borra cuentas y un negocio): `wp eval-file tests/instalacion.php`
 - Solo el nombre de pila en lo público y `/review?user=` con token (R66; crea y borra cuentas, un negocio y reseñas; también por HTTP): `wp eval-file tests/nombre-de-pila.php`

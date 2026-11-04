@@ -84,11 +84,11 @@ class ZN_Instalacion {
 		return array_keys( ZN_Roles::ROLES_APP );
 	}
 
-	/** ¿Es una capacidad que pone el plugin? Los permisos zn:…, la del panel y las de sus tres tipos de entrada. */
+	/** ¿Es una capacidad que pone el plugin? Los permisos zn:…, la del panel y las de sus tipos de entrada. */
 	public static function es_del_plugin( string $capacidad ): bool {
 		return 0 === strpos( $capacidad, 'zn:' )
 			|| 'zn_panel_ver' === $capacidad
-			|| (bool) preg_match( '/_zn_(negocio|evento|sorteo)s?$/', $capacidad );
+			|| (bool) preg_match( '/_zn_(negocio|evento|sorteo|noticia|slide)s?$/', $capacidad );
 	}
 
 	public static function desinstalar(): void {

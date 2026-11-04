@@ -26,6 +26,36 @@ class ZN_CLI {
 	}
 
 	/**
+	 * Carga inicial de la portada (bloque 2) desde la carpeta de la app: las Novedades ZN de
+	 * src/data/provisional/noticias.json (las 60 más recientes, ya sin ganadores) y las slides de slides.json con sus
+	 * fotos de assets/img/slides/, que se suben a la biblioteca de medios. Nada del export de Adalo. Repetirla no
+	 * duplica nada.
+	 *
+	 * ## OPTIONS
+	 *
+	 * <carpeta-app>
+	 * : Carpeta de la app Zona-Nautico.
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     wp zona-nautico portada-inicial ../Zona-Nautico
+	 *
+	 * @subcommand portada-inicial
+	 */
+	public function portada_inicial( array $argumentos ): void {
+		$carpeta  = rtrim( (string) ( $argumentos[0] ?? '' ), '/\\' );
+		$noticias = json_decode( (string) @file_get_contents( "$carpeta/src/data/provisional/noticias.json" ), true ); // phpcs:ignore
+		$slides   = json_decode( (string) @file_get_contents( "$carpeta/src/data/provisional/slides.json" ), true ); // phpcs:ignore
+		if ( ! is_array( $noticias ) || ! is_array( $slides ) ) {
+			WP_CLI::error( "No encuentro src/data/provisional/noticias.json y slides.json en «{$carpeta}»." );
+		}
+		$hechas = ZN_Portada::importar_noticias( $noticias );
+		WP_CLI::log( sprintf( 'Novedades ZN: %d nuevas (de %d en la app).', count( $hechas ), count( $noticias ) ) );
+		$hechos = ZN_Portada::importar_slides( $slides, "$carpeta/assets/img/slides" );
+		WP_CLI::success( sprintf( 'Slides: %d nuevas (de %d en la app).', count( $hechos ), count( $slides ) ) );
+	}
+
+	/**
 	 * Mete negocios, novedades, sorteos, reseñas y preguntas inventados para probar la API. Solo en un WordPress local;
 	 * cada tipo solo se rellena si todavía no tiene ninguna entrada.
 	 *

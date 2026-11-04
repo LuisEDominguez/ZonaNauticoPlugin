@@ -77,7 +77,7 @@ class ZN_Roles {
 
 		$admin = get_role( 'administrator' );
 		if ( $admin ) {
-			foreach ( array( ZN_Negocios::TIPO, ZN_Eventos::TIPO, ZN_Sorteos::TIPO ) as $tipo ) {
+			foreach ( array( ZN_Negocios::TIPO, ZN_Eventos::TIPO, ZN_Sorteos::TIPO, ZN_Portada::NOTICIA, ZN_Portada::SLIDE ) as $tipo ) {
 				foreach ( self::permisos_del_tipo( $tipo ) as $permiso ) {
 					$admin->add_cap( $permiso );
 				}
