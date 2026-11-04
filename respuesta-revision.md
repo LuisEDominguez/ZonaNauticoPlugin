@@ -102,7 +102,7 @@ Sus palabras: «1. Tal cual dices. 2. Lo que dices. 3. a) 4. Nombre de pila y av
 
 | # | Decisión |
 |---|---|
-| 1 | La foto del ticket se guarda hasta entregar el premio y después se borra. **Plazo por confirmar:** la maestra lo lee como «entrega + 30 días»; la pregunta no proponía un número. |
+| 1 | La foto del ticket se guarda hasta la entrega del premio más 30 días, y después se borra (Luis, 04-11: «30 días sí»). |
 | 2 | Se quitan siempre los datos EXIF (ubicación incluida) al subir la foto. |
 | 3 | El comercio que organiza ve el nombre y la foto del ticket de cada participante (R43). |
 | 4 | Quien gana sale en la app solo con su nombre de pila (R66) y se le avisa en privado. |
