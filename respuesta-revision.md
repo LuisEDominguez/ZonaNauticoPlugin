@@ -55,8 +55,26 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Panel R40, parte 2b-bis | 02-11-2026 | `1611c4f` (v0.20.0) | `2864e30` (v0.20.1) | R102 = A, R103 (correo de contacto pendiente), R104 |
 | Cambiar mis datos | 02-11-2026 | `6a197c2` (v0.20.1) | `2fa7c1d` (v0.21.0) | R69: `PATCH /user/{id}` con la contraseña actual y confirmación del correo nuevo |
 | Cambiar mis datos-bis | 02-11-2026 | `2fa7c1d` (v0.21.0) | `75fc042` (v0.21.1) | R105, R106, R107, R108 |
+| Eliminar cuenta | 04-11-2026 | `3013a0b` (v0.21.1) | (este commit, v0.22.0) | `DELETE /user/{id}` (D1: la app lo llamaba y no existía) |
 
 ---
+
+## Eliminar cuenta (DELETE /user/{id})
+
+Luis (04-11, 09:02): sí a `DELETE /user/{id}`. La app lo llama para «Eliminar cuenta» (`Zona-Nautico/src/api/user.ts:63`)
+y el plugin no lo tenía (D1). Diff: `git diff 3013a0b HEAD`. Pruebas escritas antes (`tests/borrar-cuenta.php`).
+**Borra cuentas y datos: revisor principal + uno de seguridad, solo el diff.**
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **Ruta** | hecho | `DELETE /user/{id}` en `class-zn-api-usuarios.php` (`borrar()`), con `con_sesion_de_la_app` en la entrada. Cuenta que no existe o que no es de la app → 404 «Not found.». 200 `{status: "success"}` (lo que espera la app), `no-store`. |
+| **Quién (R44)** | hecho | Solo la propia cuenta y solo si su rol tiene `user:delete_self` (hoy, solo `user`). Se mira el permiso exacto, no `ZN_Roles::puede( 'user:delete' )`, porque la administración tiene `user:delete` general y con él se borraría a sí misma. Otra cuenta (también la padre o la administración), comercio, asociación, federación o administración → 401 «This action is unauthorized.». |
+| **Cascada (R65, R95, R96)** | hecho | `wp_delete_user()` sin reasignar: los ganchos `delete_user` de `ZN_Privacidad` (reseñas y preguntas fuera, puntuaciones recalculadas; negocios, novedades y sorteos a borrador y sin dueño) y de `ZN_Tokens` (todos sus tokens anulados) son los mismos que al borrar en Usuarios. Las entradas de la app tienen `post_author` 0, así que WordPress no borra nada más por detrás. |
+| **Límite (R94)** | hecho | `ZN_API::limite_de_escritura()` antes de borrar: pasado el tope, 429 «Too Many Attempts.» con `Retry-After` y la cuenta sigue. No pide la contraseña actual (la app no la manda). |
+| **Correos** | hecho | No manda ninguno (probado). |
+| **Pruebas** | hecho | `tests/borrar-cuenta.php` (26), también por HTTP con tokens de verdad; añadida a `tests/todas.mjs`. |
+
+Pregunta abierta para Luis: ¿un aviso por correo de «tu cuenta se ha borrado»? Ahora no se manda nada.
 
 ## Cambiar mis datos-bis (R105-R108)
 

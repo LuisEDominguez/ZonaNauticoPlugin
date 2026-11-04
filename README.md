@@ -32,6 +32,7 @@ Base de la API: `<sitio>/wp-json/zonanautico/v1`
 | `PUT\|PATCH /draw/{id}`, `DELETE /draw/{id}` | **con token** | Solo su dueño o la administración de la app. Un PATCH sin `legalUrl` no lo borra |
 | `GET /user/{id}` | **con token** | La propia cuenta, o la que pueda ver (`user:read`…). Formato del UserResource del Laravel con `id` numérico |
 | `PUT\|PATCH /user/{id}` | **con token** | Solo la propia cuenta: `name`, `phone`, `email`, `password`. El correo y la contraseña piden `currentPassword` (R69). null borra solo el teléfono; "" es 422. `roleId` → 401. `200 {data}` como `GET /user/{id}` |
+| `DELETE /user/{id}` | **con token** | «Eliminar cuenta»: solo la propia y con `user:delete_self` (hoy, solo el rol `user`, R44). Borrado definitivo, como en Usuarios (R65, R95, R96) y con sus tokens anulados. `200 {status: "success"}` |
 | `GET\|POST /verify-email` | público | Enlace del correo nuevo (`id`, `token`): GET pinta el botón, POST confirma el cambio |
 
 Los negocios se guardan como entradas personalizadas de WordPress (tipo `negocio`, menú «Negocios»
@@ -178,6 +179,12 @@ aviso. Como mucho 3 correos nuevos pedidos al día por cuenta (R105, 429); manda
 cambio pendiente (R106). Al confirmar se anulan todos los tokens de la cuenta, se entra con el correo nuevo y al
 viejo le llega otro aviso (R107); si otra cuenta se ha quedado el mismo correo a la vez, se deshace (R108).
 
+**Eliminar cuenta.** `DELETE /user/{id}`, solo sobre la propia cuenta y solo si su rol tiene `user:delete_self`
+(hoy, solo `user`, R44): el comercio, la asociación, la federación y la administración de la app reciben `401`, y
+nadie borra otra cuenta desde aquí. Cuenta en el límite de escrituras (R94, 429). Borra con `wp_delete_user()`,
+así que pasa lo mismo que al borrarla en Usuarios: reseñas y preguntas fuera, negocios, novedades y sorteos a
+borrador y sin dueño, y todos sus tokens anulados. No manda correos.
+
 **Panel de asociación y federación (R40).** Asociación y federación entran a wp-admin
 por `wp-login.php` con su misma cuenta de la app (correo verificado, un solo rol; mismo límite de intentos
 que `POST /login`). Solo ven «Mi zona»: las cuentas que cuelgan de ellas (un nivel, las que pueden leer; la federación, también
@@ -242,6 +249,7 @@ un enlace de carpeta en `wp-content/plugins/zona-nautico`.
 - Reseñas y preguntas desde la app (crea y borra cuentas, negocios y comentarios; también por HTTP): `wp eval-file tests/opiniones.php`
 - Novedades y sorteos desde la app (crea y borra cuentas, negocios, novedades y sorteos; también por HTTP): `wp eval-file tests/novedades-sorteos.php`
 - Datos personales: borrar cuenta, exportar y borrar (crea y borra cuentas, negocios y comentarios): `wp eval-file tests/privacidad.php`
+- Eliminar cuenta desde la app, `DELETE /user/{id}` (crea y borra cuentas, negocios, comentarios, tokens y sus intentos; también por HTTP): `wp eval-file tests/borrar-cuenta.php`
 - Panel de asociación y federación (crea y borra cuentas, entradas y sus intentos): `wp eval-file tests/panel.php`
 - Formato de los errores: `node tests/contrato-errores.mjs` y `wp eval-file tests/errores.php` (los dos solo leen)
 - Recalcular todas las puntuaciones (al final de una migración): `wp zona-nautico recalcular-puntuaciones`

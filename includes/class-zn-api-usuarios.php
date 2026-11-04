@@ -26,6 +26,14 @@
  *   al viejo le llega un aviso. Hasta entonces se entra con el viejo y la respuesta lo sigue dando. Como mucho 3
  *   correos nuevos pedidos al día por cuenta (R105, 429). Mandar su correo de siempre cancela el pendiente (R106).
  * - Cuenta también en el límite de escrituras de la cuenta (R94). Responde 200 con {data} como GET /user/{id}.
+ *
+ * DELETE /user/{id}: «Eliminar cuenta» (src/api/user.ts). Borrado definitivo con wp_delete_user(), como al borrarla
+ * en Usuarios: sus reseñas y preguntas se borran y sus negocios, novedades y sorteos pasan a borrador y sin dueño
+ * (ZN_Privacidad, R65, R95, R96); sus tokens se anulan (ZN_Tokens).
+ * - Solo la propia cuenta y solo con user:delete_self (hoy, solo el rol user, R44); si no, 401 «This action is
+ *   unauthorized.». Ni la cuenta padre ni la administración de la app borran otra cuenta desde aquí, y la
+ *   administración tampoco la suya (su user:delete general no cuenta).
+ * - Cuenta en el límite de escrituras de la cuenta (R94; 429). Responde 200 {status: "success"}.
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -48,8 +56,35 @@ class ZN_API_Usuarios {
 					'callback'            => array( __CLASS__, 'cambiar' ),
 					'permission_callback' => array( 'ZN_API', 'con_sesion_de_la_app' ),
 				),
+				array(
+					'methods'             => WP_REST_Server::DELETABLE,
+					'callback'            => array( __CLASS__, 'borrar' ),
+					'permission_callback' => array( 'ZN_API', 'con_sesion_de_la_app' ),
+				),
 			)
 		);
+	}
+
+	public static function borrar( WP_REST_Request $peticion ): WP_REST_Response {
+		$cuenta = get_userdata( (int) $peticion['id'] );
+		if ( ! $cuenta || ! ZN_Roles::rol_app( $cuenta ) ) {
+			return ZN_API::no_encontrado();
+		}
+		// Solo uno mismo y solo con user:delete_self: el user:delete general de la administración no vale aquí (R44).
+		if ( get_current_user_id() !== (int) $cuenta->ID || ! in_array( 'zn:user:delete_self', ZN_Roles::permisos( ZN_Roles::rol_app( $cuenta ) ), true ) ) {
+			return ZN_Errores::sin_permiso();
+		}
+		$espera = ZN_API::limite_de_escritura();
+		if ( null !== $espera ) {
+			return ZN_Limite::demasiados( $espera );
+		}
+		require_once ABSPATH . 'wp-admin/includes/user.php';
+		if ( ! wp_delete_user( $cuenta->ID ) ) {
+			return new WP_REST_Response( array( 'message' => 'Server Error' ), 500 );
+		}
+		$respuesta = new WP_REST_Response( array( 'status' => 'success' ) );
+		$respuesta->header( 'Cache-Control', 'no-store, private' );
+		return $respuesta;
 	}
 
 	public static function cambiar( WP_REST_Request $peticion ): WP_REST_Response {
