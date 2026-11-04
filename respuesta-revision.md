@@ -55,7 +55,7 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Panel R40, parte 2b-bis | 02-11-2026 | `1611c4f` (v0.20.0) | `2864e30` (v0.20.1) | R102 = A, R103 (correo de contacto pendiente), R104 |
 | Cambiar mis datos | 02-11-2026 | `6a197c2` (v0.20.1) | `2fa7c1d` (v0.21.0) | R69: `PATCH /user/{id}` con la contraseña actual y confirmación del correo nuevo |
 | Cambiar mis datos-bis | 02-11-2026 | `2fa7c1d` (v0.21.0) | `75fc042` (v0.21.1) | R105, R106, R107, R108 |
-| Eliminar cuenta | 04-11-2026 | `3013a0b` (v0.21.1) | (este commit, v0.22.0) | `DELETE /user/{id}` (D1: la app lo llamaba y no existía) |
+| Eliminar cuenta | 04-11-2026 | `3013a0b` (v0.21.1) | `a7332e4` (v0.22.0) | `DELETE /user/{id}` (D1: la app lo llamaba y no existía) |
 
 ---
 
@@ -74,7 +74,11 @@ y el plugin no lo tenía (D1). Diff: `git diff 3013a0b HEAD`. Pruebas escritas a
 | **Correos** | hecho | No manda ninguno (probado). |
 | **Pruebas** | hecho | `tests/borrar-cuenta.php` (26), también por HTTP con tokens de verdad; añadida a `tests/todas.mjs`. |
 
-Pregunta abierta para Luis: ¿un aviso por correo de «tu cuenta se ha borrado»? Ahora no se manda nada.
+Pregunta abierta para Luis: ¿un aviso por correo de «tu cuenta se ha borrado»? Ahora no se manda nada (R111).
+
+Ronda 32: revisada sin fallos. Pruebas pasadas en Local el 04-11, de una en una: `borrar-cuenta.php` 26 bien,
+`privacidad.php` 29 bien, `mis-datos.php` 78 bien (y `tokens.php` 60, `roles.php` 90), todas «Todo bien». No se pasó
+`todas.mjs` completa. R110 (pedir la contraseña para borrar) y R111 (el correo), pendientes de Luis.
 
 ## Cambiar mis datos-bis (R105-R108)
 
