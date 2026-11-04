@@ -11,6 +11,7 @@ defined( 'WP_UNINSTALL_PLUGIN' ) || exit;
 require_once __DIR__ . '/includes/class-zn-roles.php';
 require_once __DIR__ . '/includes/class-zn-tokens.php';
 require_once __DIR__ . '/includes/class-zn-limite.php';
+require_once __DIR__ . '/includes/class-zn-favoritos.php';
 require_once __DIR__ . '/includes/class-zn-instalacion.php';
 
 ZN_Instalacion::desinstalar();

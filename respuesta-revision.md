@@ -62,9 +62,23 @@ Estados: **hecho** (pendiente de que el revisor lo compruebe) · **pendiente** �
 | Bloque 1, parte C | 04-11-2026 | `237719b` (v0.24.0) | `6b39aa8` (v0.25.0) | R68: instalación en un solo sitio, `uninstall.php` y prefijo `zn_` en las cuentas |
 | Ronda 37, notas | 04-11-2026 | `6b39aa8` (v0.25.0) | `63c01aa` (v0.25.1) y `d579bd6` (puerto en las `.mjs`) | R119 y R121 (README) y R120 (migración solo de cuentas de la app); R122, a la espera de Luis |
 | Bloque 2, parte A | 04-11-2026 | `d579bd6` (v0.25.1) | `c6713e7` (v0.26.0) | `GET /me` con los permisos de la cuenta |
-| Bloque 2, parte B | 04-11-2026 | `a6e3ab4` (v0.26.0) | (este commit, v0.27.0) | Portada: `/news`, `/home-slides`, `/business-category` e `includesCategory` |
+| Bloque 2, parte B | 04-11-2026 | `a6e3ab4` (v0.26.0) | `8641ecf` (v0.27.0) | Portada: `/news`, `/home-slides`, `/business-category` e `includesCategory` |
+| Bloque 2, parte C | 04-11-2026 | `8641ecf` (v0.27.0) | (este commit, v0.28.0) | Favoritos: `/favorite` y su RGPD |
 
 ---
+
+## Favoritos (bloque 2, parte C)
+
+Luis (vía la maestra, 04-11): «Sí, apruebo»; para toda cuenta de la app con sesión, sin contadores públicos; tabla con
+`user_id` y `business_id` (traspaso). Diff: `git diff 8641ecf HEAD`. Pruebas escritas antes (`tests/favoritos.php`,
+31). **Datos personales: revisor principal + uno de seguridad, solo el diff.**
+
+| Punto | Estado | Qué se hizo |
+|---|---|---|
+| **Tabla** | hecho | `{prefijo}zn_favoritos` (`id`, `user_id`, `business_id`, `creado`; única por cuenta y negocio). La crea `ZN_Instalacion::instalar()` (`zn_favoritos_tabla`); `uninstall.php` la borra (R68). |
+| **Rutas** | hecho | `GET /favorite` (solo las suyas; negocios visibles con el formato de `/business/{id}`; `no-store`), `POST /favorite {businessId}` (201, o 200 si ya estaba, con `INSERT IGNORE` y clave única: dos toques a la vez no duplican; 422 si falta o no es un entero; 404 si el negocio no se ve; límite R94) y `DELETE /favorite/{businessId}` (200 siempre). Todas con `con_sesion_de_la_app`: sin sesión, 401 «Unauthenticated.». |
+| **Privacidad** | hecho | Solo lo propio, sin contadores en ninguna respuesta pública. RGPD (R65): `delete_user` borra sus filas (también con `DELETE /user`); `before_delete_post` de un negocio borra las suyas; el exportador añade «Negocios favoritos» y el borrador los quita. |
+| **Pruebas** | hecho | `tests/favoritos.php` 31 (también por HTTP); `instalacion` (ahora tres tablas) 28, `privacidad` 29 y `borrar-cuenta` 39 siguen bien. |
 
 ## Portada (bloque 2, parte B)
 

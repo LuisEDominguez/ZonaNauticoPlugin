@@ -34,6 +34,9 @@ Base de la API: `<sitio>/wp-json/zonanautico/v1`
 | `GET /news/{id}` | público | Una Novedad ZN publicada; si no, 404 |
 | `GET /home-slides` | público | Slides de portada publicadas y con foto, por `sort_order`: `_id`, `name`, `image`, `link`, `sort_order`. Sin paginar |
 | `GET /business-category` | público | Las 7 categorías de negocio (fijas, `ZN_Negocios::CATEGORIAS`) con `_id`, `name` y `sort_order` (el «Orden» de Adalo). En `/business`, `?includesCategory=1` añade `category {_id, name}` |
+| `GET /favorite` | **con token** | Mis negocios favoritos, el último añadido primero, con el formato de `GET /business/{id}` (solo los que se ven). `no-store` |
+| `POST /favorite` | **con token** | `businessId`. `201 {data: negocio}`; si ya era favorito, `200`. Negocio que no existe o no está publicado: 404. Límite de escrituras (R94) |
+| `DELETE /favorite/{businessId}` | **con token** | `200 {status: "success"}`, lo fuera o no |
 | `GET /me` | **con token** | La cuenta del token, como `GET /user/{id}`, más `permissions`: los permisos del Laravel de su rol, sin `zn:` (la app enseña u oculta botones con ellos; cada ruta sigue decidiendo). Sin sesión, `401 «Unauthenticated.»`; `no-store` |
 | `GET /user/{id}` | **con token** | La propia cuenta, o la que pueda ver (`user:read`…). Formato del UserResource del Laravel con `id` numérico |
 | `PUT\|PATCH /user/{id}` | **con token** | Solo la propia cuenta: `name`, `phone`, `email`, `password`. El correo y la contraseña piden `currentPassword` (R69). null borra solo el teléfono; "" es 422. `roleId` → 401. `200 {data}` como `GET /user/{id}` |
@@ -251,13 +254,22 @@ Carga inicial (solo una vez; repetirla no duplica): `wp zona-nautico portada-ini
 60 Novedades ZN de `src/data/provisional/noticias.json` (ya sin ganadores) y las 6 slides con sus fotos de
 `assets/img/slides/`, que se suben a la biblioteca de medios. Nada del export de Adalo.
 
+## Favoritos (bloque 2)
+
+`includes/class-zn-favoritos.php`. Tabla propia `{prefijo}zn_favoritos` (`user_id`, `business_id`, como
+`business_favorites` del traspaso; una fila por cuenta y negocio). Para toda cuenta de la app con sesión y solo lo
+suyo: nadie ve los favoritos de otro, ni hay contadores públicos. **RGPD (R65):** al borrar la cuenta (también
+`DELETE /user/{id}`) o el negocio se borran sus filas; «Exportar datos personales» los incluye y «Borrar datos
+personales» los quita. Un negocio que pasa a borrador o a la papelera deja de salir, pero su fila se queda por si
+vuelve. `uninstall.php` borra la tabla.
+
 ## Instalar, actualizar y desinstalar (R68)
 
 `includes/class-zn-instalacion.php`, en un solo sitio. Al activar y en cada carga (`plugins_loaded`) crea o pone al
-día las tablas `{prefijo}zn_tokens` y `{prefijo}zn_limites` y, una vez por versión (opción `zn_version`), los
+día las tablas `{prefijo}zn_tokens`, `{prefijo}zn_limites` y `{prefijo}zn_favoritos` y, una vez por versión (opción `zn_version`), los
 cambios de datos (en la 0.25.0: el teléfono y la ubicación de las cuentas de la app pasan de `phone`, `latitude` y
 `longitude` a `zn_phone`, `zn_latitude` y `zn_longitude`; los negocios no cambian). Los roles se ponen al día en
-`init` (`ZN_Roles::actualizar`). Al **borrar** el plugin desde wp-admin, `uninstall.php` quita las dos tablas, las
+`init` (`ZN_Roles::actualizar`). Al **borrar** el plugin desde wp-admin, `uninstall.php` quita las tres tablas, las
 opciones del plugin (también `zn_huella_relleno`), sus avisos temporales, los 5 roles de la app y las capacidades
 que dio a otros roles. **No** borra contenido ni cuentas: negocios, novedades, sorteos, reseñas, preguntas y
 usuarios se quedan. Desactivar el plugin no borra nada.
@@ -293,6 +305,7 @@ un enlace de carpeta en `wp-content/plugins/zona-nautico`.
 - Reseñas y preguntas desde la app (crea y borra cuentas, negocios y comentarios; también por HTTP): `wp eval-file tests/opiniones.php`
 - Novedades y sorteos desde la app (crea y borra cuentas, negocios, novedades y sorteos; también por HTTP): `wp eval-file tests/novedades-sorteos.php`
 - Datos personales: borrar cuenta, exportar y borrar (crea y borra cuentas, negocios y comentarios): `wp eval-file tests/privacidad.php`
+- Favoritos y su RGPD (crea y borra cuentas, negocios, tokens, favoritos e intentos; también por HTTP): `wp eval-file tests/favoritos.php`
 - Portada: `/news`, `/home-slides`, `/business-category`, `includesCategory` y la carga inicial con datos inventados (crea y borra novedades, slides, negocios y una cuenta): `wp eval-file tests/portada.php`
 - `GET /me` con sus permisos (crea y borra cuentas y tokens; también por HTTP): `wp eval-file tests/me.php`
 - Instalación, versión, lo que borra `uninstall.php` y el prefijo `zn_` de las cuentas (R68; no desinstala de verdad; crea y borra cuentas y un negocio): `wp eval-file tests/instalacion.php`

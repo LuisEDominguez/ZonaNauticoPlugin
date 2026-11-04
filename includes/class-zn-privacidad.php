@@ -178,6 +178,15 @@ class ZN_Privacidad {
 					)
 				),
 			);
+			// Favoritos (bloque 2): los negocios que ha marcado.
+			foreach ( ZN_Favoritos::de( $cuenta->ID ) as $negocio ) {
+				$elementos[] = array(
+					'group_id'    => 'zn-favoritos',
+					'group_label' => 'Negocios favoritos (app Zona Náutico)',
+					'item_id'     => "zn-favorito-{$cuenta->ID}-$negocio",
+					'data'        => array( array( 'name' => 'Negocio', 'value' => get_the_title( $negocio ) ?: "#$negocio" ) ),
+				);
+			}
 		}
 
 		$ids = get_comments(
@@ -246,6 +255,7 @@ class ZN_Privacidad {
 		foreach ( array( 'zn_phone', 'zn_latitude', 'zn_longitude', 'zn_email_nuevo', 'zn_email_nuevo_token', 'zn_email_nuevo_caduca' ) as $clave ) {
 			$quitado = delete_user_meta( $cuenta->ID, $clave ) || $quitado;
 		}
+		$quitado = ZN_Favoritos::borrar_de( $cuenta->ID ) > 0 || $quitado;
 		// Siempre los primeros que queden: los de la llamada anterior ya no existen.
 		$ids = self::escritos_por( $cuenta->ID, self::POR_PAGINA );
 		foreach ( $ids as $id ) {
